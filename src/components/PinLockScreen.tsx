@@ -51,7 +51,7 @@ export function PinLockScreen() {
     >
       {/* Title */}
       <div className="text-center">
-        <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#8A8276' }}>Morchis</p>
+        <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#6B6459' }}>Morchis</p>
         <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Ingresá tu PIN</h1>
       </div>
 

@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { BottomNav } from '@/components/BottomNav';
+import { MoneyInput } from '@/components/MoneyInput';
 import { formatARS } from '@/lib/format';
 import { toast } from 'sonner';
 import Link from 'next/link';
@@ -191,7 +192,7 @@ export default function TicketClient({ profile }: { profile: Profile }) {
           <div className="rounded-3xl p-6 text-center" style={{ background: '#FFFFFF' }}>
             <p className="text-5xl mb-3">🧾</p>
             <p className="font-bold mb-1" style={{ color: '#2D2D2D' }}>Sacale una foto al ticket</p>
-            <p className="text-sm mb-5" style={{ color: '#8A8276' }}>
+            <p className="text-sm mb-5" style={{ color: '#6B6459' }}>
               La IA detecta los productos y te dice en qué se fue la plata (comida, limpieza, snacks…).
             </p>
             <div className="flex gap-3">
@@ -218,7 +219,7 @@ export default function TicketClient({ profile }: { profile: Profile }) {
           <div className="rounded-3xl p-8 text-center" style={{ background: '#FFFFFF' }}>
             <p className="text-4xl mb-3 animate-pulse">🤖</p>
             <p className="font-bold" style={{ color: '#2D2D2D' }}>Leyendo el ticket…</p>
-            <p className="text-sm mt-1" style={{ color: '#8A8276' }}>Esto tarda unos segundos.</p>
+            <p className="text-sm mt-1" style={{ color: '#6B6459' }}>Esto tarda unos segundos.</p>
           </div>
         )}
 
@@ -243,12 +244,10 @@ export default function TicketClient({ profile }: { profile: Profile }) {
                 />
               </div>
               <div className="flex items-center gap-3 mb-3">
-                <span className="text-xs font-semibold" style={{ color: '#8A8276' }}>Total</span>
-                <input
-                  type="number"
-                  inputMode="numeric"
+                <span className="text-xs font-semibold" style={{ color: '#6B6459' }}>Total</span>
+                <MoneyInput
                   value={receipt.total}
-                  onChange={(e) => setReceipt({ ...receipt, total: parseInt(e.target.value, 10) || 0 })}
+                  onChange={(n) => setReceipt({ ...receipt, total: n })}
                   className="flex-1 px-3 py-2 rounded-xl border text-base font-black outline-none"
                   style={{ borderColor: '#ECE5DC', color: '#FF7F6B' }}
                 />
@@ -273,7 +272,7 @@ export default function TicketClient({ profile }: { profile: Profile }) {
             {/* Group breakdown */}
             {groupTotals.length > 0 && (
               <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-                <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#8A8276' }}>En qué se fue</p>
+                <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>En qué se fue</p>
                 <div className="flex flex-col gap-2">
                   {groupTotals.map(({ g, total }) => {
                     const meta = GROUP_META[g] ?? GROUP_META.otros;
@@ -281,7 +280,7 @@ export default function TicketClient({ profile }: { profile: Profile }) {
                       <div key={g} className="flex items-center gap-2">
                         <span>{meta.icon}</span>
                         <span className="text-sm capitalize flex-1" style={{ color: '#2D2D2D' }}>{g}</span>
-                        <span className="text-xs font-semibold" style={{ color: '#8A8276' }}>{Math.round((total / itemsSum) * 100)}%</span>
+                        <span className="text-xs font-semibold" style={{ color: '#6B6459' }}>{Math.round((total / itemsSum) * 100)}%</span>
                         <span className="text-sm font-bold w-24 text-right" style={{ color: meta.color }}>{formatARS(total)}</span>
                       </div>
                     );
@@ -292,7 +291,7 @@ export default function TicketClient({ profile }: { profile: Profile }) {
 
             {/* Items */}
             <div className="rounded-3xl p-3" style={{ background: '#FFFFFF' }}>
-              <p className="text-xs font-bold uppercase tracking-wide mb-2 px-2" style={{ color: '#8A8276' }}>
+              <p className="text-xs font-bold uppercase tracking-wide mb-2 px-2" style={{ color: '#6B6459' }}>
                 Productos ({receipt.items.length})
               </p>
               <div className="flex flex-col">
@@ -308,15 +307,13 @@ export default function TicketClient({ profile }: { profile: Profile }) {
                       value={it.group}
                       onChange={(e) => updateItem(i, { group: e.target.value })}
                       className="text-[11px] rounded-lg px-1.5 py-1 border bg-white outline-none"
-                      style={{ borderColor: '#ECE5DC', color: '#8A8276' }}
+                      style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
                     >
                       {GROUPS.map((g) => <option key={g} value={g}>{GROUP_META[g]?.icon} {g}</option>)}
                     </select>
-                    <input
-                      type="number"
-                      inputMode="numeric"
+                    <MoneyInput
                       value={it.line_total}
-                      onChange={(e) => updateItem(i, { line_total: parseInt(e.target.value, 10) || 0 })}
+                      onChange={(n) => updateItem(i, { line_total: n })}
                       className="w-20 text-sm font-bold text-right outline-none bg-transparent"
                       style={{ color: '#2D2D2D' }}
                     />
@@ -336,7 +333,7 @@ export default function TicketClient({ profile }: { profile: Profile }) {
             <button
               onClick={() => { setReceipt(null); setStatus('idle'); }}
               className="w-full py-3 rounded-2xl text-sm font-bold"
-              style={{ color: '#8A8276' }}
+              style={{ color: '#6B6459' }}
             >
               Descartar
             </button>
@@ -348,7 +345,7 @@ export default function TicketClient({ profile }: { profile: Profile }) {
           <div className="rounded-3xl p-6 text-center" style={{ background: '#FFFFFF' }}>
             <p className="text-5xl mb-3">✅</p>
             <p className="font-bold mb-1" style={{ color: '#2D2D2D' }}>¡Ticket guardado!</p>
-            <p className="text-sm mb-5" style={{ color: '#8A8276' }}>Quedó cargado con el detalle de productos.</p>
+            <p className="text-sm mb-5" style={{ color: '#6B6459' }}>Quedó cargado con el detalle de productos.</p>
             <div className="flex gap-3">
               <button
                 onClick={() => { setReceipt(null); setStatus('idle'); }}

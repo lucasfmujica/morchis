@@ -13,7 +13,7 @@ export function EmptyState({ icon, title, subtitle, action }: EmptyStateProps) {
       <p className="text-4xl mb-3">{icon}</p>
       <p className="font-semibold text-base" style={{ color: '#2D2D2D' }}>{title}</p>
       {subtitle && (
-        <p className="text-sm mt-1" style={{ color: '#8A8276' }}>{subtitle}</p>
+        <p className="text-sm mt-1" style={{ color: '#6B6459' }}>{subtitle}</p>
       )}
       {action && (
         <button

@@ -125,7 +125,7 @@ export default function HouseholdPage() {
       <Screen>
         <BackBtn onClick={() => setStep('choose')} />
         <h1 className="text-2xl font-black mb-2" style={{ color: '#2D2D2D' }}>Unirme al hogar</h1>
-        <p className="text-sm mb-6" style={{ color: '#8A8276' }}>
+        <p className="text-sm mb-6" style={{ color: '#6B6459' }}>
           Pedile el código de 6 letras a tu pareja desde la app.
         </p>
         <div className="mb-4">
@@ -152,7 +152,7 @@ export default function HouseholdPage() {
       <div className="text-center mb-8">
         <div className="text-5xl mb-3">✨</div>
         <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>¿Cómo te llamamos?</h1>
-        <p className="text-sm mt-1" style={{ color: '#8A8276' }}>Usamos tu apodo en la app.</p>
+        <p className="text-sm mt-1" style={{ color: '#6B6459' }}>Usamos tu apodo en la app.</p>
       </div>
       <div className="mb-4">
         <TextInput
@@ -209,7 +209,7 @@ function Btn({
 
 function BackBtn({ onClick }: { onClick: () => void }) {
   return (
-    <button onClick={onClick} className="mb-6 text-sm" style={{ color: '#8A8276' }}>
+    <button onClick={onClick} className="mb-6 text-sm" style={{ color: '#6B6459' }}>
       ← Volver
     </button>
   );
@@ -266,7 +266,7 @@ function InviteCodeSection({ householdId }: { householdId: string }) {
           <div className="text-3xl font-black tracking-widest mb-1" style={{ color: '#5BA886' }}>
             {code}
           </div>
-          <p className="text-xs" style={{ color: '#8A8276' }}>
+          <p className="text-xs" style={{ color: '#6B6459' }}>
             Que lo ingrese en &quot;Unirme con código&quot;. Expira en 7 días.
           </p>
         </div>

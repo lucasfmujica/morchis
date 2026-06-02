@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { EmptyState } from '@/components/EmptyState';
 import { formatARS } from '@/lib/format';
 import { todayISO } from '@/lib/date';
+import { MoneyInput } from '@/components/MoneyInput';
 
 const ACCOUNT_TYPES = [
   { value: 'checking', label: 'Cuenta corriente' },
@@ -192,16 +193,14 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
               <option value="USD">USD (Dólares)</option>
             </select>
             <div>
-              <input
-                type="number"
-                inputMode="numeric"
+              <MoneyInput
                 placeholder={type === 'credit' ? 'Deuda inicial (opcional)' : 'Saldo inicial (opcional)'}
-                value={initialBalance}
-                onChange={(e) => setInitialBalance(e.target.value)}
+                value={initialBalance ? parseInt(initialBalance.replace(/\D/g, ''), 10) || 0 : 0}
+                onChange={(n) => setInitialBalance(n ? String(n) : '')}
                 className="w-full px-4 py-3 rounded-2xl border text-sm outline-none"
                 style={{ borderColor: '#ECE5DC' }}
               />
-              <p className="text-xs mt-1.5 px-1" style={{ color: '#8A8276' }}>
+              <p className="text-xs mt-1.5 px-1" style={{ color: '#6B6459' }}>
                 {type === 'credit'
                   ? 'Mostramos cuánto llevás gastado este mes según tus movimientos.'
                   : 'El saldo se actualiza solo con tus ingresos y gastos.'}
@@ -211,7 +210,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
               <button
                 onClick={() => setShowForm(false)}
                 className="flex-1 py-3 rounded-2xl border text-sm font-bold"
-                style={{ borderColor: '#ECE5DC', color: '#8A8276' }}
+                style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
               >
                 Cancelar
               </button>
@@ -246,14 +245,14 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
             <span className="text-2xl">{a.type === 'cash' ? '💵' : a.type === 'credit' ? '💳' : '🏦'}</span>
             <div className="flex-1 min-w-0">
               <p className="font-bold" style={{ color: '#2D2D2D' }}>{a.name}</p>
-              <p className="text-xs" style={{ color: '#8A8276' }}>
+              <p className="text-xs" style={{ color: '#6B6459' }}>
                 {ACCOUNT_TYPES.find((t) => t.value === a.type)?.label} · {a.currency}
                 {a.archived && ' · Archivada'}
               </p>
               {a.type === 'credit' ? (
                 <p className="text-sm font-black mt-1" style={{ color: '#FF7F6B' }}>
                   {formatARS(cardMonthSpend(a.id))}
-                  <span className="text-xs font-semibold" style={{ color: '#8A8276' }}> gastado este mes</span>
+                  <span className="text-xs font-semibold" style={{ color: '#6B6459' }}> gastado este mes</span>
                 </p>
               ) : (
                 (() => {
@@ -261,7 +260,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
                   return (
                     <p className="text-sm font-black mt-1" style={{ color: bal < 0 ? '#FF7F6B' : '#5BA886' }}>
                       {formatARS(bal)}
-                      <span className="text-xs font-semibold" style={{ color: '#8A8276' }}> saldo actual</span>
+                      <span className="text-xs font-semibold" style={{ color: '#6B6459' }}> saldo actual</span>
                     </p>
                   );
                 })()
@@ -272,7 +271,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
                 <button
                   onClick={() => openEdit(a)}
                   className="text-xs font-bold px-3 py-1.5 rounded-xl border"
-                  style={{ borderColor: '#ECE5DC', color: '#8A8276' }}
+                  style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
                 >
                   Editar
                 </button>
@@ -280,7 +279,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
               <button
                 onClick={() => handleArchive(a.id, a.archived)}
                 className="text-xs font-bold px-3 py-1.5 rounded-xl border"
-                style={{ borderColor: '#ECE5DC', color: '#8A8276' }}
+                style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
               >
                 {a.archived ? 'Restaurar' : 'Archivar'}
               </button>

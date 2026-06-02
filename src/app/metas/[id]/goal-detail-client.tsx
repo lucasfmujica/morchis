@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { formatARS, formatUSD, usdToArs, arsToUsd } from '@/lib/format';
 import { todayISO } from '@/lib/date';
+import { MoneyInput } from '@/components/MoneyInput';
 import { useFx } from '@/hooks/useFx';
 
 interface Profile {
@@ -204,44 +205,42 @@ function AportarSheet({
       >
         <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
         <h2 className="text-lg font-black mb-1" style={{ color: '#2D2D2D' }}>Aportar a {goal.name}</h2>
-        <p className="text-sm mb-5" style={{ color: '#8A8276' }}>
+        <p className="text-sm mb-5" style={{ color: '#6B6459' }}>
           Tenés {goal.target_currency === 'USD' ? formatUSD(arsToUsd(goal.current_amount, arsPerUsd)) : formatARS(goal.current_amount)} de{' '}
           {goal.target_currency === 'USD' ? formatUSD(goal.target_amount) : formatARS(goal.target_amount)}
         </p>
 
         {/* Input currency toggle */}
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#8A8276' }}>Ingresá en</p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Ingresá en</p>
         <div className="flex rounded-2xl overflow-hidden mb-4 p-1 gap-1" style={{ background: '#ECE5DC' }}>
           {(['ARS', 'USD'] as const).map((cur) => (
             <button
               key={cur}
               onClick={() => setInputCurrency(cur)}
               className="flex-1 py-1.5 text-xs font-bold rounded-xl transition-colors"
-              style={{ background: inputCurrency === cur ? '#FFFFFF' : 'transparent', color: inputCurrency === cur ? '#2D2D2D' : '#8A8276' }}
+              style={{ background: inputCurrency === cur ? '#FFFFFF' : 'transparent', color: inputCurrency === cur ? '#2D2D2D' : '#6B6459' }}
             >
               {cur === 'ARS' ? '$ ARS' : 'USD'}
             </button>
           ))}
         </div>
 
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#8A8276' }}>Monto</p>
-        <input
-          type="number"
-          inputMode="numeric"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder={inputCurrency === 'ARS' ? 'Ej: 50000' : 'Ej: 100'}
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Monto</p>
+        <MoneyInput
+          value={amount ? parseInt(amount.replace(/\D/g, ''), 10) || 0 : 0}
+          onChange={(n) => setAmount(n ? String(n) : '')}
+          placeholder={inputCurrency === 'ARS' ? 'Ej: 50.000' : 'Ej: 100'}
           className="w-full rounded-2xl px-4 py-3 text-lg font-bold mb-2 outline-none border-2 transition-colors"
           style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: amount ? '#7EC8A4' : '#ECE5DC' }}
           autoFocus
         />
         {inputCurrency === 'USD' && amountNum > 0 && (
-          <p className="text-xs mb-3 font-semibold" style={{ color: '#8A8276' }}>
+          <p className="text-xs mb-3 font-semibold" style={{ color: '#6B6459' }}>
             ≈ {formatARS(amountArs)} al tipo de cambio blue
           </p>
         )}
 
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#8A8276' }}>Nota (opcional)</p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Nota (opcional)</p>
         <input
           type="text"
           value={note}
@@ -316,7 +315,7 @@ export default function GoalDetailClient({ goalId, profile }: { goalId: string; 
   if (!goal) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: '#F9F5F0' }}>
-        <p style={{ color: '#8A8276' }}>Cargando…</p>
+        <p style={{ color: '#6B6459' }}>Cargando…</p>
       </div>
     );
   }
@@ -383,11 +382,11 @@ export default function GoalDetailClient({ goalId, profile }: { goalId: string; 
             )}
 
             <p className="text-2xl font-black tabular-nums" style={{ color: '#2D2D2D' }}>{currentArsDisplay}</p>
-            <p className="text-xs font-semibold" style={{ color: '#8A8276' }}>{currentSecondary}</p>
-            <p className="text-sm mt-1 font-semibold" style={{ color: '#8A8276' }}>
+            <p className="text-xs font-semibold" style={{ color: '#6B6459' }}>{currentSecondary}</p>
+            <p className="text-sm mt-1 font-semibold" style={{ color: '#6B6459' }}>
               de {targetDisplay}
             </p>
-            <p className="text-xs mt-0.5" style={{ color: '#8A8276' }}>
+            <p className="text-xs mt-0.5" style={{ color: '#6B6459' }}>
               Vence {deadline.toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })}
             </p>
           </div>
@@ -405,13 +404,13 @@ export default function GoalDetailClient({ goalId, profile }: { goalId: string; 
         {!done && targetArs > 0 && (
           <div className="flex justify-between mt-3">
             <div>
-              <p className="text-xs" style={{ color: '#8A8276' }}>Falta</p>
+              <p className="text-xs" style={{ color: '#6B6459' }}>Falta</p>
               <p className="text-sm font-black" style={{ color: '#2D2D2D' }}>
                 {format(Math.max(0, targetArs - goal.current_amount))}
               </p>
             </div>
             <div className="text-right">
-              <p className="text-xs" style={{ color: '#8A8276' }}>Ritmo esperado</p>
+              <p className="text-xs" style={{ color: '#6B6459' }}>Ritmo esperado</p>
               <p className="text-sm font-black" style={{ color: '#2D2D2D' }}>
                 {Math.round(expectedPct * 100)}%
               </p>
@@ -443,7 +442,7 @@ export default function GoalDetailClient({ goalId, profile }: { goalId: string; 
         <h2 className="text-base font-black mb-3" style={{ color: '#2D2D2D' }}>Historial de aportes</h2>
         {contributions.length === 0 ? (
           <div className="rounded-3xl p-5 text-center" style={{ background: '#FFFFFF' }}>
-            <p className="text-sm" style={{ color: '#8A8276' }}>Todavía no hay aportes. ¡Empezá ahora!</p>
+            <p className="text-sm" style={{ color: '#6B6459' }}>Todavía no hay aportes. ¡Empezá ahora!</p>
           </div>
         ) : (
           <div className="flex flex-col gap-2">
@@ -454,7 +453,7 @@ export default function GoalDetailClient({ goalId, profile }: { goalId: string; 
                     {new Date(c.occurred_on).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })}
                   </p>
                   {c.note && (
-                    <p className="text-xs" style={{ color: '#8A8276' }}>{c.note}</p>
+                    <p className="text-xs" style={{ color: '#6B6459' }}>{c.note}</p>
                   )}
                 </div>
                 <p className="text-sm font-black tabular-nums" style={{ color: goal.color || '#7EC8A4' }}>

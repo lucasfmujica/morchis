@@ -117,7 +117,7 @@ export default function AhorroClient({ profile }: { profile: Profile }) {
       <div className="px-4 flex flex-col gap-4">
         {/* This month savings goal */}
         <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-          <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#8A8276' }}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>
             Meta de ahorro · este mes
           </p>
           <div className="flex items-center gap-5">
@@ -132,7 +132,7 @@ export default function AhorroClient({ profile }: { profile: Profile }) {
               />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-semibold" style={{ color: '#8A8276' }}>Quiero ahorrar</p>
+              <p className="text-[11px] font-semibold" style={{ color: '#6B6459' }}>Quiero ahorrar</p>
               <div className="flex items-center gap-3 my-1">
                 <button
                   onClick={() => changeTarget(-5)}
@@ -150,7 +150,7 @@ export default function AhorroClient({ profile }: { profile: Profile }) {
                   +
                 </button>
               </div>
-              <p className="text-xs" style={{ color: '#8A8276' }}>
+              <p className="text-xs" style={{ color: '#6B6459' }}>
                 = {formatARS(targetAmount)} sobre {formatARS(current.income)} de ingresos
               </p>
             </div>
@@ -168,7 +168,7 @@ export default function AhorroClient({ profile }: { profile: Profile }) {
               <span className="text-xs font-bold" style={{ color: targetReached ? '#5BA886' : '#B8860B' }}>
                 Ahorrado {formatARS(Math.max(current.saved, 0))}
               </span>
-              <span className="text-xs" style={{ color: '#8A8276' }}>
+              <span className="text-xs" style={{ color: '#6B6459' }}>
                 {targetReached ? '¡Meta cumplida! 🎉' : `faltan ${formatARS(Math.max(targetAmount - current.saved, 0))}`}
               </span>
             </div>
@@ -178,7 +178,7 @@ export default function AhorroClient({ profile }: { profile: Profile }) {
         {/* 6-month evolution */}
         <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
           <div className="flex items-center justify-between mb-1">
-            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8A8276' }}>
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>
               Ingresos vs gastos · 6 meses
             </p>
           </div>
@@ -189,11 +189,11 @@ export default function AhorroClient({ profile }: { profile: Profile }) {
             <span className="flex items-center gap-1.5" style={{ color: '#E5604C' }}>
               <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#FF7F6B' }} /> Gastos
             </span>
-            <span className="ml-auto" style={{ color: '#8A8276' }}>% = ahorro del mes</span>
+            <span className="ml-auto" style={{ color: '#6B6459' }}>% = ahorro del mes</span>
           </div>
           <MonthlyBars rows={rows} />
           {avgRate != null && (
-            <p className="text-xs mt-4 pt-3 text-center" style={{ borderTop: '1px solid #ECE5DC', color: '#8A8276' }}>
+            <p className="text-xs mt-4 pt-3 text-center" style={{ borderTop: '1px solid #ECE5DC', color: '#6B6459' }}>
               Promedio de ahorro de 6 meses:{' '}
               <span className="font-black" style={{ color: avgRate >= 0 ? '#5BA886' : '#E5604C' }}>
                 {Math.round(avgRate * 100)}%

@@ -90,7 +90,7 @@ function SettleUpSheet({
         </div>
 
         <h2 className="text-xl font-black mb-1" style={{ color: '#2D2D2D' }}>Saldar deuda</h2>
-        <p className="text-sm mb-5" style={{ color: '#8A8276' }}>
+        <p className="text-sm mb-5" style={{ color: '#6B6459' }}>
           {iOwe
             ? `Le pagás ${formatARS(absNet)} a ${partnerName}`
             : `${partnerName} te paga ${formatARS(absNet)}`}
@@ -220,10 +220,10 @@ export default function ParejaClient({
   return (
     <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
       <header className="flex items-center gap-3 px-5 pt-14 pb-4">
-        <Link href="/mas" style={{ color: '#8A8276', fontSize: 22 }}>←</Link>
+        <Link href="/mas" style={{ color: '#6B6459', fontSize: 22 }}>←</Link>
         <div className="flex-1">
           <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Vista de pareja</h1>
-          {partner && <p className="text-xs" style={{ color: '#8A8276' }}>{myName} & {partner.name}</p>}
+          {partner && <p className="text-xs" style={{ color: '#6B6459' }}>{myName} & {partner.name}</p>}
         </div>
         <button
           onClick={toggle}
@@ -236,7 +236,7 @@ export default function ParejaClient({
 
       {/* Combined summary */}
       <div className="mx-4 rounded-3xl p-5 mb-4 shadow-sm" style={{ background: '#FFFFFF' }}>
-        <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#8A8276' }}>
+        <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>
           Resumen del mes
         </p>
         <div className="flex gap-4">
@@ -253,11 +253,11 @@ export default function ParejaClient({
         {/* Household vs personal */}
         <div className="mt-4 pt-4" style={{ borderTop: '1px solid #ECE5DC' }}>
           <div className="flex justify-between mb-2">
-            <p className="text-xs" style={{ color: '#8A8276' }}>🏠 Hogar</p>
+            <p className="text-xs" style={{ color: '#6B6459' }}>🏠 Hogar</p>
             <p className="text-xs font-bold" style={{ color: '#2D2D2D' }}>{f(householdExpenses)}</p>
           </div>
           <div className="flex justify-between">
-            <p className="text-xs" style={{ color: '#8A8276' }}>👤 Personal</p>
+            <p className="text-xs" style={{ color: '#6B6459' }}>👤 Personal</p>
             <p className="text-xs font-bold" style={{ color: '#2D2D2D' }}>{f(personalExpenses)}</p>
           </div>
         </div>
@@ -268,7 +268,7 @@ export default function ParejaClient({
         <div className="mx-4 rounded-3xl p-5 mb-4 text-center" style={{ background: '#FFFFFF' }}>
           <p className="text-3xl mb-2">👫</p>
           <p className="text-sm font-bold" style={{ color: '#2D2D2D' }}>Todavía no hay pareja vinculada al hogar</p>
-          <p className="text-sm mt-1 mb-4" style={{ color: '#8A8276' }}>
+          <p className="text-sm mt-1 mb-4" style={{ color: '#6B6459' }}>
             Invitá a tu pareja para compartir esta vista y dividir gastos.
           </p>
           <button
@@ -284,17 +284,17 @@ export default function ParejaClient({
           className="mx-4 rounded-3xl p-5 mb-4 shadow-sm"
           style={{ background: balanced ? '#FFFFFF' : partnerOwesMe ? '#E4F2EA' : '#FFE7E2' }}
         >
-          <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#8A8276' }}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>
             Quién le debe a quién
           </p>
 
           {balanceLoading ? (
-            <p className="text-sm" style={{ color: '#8A8276' }}>Calculando…</p>
+            <p className="text-sm" style={{ color: '#6B6459' }}>Calculando…</p>
           ) : balanced ? (
             <div className="text-center py-2">
               <p className="text-3xl mb-1">🤝</p>
               <p className="text-base font-black" style={{ color: '#2D2D2D' }}>¡Estamos al día!</p>
-              <p className="text-xs mt-1" style={{ color: '#8A8276' }}>No hay deudas pendientes entre ustedes.</p>
+              <p className="text-xs mt-1" style={{ color: '#6B6459' }}>No hay deudas pendientes entre ustedes.</p>
             </div>
           ) : (
             <div>
@@ -331,7 +331,7 @@ export default function ParejaClient({
       {/* Shared category breakdown */}
       {sharedCats.length > 0 && (
         <div className="mx-4 rounded-3xl p-5 mb-4 shadow-sm" style={{ background: '#FFFFFF' }}>
-          <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#8A8276' }}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>
             Gastos compartidos por categoría
           </p>
           <div className="flex flex-col gap-2">
@@ -356,7 +356,7 @@ export default function ParejaClient({
               );
             })}
           </div>
-          <p className="text-xs mt-3" style={{ color: '#8A8276' }}>
+          <p className="text-xs mt-3" style={{ color: '#6B6459' }}>
             Total compartido este mes: <strong>{f(sharedExpenses)}</strong>
           </p>
         </div>

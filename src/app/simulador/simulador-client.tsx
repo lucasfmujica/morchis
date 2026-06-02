@@ -32,7 +32,7 @@ const SAGE = '#7ABF8E';
 const SURFACE = '#FFFFFF';
 const CREAM = '#F9F5F0';
 const CHARCOAL = '#2D2D2D';
-const MUTED = '#8A8276';
+const MUTED = '#6B6459';
 const BORDER = '#ECE5DC';
 
 const SUGGESTIONS = [

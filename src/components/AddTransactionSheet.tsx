@@ -273,7 +273,7 @@ export function AddTransactionSheet({
             >
               {displayAmount}
             </p>
-            <p className="text-sm mt-1" style={{ color: '#8A8276' }}>
+            <p className="text-sm mt-1" style={{ color: '#6B6459' }}>
               {secondaryAmount}
             </p>
           </div>
@@ -290,7 +290,7 @@ export function AddTransactionSheet({
                 className="flex-1 py-2.5 text-sm font-bold transition-colors"
                 style={{
                   background: txType === t ? (t === 'expense' ? '#FF7F6B' : '#7EC8A4') : 'transparent',
-                  color: txType === t ? '#FFFFFF' : '#8A8276',
+                  color: txType === t ? '#FFFFFF' : '#6B6459',
                   borderRadius: '14px',
                 }}
               >
@@ -332,7 +332,7 @@ export function AddTransactionSheet({
               style={{
                 background: scope === 'household' ? '#E4F2EA' : '#FFFFFF',
                 borderColor: scope === 'household' ? '#7EC8A4' : '#ECE5DC',
-                color: scope === 'household' ? '#5BA886' : '#8A8276',
+                color: scope === 'household' ? '#5BA886' : '#6B6459',
               }}
             >
               {scope === 'household' ? '🏠 Hogar' : '👤 Personal'}
@@ -345,7 +345,7 @@ export function AddTransactionSheet({
               style={{
                 background: isShared ? '#FFE7E2' : '#FFFFFF',
                 borderColor: isShared ? '#FF7F6B' : '#ECE5DC',
-                color: isShared ? '#FF7F6B' : '#8A8276',
+                color: isShared ? '#FF7F6B' : '#6B6459',
               }}
             >
               {isShared ? '🤝 Compartido' : '🤝 Dividir'}
@@ -382,7 +382,7 @@ export function AddTransactionSheet({
           {canInstallments && (
             <div className="px-4 mt-3">
               <div className="flex items-center justify-between mb-1.5">
-                <p className="text-xs font-bold" style={{ color: '#8A8276' }}>Cuotas</p>
+                <p className="text-xs font-bold" style={{ color: '#6B6459' }}>Cuotas</p>
                 {useInstallments && (
                   <p className="text-xs font-bold" style={{ color: '#FF7F6B' }}>
                     {installments} × {formatARS(perInstallment)} por mes
@@ -398,7 +398,7 @@ export function AddTransactionSheet({
                     style={{
                       background: installments === n ? '#FFE7E2' : '#FFFFFF',
                       borderColor: installments === n ? '#FF7F6B' : '#ECE5DC',
-                      color: installments === n ? '#FF7F6B' : '#8A8276',
+                      color: installments === n ? '#FF7F6B' : '#6B6459',
                     }}
                   >
                     {n === 1 ? '1 pago' : `${n}`}

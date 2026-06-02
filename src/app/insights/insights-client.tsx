@@ -20,7 +20,7 @@ interface Insight {
 const SEVERITY_STYLE: Record<string, { bg: string; border: string; color: string; icon: string; label: string }> = {
   positive: { bg: '#E4F2EA', border: '#7EC8A4', color: '#5BA886', icon: '✨', label: 'Positivo' },
   warning:  { bg: '#FFE7E2', border: '#FF7F6B', color: '#E5604C', icon: '⚠️', label: 'Atención' },
-  info:     { bg: '#F0EDE8', border: '#C4B9AE', color: '#8A8276', icon: '💡', label: 'Info' },
+  info:     { bg: '#F0EDE8', border: '#C4B9AE', color: '#6B6459', icon: '💡', label: 'Info' },
 };
 
 export default function InsightsClient({ householdId, profileId }: { householdId: string; profileId: string }) {
@@ -79,7 +79,7 @@ export default function InsightsClient({ householdId, profileId }: { householdId
           onClick={handleRefresh}
           disabled={refreshing}
           className="text-sm font-bold px-3 py-1.5 rounded-full"
-          style={{ background: refreshing ? '#ECE5DC' : '#7EC8A4', color: refreshing ? '#8A8276' : '#FFFFFF' }}
+          style={{ background: refreshing ? '#ECE5DC' : '#7EC8A4', color: refreshing ? '#6B6459' : '#FFFFFF' }}
         >
           {refreshing ? 'Analizando…' : 'Actualizar'}
         </button>
@@ -94,7 +94,7 @@ export default function InsightsClient({ householdId, profileId }: { householdId
           <div className="rounded-3xl p-6 text-center" style={{ background: '#FFFFFF' }}>
             <p className="text-4xl mb-3">🤔</p>
             <p className="font-bold" style={{ color: '#2D2D2D' }}>Todavía no hay insights</p>
-            <p className="text-sm mt-1" style={{ color: '#8A8276' }}>Tocá "Actualizar" para que la IA analice tus gastos.</p>
+            <p className="text-sm mt-1" style={{ color: '#6B6459' }}>Tocá "Actualizar" para que la IA analice tus gastos.</p>
           </div>
         )}
 

@@ -35,8 +35,8 @@ function BudgetSummaryCard({
     return (
       <Link href="/presupuestos" className="mx-4 rounded-3xl p-5 mb-4 flex items-center justify-between" style={{ background: '#FFFFFF' }}>
         <div>
-          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#8A8276' }}>Presupuesto del mes</p>
-          <p className="text-sm" style={{ color: '#8A8276' }}>Tocá para crear presupuestos →</p>
+          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6B6459' }}>Presupuesto del hogar</p>
+          <p className="text-sm" style={{ color: '#6B6459' }}>Tocá para crear presupuestos →</p>
         </div>
       </Link>
     );
@@ -51,7 +51,7 @@ function BudgetSummaryCard({
   return (
     <Link href="/presupuestos" className="mx-4 rounded-3xl p-5 mb-4 block" style={{ background: '#FFFFFF' }}>
       <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8A8276' }}>Presupuesto del mes</p>
+        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Presupuesto del hogar</p>
         {over && (
           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#FFE7E2', color: '#FF7F6B' }}>
             Excedido
@@ -66,7 +66,7 @@ function BudgetSummaryCard({
       </div>
       <div className="flex justify-between mt-2">
         <p className="text-xs font-semibold" style={{ color: barColor }}>{formatARS(totalSpent)} gastado</p>
-        <p className="text-xs" style={{ color: over ? '#FF7F6B' : '#8A8276' }}>
+        <p className="text-xs" style={{ color: over ? '#FF7F6B' : '#6B6459' }}>
           {over ? `+${formatARS(totalSpent - totalBudget)} excedido` : `de ${formatARS(totalBudget)}`}
         </p>
       </div>
@@ -138,10 +138,10 @@ function CategoryDonutCard({
   return (
     <Link href="/analisis" className="mx-4 rounded-3xl p-5 mb-4 block" style={{ background: '#FFFFFF' }}>
       <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8A8276' }}>
+        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>
           Gastos por categoría
         </p>
-        <span className="text-xs" style={{ color: '#8A8276' }}>Ver análisis →</span>
+        <span className="text-xs" style={{ color: '#6B6459' }}>Ver análisis →</span>
       </div>
       <div className="flex items-center gap-4">
         <div className="shrink-0">
@@ -152,7 +152,7 @@ function CategoryDonutCard({
             <div key={i} className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: seg.color }} />
               <span className="text-xs flex-1 truncate" style={{ color: '#2D2D2D' }}>{seg.label}</span>
-              <span className="text-xs font-semibold" style={{ color: '#8A8276' }}>
+              <span className="text-xs font-semibold" style={{ color: '#6B6459' }}>
                 {Math.round((seg.value / total) * 100)}%
               </span>
             </div>
@@ -174,7 +174,7 @@ function IncomeCard({
 }) {
   const savingsRate = incomeSoFar > 0 ? (incomeSoFar - expensesSoFar) / incomeSoFar : null;
   const rateColor =
-    savingsRate == null ? '#8A8276' : savingsRate >= 0.2 ? '#5BA886' : savingsRate >= 0 ? '#B8860B' : '#E5604C';
+    savingsRate == null ? '#6B6459' : savingsRate >= 0.2 ? '#5BA886' : savingsRate >= 0 ? '#B8860B' : '#E5604C';
   const rateBg =
     savingsRate == null ? '#F0EDE8' : savingsRate >= 0.2 ? '#E4F2EA' : savingsRate >= 0 ? '#FBF1D8' : '#FFE7E2';
 
@@ -184,7 +184,7 @@ function IncomeCard({
     <div className="mx-4 rounded-3xl p-5 mb-4" style={{ background: '#FFFFFF' }}>
       <div className="flex items-start justify-between mb-3">
         <div>
-          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#8A8276' }}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6B6459' }}>
             Ingresos del mes
           </p>
           <p className="text-3xl font-black leading-none" style={{ color: '#5BA886', fontVariantNumeric: 'tabular-nums' }}>
@@ -193,7 +193,7 @@ function IncomeCard({
         </div>
         {savingsRate != null && (
           <div className="text-right">
-            <p className="text-[11px] font-semibold mb-1" style={{ color: '#8A8276' }}>Ahorro</p>
+            <p className="text-[11px] font-semibold mb-1" style={{ color: '#6B6459' }}>Ahorro</p>
             <span
               className="inline-block text-sm font-black px-2.5 py-1 rounded-full"
               style={{ background: rateBg, color: rateColor }}
@@ -284,7 +284,7 @@ export default function HomeClient({
       const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       const { data } = await supabase
         .from('transactions')
-        .select('amount, type, occurred_on, profile_id')
+        .select('amount, type, occurred_on, profile_id, category_id')
         .eq('household_id', profile.household_id)
         .gte('occurred_on', `${month}-01`);
       return data ?? [];
@@ -370,7 +370,17 @@ export default function HomeClient({
 
   // Quick-access tile values
   const totalBalance = netWorthAt(accountsFull, accountTx, todayISO(), arsPerUsd);
-  const monthExpenseTotal = transactions.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+
+  // Scope-aware expenses (respect the Nuestro/Mío/Pareja toggle) for the
+  // donut and the "Gastos" tile, so the whole screen reacts to the toggle.
+  const scopedExpenses = transactions.filter(
+    (t) => t.type === 'expense' && (!scopeProfileId || t.profile_id === scopeProfileId),
+  );
+  const monthExpenseTotal = scopedExpenses.reduce((s, t) => s + t.amount, 0);
+  const scopedSpentByCategory = scopedExpenses.reduce<Record<string, number>>((map, t) => {
+    if (t.category_id) map[t.category_id] = (map[t.category_id] ?? 0) + t.amount;
+    return map;
+  }, {});
   const savingsRate = incomeSoFar > 0 ? Math.round(((incomeSoFar - expensesSoFar) / incomeSoFar) * 100) : null;
 
   const quickTiles = [
@@ -398,7 +408,7 @@ export default function HomeClient({
       {/* Header */}
       <header className="flex items-center justify-between px-5 pt-14 pb-4">
         <div>
-          <p className="text-sm" style={{ color: '#8A8276' }}>{greeting},</p>
+          <p className="text-sm" style={{ color: '#6B6459' }}>{greeting},</p>
           <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>{name} 👋</h1>
         </div>
         <button
@@ -419,7 +429,7 @@ export default function HomeClient({
             className="flex-1 py-1.5 text-xs font-bold rounded-xl transition-colors"
             style={{
               background: scope === tab.key ? '#FFFFFF' : 'transparent',
-              color: scope === tab.key ? '#2D2D2D' : '#8A8276',
+              color: scope === tab.key ? '#2D2D2D' : '#6B6459',
             }}
           >
             {tab.label}
@@ -429,7 +439,7 @@ export default function HomeClient({
 
       {/* Hero projection card */}
       <div
-        className="mx-4 rounded-3xl p-5 shadow-sm mb-4"
+        className="mx-4 rounded-3xl p-5 shadow-sm mb-4 animate-in fade-in duration-500"
         style={{ background: isPositive ? '#E4F2EA' : '#FFE7E2' }}
       >
         <div className="flex items-start justify-between">
@@ -480,7 +490,7 @@ export default function HomeClient({
       </div>
 
       {/* Quick-access tiles */}
-      <div className="mx-4 mb-4 grid grid-cols-4 gap-2">
+      <div className="mx-4 mb-4 grid grid-cols-4 gap-2 animate-in fade-in duration-500">
         {quickTiles.map((t) => (
           <Link
             key={t.href}
@@ -489,7 +499,7 @@ export default function HomeClient({
             style={{ background: '#FFFFFF' }}
           >
             <span className="text-2xl">{t.icon}</span>
-            <span className="text-[10px] font-semibold" style={{ color: '#8A8276' }}>{t.label}</span>
+            <span className="text-[10px] font-semibold" style={{ color: '#6B6459' }}>{t.label}</span>
             <span className="text-[11px] font-black leading-tight truncate w-full" style={{ color: t.color, fontVariantNumeric: 'tabular-nums' }}>
               {t.value}
             </span>
@@ -514,8 +524,8 @@ export default function HomeClient({
       {/* Spent-vs-budget */}
       <BudgetSummaryCard budgets={budgets} spentByCategory={spentByCategory} />
 
-      {/* Spending by category donut */}
-      <CategoryDonutCard categories={categories} spentByCategory={spentByCategory} />
+      {/* Spending by category donut (scope-aware) */}
+      <CategoryDonutCard categories={categories} spentByCategory={scopedSpentByCategory} />
 
       <BottomNav onFab={(type) => { setFabType(type); setSheetOpen(true); }} />
 

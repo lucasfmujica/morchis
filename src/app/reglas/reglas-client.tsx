@@ -5,6 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { formatARS } from '@/lib/format';
 import { toLocalISO } from '@/lib/date';
+import { MoneyInput } from '@/components/MoneyInput';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { toast } from 'sonner';
@@ -71,7 +73,7 @@ function UpcomingBills({ rules }: { rules: Rule[] }) {
   return (
     <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
       <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8A8276' }}>Próximos vencimientos</p>
+        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Próximos vencimientos</p>
         <span className="text-xs font-black" style={{ color: '#FF7F6B' }}>{formatARS(totalExpense)}</span>
       </div>
       <div className="flex flex-col gap-2.5">
@@ -88,7 +90,7 @@ function UpcomingBills({ rules }: { rules: Rule[] }) {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold truncate" style={{ color: '#2D2D2D' }}>{r.label}</p>
-                <p className="text-xs font-semibold" style={{ color: soon ? '#E5604C' : '#8A8276' }}>{whenLabel(d)}</p>
+                <p className="text-xs font-semibold" style={{ color: soon ? '#E5604C' : '#6B6459' }}>{whenLabel(d)}</p>
               </div>
               <p className="text-sm font-black flex-shrink-0" style={{ color: r.direction === 'income' ? '#7EC8A4' : '#FF7F6B' }}>
                 {r.direction === 'income' ? '+' : '-'}{formatARS(r.amount)}
@@ -117,7 +119,7 @@ function FixedSummaryCard({ rules }: { rules: Rule[] }) {
 
   return (
     <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-      <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#8A8276' }}>
+      <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>
         Resumen mensual estimado
       </p>
       <div className="flex gap-3 mb-4">
@@ -136,7 +138,7 @@ function FixedSummaryCard({ rules }: { rules: Rule[] }) {
       </div>
       <div className="flex items-end justify-between pt-3" style={{ borderTop: '1px solid #ECE5DC' }}>
         <div>
-          <p className="text-[11px] font-semibold" style={{ color: '#8A8276' }}>Margen fijo / mes</p>
+          <p className="text-[11px] font-semibold" style={{ color: '#6B6459' }}>Margen fijo / mes</p>
           <p
             className="text-2xl font-black leading-none"
             style={{ color: marginPositive ? '#5BA886' : '#E5604C', fontVariantNumeric: 'tabular-nums' }}
@@ -146,7 +148,7 @@ function FixedSummaryCard({ rules }: { rules: Rule[] }) {
         </div>
         {savingsRate != null && (
           <div className="text-right">
-            <p className="text-[11px] font-semibold" style={{ color: '#8A8276' }}>Ahorro fijo</p>
+            <p className="text-[11px] font-semibold" style={{ color: '#6B6459' }}>Ahorro fijo</p>
             <span
               className="inline-block text-sm font-black px-2.5 py-1 rounded-full"
               style={{
@@ -234,7 +236,7 @@ function RuleForm({
             className="flex-1 py-2.5 text-sm font-bold transition-colors"
             style={{
               background: direction === d ? (d === 'income' ? '#7EC8A4' : '#FF7F6B') : 'transparent',
-              color: direction === d ? '#FFFFFF' : '#8A8276',
+              color: direction === d ? '#FFFFFF' : '#6B6459',
               borderRadius: '14px',
             }}
           >
@@ -254,19 +256,17 @@ function RuleForm({
       />
 
       {/* Amount */}
-      <input
-        type="number"
+      <MoneyInput
         placeholder="Monto en ARS"
-        value={amountStr}
-        onChange={(e) => setAmountStr(e.target.value)}
+        value={amountStr ? parseInt(amountStr, 10) || 0 : 0}
+        onChange={(n) => setAmountStr(n ? String(n) : '')}
         className="w-full px-4 py-3 rounded-2xl text-sm border outline-none"
         style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
-        inputMode="numeric"
       />
 
       {/* Cadence */}
       <div>
-        <p className="text-xs font-semibold mb-2" style={{ color: '#8A8276' }}>Frecuencia</p>
+        <p className="text-xs font-semibold mb-2" style={{ color: '#6B6459' }}>Frecuencia</p>
         <div className="flex gap-2">
           {(['weekly', 'biweekly', 'monthly'] as const).map((c) => (
             <button
@@ -276,7 +276,7 @@ function RuleForm({
               style={{
                 background: cadence === c ? '#E4F2EA' : '#FFFFFF',
                 borderColor: cadence === c ? '#7EC8A4' : '#ECE5DC',
-                color: cadence === c ? '#5BA886' : '#8A8276',
+                color: cadence === c ? '#5BA886' : '#6B6459',
               }}
             >
               {CADENCE_LABEL[c]}
@@ -287,7 +287,7 @@ function RuleForm({
 
       {/* Anchor day */}
       <div>
-        <p className="text-xs font-semibold mb-1" style={{ color: '#8A8276' }}>
+        <p className="text-xs font-semibold mb-1" style={{ color: '#6B6459' }}>
           {cadence === 'weekly' ? 'Día de semana (0=Dom … 6=Sáb)' : 'Día del mes'}
         </p>
         <input
@@ -308,7 +308,7 @@ function RuleForm({
         style={{
           background: scope === 'household' ? '#E4F2EA' : '#FFFFFF',
           borderColor: scope === 'household' ? '#7EC8A4' : '#ECE5DC',
-          color: scope === 'household' ? '#5BA886' : '#8A8276',
+          color: scope === 'household' ? '#5BA886' : '#6B6459',
         }}
       >
         {scope === 'household' ? '🏠 Hogar' : '👤 Personal'}
@@ -321,7 +321,7 @@ function RuleForm({
         style={{
           background: active ? '#E4F2EA' : '#FFFFFF',
           borderColor: active ? '#7EC8A4' : '#ECE5DC',
-          color: active ? '#5BA886' : '#8A8276',
+          color: active ? '#5BA886' : '#6B6459',
         }}
       >
         {active ? '✓ Activa' : '✗ Inactiva'}
@@ -331,7 +331,7 @@ function RuleForm({
         <button
           onClick={onCancel}
           className="flex-1 py-3 rounded-2xl text-sm font-bold border"
-          style={{ borderColor: '#ECE5DC', color: '#8A8276', background: '#FFFFFF' }}
+          style={{ borderColor: '#ECE5DC', color: '#6B6459', background: '#FFFFFF' }}
         >
           Cancelar
         </button>
@@ -354,6 +354,7 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   const [showForm, setShowForm] = useState(false);
   const [editRule, setEditRule] = useState<Rule | null>(null);
+  const [confirmDeleteRule, setConfirmDeleteRule] = useState<Rule | null>(null);
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],
@@ -439,7 +440,7 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-bold text-sm truncate" style={{ color: '#2D2D2D' }}>{rule.label}</p>
-          <p className="text-xs" style={{ color: '#8A8276' }}>
+          <p className="text-xs" style={{ color: '#6B6459' }}>
             {CADENCE_LABEL[rule.cadence]} · día {rule.anchor_day}
             {rule.next_run ? ` · próx. ${rule.next_run}` : ''}
             {!rule.active ? ' · inactiva' : ''}
@@ -455,14 +456,12 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
           <button
             onClick={() => setEditRule(rule)}
             className="text-xs px-2 py-1 rounded-lg border"
-            style={{ borderColor: '#ECE5DC', color: '#8A8276' }}
+            style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
           >
             ✏️
           </button>
           <button
-            onClick={() => {
-              if (confirm(`¿Eliminar "${rule.label}"?`)) deleteMutation.mutate(rule.id);
-            }}
+            onClick={() => setConfirmDeleteRule(rule)}
             className="text-xs px-2 py-1 rounded-lg border"
             style={{ borderColor: '#FFE7E2', color: '#FF7F6B' }}
           >
@@ -545,6 +544,18 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
           />
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmDeleteRule !== null}
+        title="¿Eliminar regla?"
+        message={confirmDeleteRule ? `Se eliminará "${confirmDeleteRule.label}". Esta acción no se puede deshacer.` : undefined}
+        confirmLabel="Eliminar"
+        onConfirm={() => {
+          if (confirmDeleteRule) deleteMutation.mutate(confirmDeleteRule.id);
+          setConfirmDeleteRule(null);
+        }}
+        onCancel={() => setConfirmDeleteRule(null)}
+      />
 
       <BottomNav onFab={(type) => { setFabType(type); setSheetOpen(true); }} />
       <AddTransactionSheet

@@ -9,7 +9,7 @@ export const tokens = {
   coralDeep: '#E5604C',
   charcoal: '#2D2D2D',
   surface: '#FFFFFF',
-  muted: '#8A8276',
+  muted: '#6B6459',
   hairline: '#ECE5DC',
 } as const;
 

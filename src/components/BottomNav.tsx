@@ -18,7 +18,7 @@ export function BottomNav({ onFab }: BottomNavProps) {
       <Link
         href={href}
         className="flex flex-col items-center gap-0.5 flex-1 py-2"
-        style={{ color: active ? '#7EC8A4' : '#8A8276' }}
+        style={{ color: active ? '#7EC8A4' : '#6B6459' }}
       >
         <span className="text-2xl">{icon}</span>
         <span className="text-[10px] font-semibold">{label}</span>

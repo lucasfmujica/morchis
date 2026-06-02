@@ -192,13 +192,13 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       <header className="px-5 pt-14 pb-4 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Movimientos</h1>
-          <p className="text-xs mt-0.5" style={{ color: '#8A8276' }}>Este mes</p>
+          <p className="text-xs mt-0.5" style={{ color: '#6B6459' }}>Este mes</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={handleExport}
             className="text-xs font-bold px-3 py-1.5 rounded-full border"
-            style={{ borderColor: '#ECE5DC', color: '#8A8276' }}
+            style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
           >
             Exportar CSV
           </button>
@@ -216,14 +216,14 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       <div className="mx-4 mb-4 rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
         <div className="flex justify-between">
           <div>
-            <p className="text-xs font-semibold" style={{ color: '#8A8276' }}>Gastos</p>
+            <p className="text-xs font-semibold" style={{ color: '#6B6459' }}>Gastos</p>
             <p className="text-xl font-black" style={{ color: '#FF7F6B' }}>{format(monthSummary.expenses)}</p>
-            <p className="text-xs" style={{ color: '#8A8276' }}>{secondary(monthSummary.expenses)}</p>
+            <p className="text-xs" style={{ color: '#6B6459' }}>{secondary(monthSummary.expenses)}</p>
           </div>
           <div className="text-right">
-            <p className="text-xs font-semibold" style={{ color: '#8A8276' }}>Ingresos</p>
+            <p className="text-xs font-semibold" style={{ color: '#6B6459' }}>Ingresos</p>
             <p className="text-xl font-black" style={{ color: '#7EC8A4' }}>{format(monthSummary.income)}</p>
-            <p className="text-xs" style={{ color: '#8A8276' }}>{secondary(monthSummary.income)}</p>
+            <p className="text-xs" style={{ color: '#6B6459' }}>{secondary(monthSummary.income)}</p>
           </div>
         </div>
       </div>
@@ -236,7 +236,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
           style={{
             background: showChart ? '#2D2D2D' : '#FFFFFF',
             borderColor: showChart ? '#2D2D2D' : '#ECE5DC',
-            color: showChart ? '#FFFFFF' : '#8A8276',
+            color: showChart ? '#FFFFFF' : '#6B6459',
           }}
         >
           📊 Comparar meses
@@ -248,16 +248,16 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
         <div className="mx-4 mb-4 rounded-3xl p-4" style={{ background: '#FFFFFF' }}>
           <p className="text-sm font-black mb-3" style={{ color: '#2D2D2D' }}>Top 5 categorías</p>
           {chartData.length === 0 ? (
-            <p className="text-sm text-center py-4" style={{ color: '#8A8276' }}>Sin datos de gastos este mes.</p>
+            <p className="text-sm text-center py-4" style={{ color: '#6B6459' }}>Sin datos de gastos este mes.</p>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={chartData} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
-                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#8A8276' }} />
-                <YAxis tickFormatter={(v) => formatARS(v)} tick={{ fontSize: 9, fill: '#8A8276' }} width={70} />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#6B6459' }} />
+                <YAxis tickFormatter={(v) => formatARS(v)} tick={{ fontSize: 9, fill: '#6B6459' }} width={70} />
                 <Tooltip formatter={(v) => formatARS(Number(v))} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Bar dataKey="Este mes" fill="#7EC8A4" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Mes anterior" fill="#8A8276" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Mes anterior" fill="#6B6459" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -283,7 +283,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
               style={{
                 background: filterScope === s ? '#2D2D2D' : '#FFFFFF',
                 borderColor: filterScope === s ? '#2D2D2D' : '#ECE5DC',
-                color: filterScope === s ? '#FFFFFF' : '#8A8276',
+                color: filterScope === s ? '#FFFFFF' : '#6B6459',
               }}
             >
               {s === 'all' ? 'Todos' : s === 'personal' ? 'Personal' : 'Hogar'}
@@ -295,7 +295,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
             style={{
               background: filterShared === true ? '#FFE7E2' : '#FFFFFF',
               borderColor: filterShared === true ? '#FF7F6B' : '#ECE5DC',
-              color: filterShared === true ? '#FF7F6B' : '#8A8276',
+              color: filterShared === true ? '#FF7F6B' : '#6B6459',
             }}
           >
             🤝 Compartidos
@@ -308,7 +308,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
             value={filterCategory}
             onChange={(e) => setFilterCategory(e.target.value)}
             className="flex-1 px-3 py-2 rounded-2xl text-xs font-bold border bg-white outline-none"
-            style={{ borderColor: filterCategory !== 'all' ? '#7EC8A4' : '#ECE5DC', color: filterCategory !== 'all' ? '#5BA886' : '#8A8276' }}
+            style={{ borderColor: filterCategory !== 'all' ? '#7EC8A4' : '#ECE5DC', color: filterCategory !== 'all' ? '#5BA886' : '#6B6459' }}
           >
             <option value="all">Todas las categorías</option>
             {categories.map((c) => (
@@ -334,7 +334,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
         )}
         {grouped.map(([date, txs]) => (
           <div key={date}>
-            <p className="text-xs font-bold mb-2 capitalize" style={{ color: '#8A8276' }}>
+            <p className="text-xs font-bold mb-2 capitalize" style={{ color: '#6B6459' }}>
               {fmtDate(date)}
             </p>
             <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
@@ -358,7 +358,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                     </p>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       {tx.categories?.name && tx.merchant && (
-                        <span className="text-xs" style={{ color: '#8A8276' }}>{tx.categories.name}</span>
+                        <span className="text-xs" style={{ color: '#6B6459' }}>{tx.categories.name}</span>
                       )}
                       {tx.is_shared && (
                         <span className="text-xs px-1.5 py-0.5 rounded-md font-semibold" style={{ background: '#FFE7E2', color: '#FF7F6B' }}>
@@ -371,7 +371,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                         </span>
                       )}
                       {tx.installment_total && tx.installment_total > 1 && (
-                        <span className="text-xs px-1.5 py-0.5 rounded-md font-semibold" style={{ background: '#ECE5DC', color: '#8A8276' }}>
+                        <span className="text-xs px-1.5 py-0.5 rounded-md font-semibold" style={{ background: '#ECE5DC', color: '#6B6459' }}>
                           Cuota {tx.installment_number}/{tx.installment_total}
                         </span>
                       )}
@@ -384,7 +384,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                     >
                       {tx.type === 'expense' ? '-' : '+'}{format(tx.amount)}
                     </p>
-                    <p className="text-xs" style={{ color: '#8A8276' }}>{secondary(tx.amount)}</p>
+                    <p className="text-xs" style={{ color: '#6B6459' }}>{secondary(tx.amount)}</p>
                   </div>
                 </button>
               ))}
@@ -474,7 +474,7 @@ function CategorySummary({
                 />
               </div>
             </div>
-            <span className="text-xs font-bold w-8 text-right" style={{ color: '#8A8276' }}>{row.pct}%</span>
+            <span className="text-xs font-bold w-8 text-right" style={{ color: '#6B6459' }}>{row.pct}%</span>
           </div>
         ))}
       </div>

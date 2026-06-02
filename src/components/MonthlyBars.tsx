@@ -39,7 +39,7 @@ export function MonthlyBars({ rows, showRate = true }: { rows: MonthBar[]; showR
               style={{ width: 12, height: `${(r.expense / max) * 100}%`, minHeight: r.expense > 0 ? 3 : 0, background: '#FF7F6B' }}
             />
           </div>
-          <span className="text-[10px] font-semibold" style={{ color: '#8A8276' }}>{r.label}</span>
+          <span className="text-[10px] font-semibold" style={{ color: '#6B6459' }}>{r.label}</span>
           {showRate && (
             <span
               className="text-[10px] font-bold"
@@ -67,7 +67,7 @@ export function SingleBars({ rows, color = '#FF7F6B' }: { rows: { key: string; l
               style={{ width: 18, height: `${(r.value / max) * 100}%`, minHeight: r.value > 0 ? 3 : 0, background: color }}
             />
           </div>
-          <span className="text-[10px] font-semibold" style={{ color: '#8A8276' }}>{r.label}</span>
+          <span className="text-[10px] font-semibold" style={{ color: '#6B6459' }}>{r.label}</span>
         </div>
       ))}
     </div>

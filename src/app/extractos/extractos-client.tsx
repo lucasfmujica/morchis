@@ -30,7 +30,7 @@ interface Statement {
 }
 
 const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
-  uploaded: { label: 'Subido', color: '#8A8276', bg: '#ECE5DC' },
+  uploaded: { label: 'Subido', color: '#6B6459', bg: '#ECE5DC' },
   parsing: { label: 'Analizando…', color: '#5BA886', bg: '#E4F2EA' },
   parsed: { label: 'Listo', color: '#5BA886', bg: '#E4F2EA' },
   failed: { label: 'Error', color: '#E5604C', bg: '#FFE7E2' },
@@ -138,14 +138,14 @@ export default function ExtractosClient({
     <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
       <header className="px-5 pt-14 pb-4">
         <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Extractos</h1>
-        <p className="text-xs mt-0.5" style={{ color: '#8A8276' }}>Subí un resumen para importar movimientos</p>
+        <p className="text-xs mt-0.5" style={{ color: '#6B6459' }}>Subí un resumen para importar movimientos</p>
       </header>
 
       {/* Upload card */}
       <div className="mx-4 mb-4 rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
         {accounts.length > 0 && (
           <div className="mb-4">
-            <p className="text-xs font-bold mb-1.5" style={{ color: '#8A8276' }}>Cuenta</p>
+            <p className="text-xs font-bold mb-1.5" style={{ color: '#6B6459' }}>Cuenta</p>
             <div className="flex gap-2 flex-wrap">
               {accounts.map((acc) => (
                 <button
@@ -155,7 +155,7 @@ export default function ExtractosClient({
                   style={{
                     background: selectedAccountId === acc.id ? '#2D2D2D' : 'transparent',
                     borderColor: selectedAccountId === acc.id ? '#2D2D2D' : '#ECE5DC',
-                    color: selectedAccountId === acc.id ? '#FFFFFF' : '#8A8276',
+                    color: selectedAccountId === acc.id ? '#FFFFFF' : '#6B6459',
                   }}
                 >
                   {acc.name}
@@ -233,7 +233,7 @@ export default function ExtractosClient({
                     <p className="text-sm font-semibold" style={{ color: '#2D2D2D' }}>
                       {fmtDate(s.created_at)}
                     </p>
-                    <p className="text-xs mt-0.5" style={{ color: '#8A8276' }}>
+                    <p className="text-xs mt-0.5" style={{ color: '#6B6459' }}>
                       {accounts.find((a) => a.id === s.account_id)?.name ?? 'Sin cuenta'}
                     </p>
                   </div>
@@ -254,7 +254,7 @@ export default function ExtractosClient({
         <div className="text-center py-16 px-8">
           <p className="text-5xl mb-4">🧾</p>
           <p className="text-base font-bold" style={{ color: '#2D2D2D' }}>Ningún extracto todavía</p>
-          <p className="text-sm mt-2" style={{ color: '#8A8276' }}>
+          <p className="text-sm mt-2" style={{ color: '#6B6459' }}>
             Subí el PDF o sacá una foto a tu resumen de tarjeta — la IA extrae todos los movimientos para que los revisés.
           </p>
         </div>

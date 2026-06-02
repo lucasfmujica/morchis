@@ -90,7 +90,7 @@ export default function PinClient() {
               <>
                 <div className="px-5 py-4" style={{ borderBottom: '1px solid #ECE5DC' }}>
                   <p className="font-semibold" style={{ color: '#2D2D2D' }}>PIN activo</p>
-                  <p className="text-sm mt-0.5" style={{ color: '#8A8276' }}>Tu app está protegida con PIN.</p>
+                  <p className="text-sm mt-0.5" style={{ color: '#6B6459' }}>Tu app está protegida con PIN.</p>
                 </div>
                 <button
                   onClick={() => { setStep('enter'); setDigits(''); setError(''); setSuccess(''); }}
@@ -111,7 +111,7 @@ export default function PinClient() {
               <div className="px-5 py-6 text-center">
                 <p className="text-3xl mb-3">🔐</p>
                 <p className="font-bold mb-1" style={{ color: '#2D2D2D' }}>Sin PIN configurado</p>
-                <p className="text-sm mb-4" style={{ color: '#8A8276' }}>Configurá un PIN para proteger tu app.</p>
+                <p className="text-sm mb-4" style={{ color: '#6B6459' }}>Configurá un PIN para proteger tu app.</p>
                 <button
                   onClick={() => { setStep('enter'); setDigits(''); setError(''); setSuccess(''); }}
                   className="px-6 py-3 rounded-2xl font-bold text-white"
@@ -142,7 +142,7 @@ export default function PinClient() {
                 <button
                   onClick={() => { setStep('menu'); setDigits(''); setFirstPin(''); setError(''); }}
                   className="flex-1 py-3 rounded-2xl border font-bold text-sm"
-                  style={{ borderColor: '#ECE5DC', color: '#8A8276' }}
+                  style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
                 >
                   Cancelar
                 </button>

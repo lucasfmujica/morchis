@@ -68,7 +68,7 @@ export function InvitePartnerModal({
         <div className="text-center mb-4">
           <p className="text-4xl mb-2">💌</p>
           <h3 className="text-lg font-black" style={{ color: '#2D2D2D' }}>Invitar a tu pareja</h3>
-          <p className="text-sm mt-1" style={{ color: '#8A8276' }}>
+          <p className="text-sm mt-1" style={{ color: '#6B6459' }}>
             Compartí este código. Tu pareja lo ingresa en “Unirme con código” al crear su cuenta y entra al mismo hogar.
           </p>
         </div>
@@ -79,7 +79,7 @@ export function InvitePartnerModal({
           ) : (
             <>
               <div className="text-4xl font-black tracking-widest" style={{ color: '#5BA886' }}>{code}</div>
-              <p className="text-xs mt-1" style={{ color: '#8A8276' }}>Expira en 7 días</p>
+              <p className="text-xs mt-1" style={{ color: '#6B6459' }}>Expira en 7 días</p>
             </>
           )}
         </div>
@@ -106,7 +106,7 @@ export function InvitePartnerModal({
         <button
           onClick={onClose}
           className="w-full mt-3 py-2 text-sm font-semibold"
-          style={{ color: '#8A8276' }}
+          style={{ color: '#6B6459' }}
         >
           Cerrar
         </button>

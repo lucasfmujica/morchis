@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { formatARS } from '@/lib/format';
+import { MoneyInput } from '@/components/MoneyInput';
 import { EmptyState } from '@/components/EmptyState';
 
 interface Profile {
@@ -54,7 +55,7 @@ function BudgetBar({ spent, limit }: { spent: number; limit: number }) {
         <span className="text-xs font-semibold" style={{ color }}>
           {formatARS(spent)} gastado
         </span>
-        <span className="text-xs" style={{ color: over ? '#FF7F6B' : '#8A8276' }}>
+        <span className="text-xs" style={{ color: over ? '#FF7F6B' : '#6B6459' }}>
           {over ? `+${formatARS(spent - limit)} excedido` : `de ${formatARS(limit)}`}
         </span>
       </div>
@@ -124,7 +125,7 @@ function BudgetSheet({
         </h2>
 
         {/* Scope */}
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#8A8276' }}>Alcance</p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Alcance</p>
         <div className="flex rounded-2xl overflow-hidden mb-4 p-1 gap-1" style={{ background: '#ECE5DC' }}>
           {(['personal', 'household'] as const).map((s) => (
             <button
@@ -133,7 +134,7 @@ function BudgetSheet({
               className="flex-1 py-1.5 text-xs font-bold rounded-xl transition-colors"
               style={{
                 background: scope === s ? '#FFFFFF' : 'transparent',
-                color: scope === s ? '#2D2D2D' : '#8A8276',
+                color: scope === s ? '#2D2D2D' : '#6B6459',
               }}
             >
               {s === 'personal' ? 'Personal' : 'Nuestro'}
@@ -142,7 +143,7 @@ function BudgetSheet({
         </div>
 
         {/* Category */}
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#8A8276' }}>Categoría</p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Categoría</p>
         <div className="flex flex-wrap gap-2 mb-4 max-h-40 overflow-y-auto">
           {expenseCategories.map((c) => (
             <button
@@ -161,13 +162,11 @@ function BudgetSheet({
         </div>
 
         {/* Amount */}
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#8A8276' }}>Límite mensual (ARS)</p>
-        <input
-          type="number"
-          inputMode="numeric"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="Ej: 50000"
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Límite mensual (ARS)</p>
+        <MoneyInput
+          value={amount ? parseInt(amount.replace(/\D/g, ''), 10) || 0 : 0}
+          onChange={(n) => setAmount(n ? String(n) : '')}
+          placeholder="Ej: 50.000"
           className="w-full rounded-2xl px-4 py-3 text-lg font-bold mb-5 outline-none border-2 transition-colors"
           style={{
             background: '#F9F5F0',
@@ -301,7 +300,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
             className="flex-1 py-1.5 text-xs font-bold rounded-xl transition-colors"
             style={{
               background: tab === t ? '#FFFFFF' : 'transparent',
-              color: tab === t ? '#2D2D2D' : '#8A8276',
+              color: tab === t ? '#2D2D2D' : '#6B6459',
             }}
           >
             {t === 'personal' ? 'Personal' : 'Nuestro'}
@@ -344,7 +343,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
                     <button
                       onClick={() => openEdit(b)}
                       className="text-xs px-3 py-1.5 rounded-xl font-semibold"
-                      style={{ background: '#F9F5F0', color: '#8A8276' }}
+                      style={{ background: '#F9F5F0', color: '#6B6459' }}
                     >
                       Editar
                     </button>

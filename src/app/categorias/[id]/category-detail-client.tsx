@@ -142,11 +142,11 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
       <div className="px-4 flex flex-col gap-4">
         {/* Summary */}
         <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#8A8276' }}>Este mes</p>
+          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6B6459' }}>Este mes</p>
           <p className="text-3xl font-black leading-none mb-1" style={{ color: accent, fontVariantNumeric: 'tabular-nums' }}>
             {formatARS(thisMonth)}
           </p>
-          <p className="text-xs" style={{ color: '#8A8276' }}>Promedio 6 meses: {formatARS(avg)}</p>
+          <p className="text-xs" style={{ color: '#6B6459' }}>Promedio 6 meses: {formatARS(avg)}</p>
 
           {budget > 0 && (
             <div className="mt-4">
@@ -155,7 +155,7 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
               </div>
               <div className="flex justify-between mt-1.5">
                 <span className="text-xs font-bold" style={{ color: barCol }}>{Math.round(pct * 100)}% del presupuesto</span>
-                <span className="text-xs" style={{ color: '#8A8276' }}>de {formatARS(budget)}</span>
+                <span className="text-xs" style={{ color: '#6B6459' }}>de {formatARS(budget)}</span>
               </div>
             </div>
           )}
@@ -163,14 +163,14 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
 
         {/* 6-month evolution */}
         <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-          <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#8A8276' }}>Evolución · 6 meses</p>
+          <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>Evolución · 6 meses</p>
           <SingleBars rows={monthRows} color={accent} />
         </div>
 
         {/* In what the money went — from scanned receipts */}
         {groupTotals.rows.length > 0 && (
           <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#8A8276' }}>En qué se fue · este mes</p>
+            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>En qué se fue · este mes</p>
             <div className="flex flex-col gap-2.5">
               {groupTotals.rows.map(({ g, v, pct }) => {
                 const meta = GROUP_META[g] ?? GROUP_META.otros;
@@ -179,7 +179,7 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
                     <div className="flex items-center gap-2 mb-1">
                       <span>{meta.icon}</span>
                       <span className="text-sm capitalize flex-1" style={{ color: '#2D2D2D' }}>{g}</span>
-                      <span className="text-xs font-semibold" style={{ color: '#8A8276' }}>{Math.round(pct * 100)}%</span>
+                      <span className="text-xs font-semibold" style={{ color: '#6B6459' }}>{Math.round(pct * 100)}%</span>
                       <span className="text-sm font-bold w-24 text-right" style={{ color: meta.color }}>{formatARS(v)}</span>
                     </div>
                     <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#ECE5DC' }}>
@@ -189,7 +189,7 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
                 );
               })}
             </div>
-            <p className="text-[11px] mt-3" style={{ color: '#8A8276' }}>Detalle según tickets escaneados 🧾</p>
+            <p className="text-[11px] mt-3" style={{ color: '#6B6459' }}>Detalle según tickets escaneados 🧾</p>
           </div>
         )}
 
@@ -209,7 +209,7 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{tx.merchant || category.name}</p>
-                    <p className="text-xs" style={{ color: '#8A8276' }}>{fmtDate(tx.occurred_on)}{tx.is_shared ? ' · compartido' : ''}</p>
+                    <p className="text-xs" style={{ color: '#6B6459' }}>{fmtDate(tx.occurred_on)}{tx.is_shared ? ' · compartido' : ''}</p>
                   </div>
                   <p className="text-base font-black" style={{ color: tx.type === 'expense' ? '#FF7F6B' : '#7EC8A4' }}>
                     {tx.type === 'expense' ? '-' : '+'}{format(tx.amount)}

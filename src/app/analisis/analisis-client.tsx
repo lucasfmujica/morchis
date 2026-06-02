@@ -25,7 +25,7 @@ const DONUT_PALETTE = ['#7EC8A4', '#FF7F6B', '#F5A623', '#6FA8DC', '#B084CC', '#
 const SEVERITY = {
   positive: { bg: '#E4F2EA', color: '#5BA886', icon: '✨' },
   warning: { bg: '#FFE7E2', color: '#E5604C', icon: '⚠️' },
-  info: { bg: '#F0EDE8', color: '#8A8276', icon: '💡' },
+  info: { bg: '#F0EDE8', color: '#6B6459', icon: '💡' },
 } as const;
 
 export default function AnalisisClient({ profile }: { profile: Profile }) {
@@ -209,7 +209,7 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
       <div className="px-4 flex flex-col gap-4">
         {/* Net worth */}
         <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#8A8276' }}>Patrimonio</p>
+          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6B6459' }}>Patrimonio</p>
           <div className="flex items-end justify-between mb-3">
             <p className="text-3xl font-black leading-none" style={{ color: '#2D2D2D', fontVariantNumeric: 'tabular-nums' }}>
               {formatARS(currentNetWorth)}
@@ -227,11 +227,11 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
         {/* Spending by category */}
         <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
           <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8A8276' }}>Gastos por categoría</p>
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Gastos por categoría</p>
             <span className="text-xs font-black" style={{ color: '#FF7F6B' }}>{formatARS(monthExpense)}</span>
           </div>
           {segments.length === 0 ? (
-            <p className="text-sm text-center py-6" style={{ color: '#8A8276' }}>Sin gastos este mes todavía.</p>
+            <p className="text-sm text-center py-6" style={{ color: '#6B6459' }}>Sin gastos este mes todavía.</p>
           ) : (
             <div className="flex items-center gap-4">
               <div className="shrink-0">
@@ -242,7 +242,7 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
                   <Link key={r.id} href={`/categorias/${r.id}`} className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r.cat!.color || DONUT_PALETTE[i % DONUT_PALETTE.length] }} />
                     <span className="text-xs flex-1 truncate" style={{ color: '#2D2D2D' }}>{r.cat!.icon} {r.cat!.name}</span>
-                    <span className="text-xs font-semibold" style={{ color: '#8A8276' }}>{Math.round((r.value / monthExpense) * 100)}%</span>
+                    <span className="text-xs font-semibold" style={{ color: '#6B6459' }}>{Math.round((r.value / monthExpense) * 100)}%</span>
                     <span className="text-[10px]" style={{ color: '#C4B9AE' }}>›</span>
                   </Link>
                 ))}
@@ -253,7 +253,7 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
 
         {/* 6-month trend */}
         <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#8A8276' }}>Ingresos vs gastos · 6 meses</p>
+          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6B6459' }}>Ingresos vs gastos · 6 meses</p>
           <div className="flex items-center gap-4 mb-3 text-[11px]">
             <span className="flex items-center gap-1.5" style={{ color: '#5BA886' }}>
               <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#7EC8A4' }} /> Ingresos
@@ -261,7 +261,7 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
             <span className="flex items-center gap-1.5" style={{ color: '#E5604C' }}>
               <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#FF7F6B' }} /> Gastos
             </span>
-            <span className="ml-auto" style={{ color: '#8A8276' }}>% = ahorro</span>
+            <span className="ml-auto" style={{ color: '#6B6459' }}>% = ahorro</span>
           </div>
           <MonthlyBars rows={trendRows} />
         </div>
@@ -269,7 +269,7 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
         {/* Per-person comparison */}
         {personRows.length > 1 && (
           <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#8A8276' }}>Quién gastó qué · este mes</p>
+            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>Quién gastó qué · este mes</p>
             <div className="flex flex-col gap-3">
               {personRows.map((p, i) => (
                 <div key={p.id}>
@@ -290,7 +290,7 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
         {subRows.length > 0 && (
           <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
             <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8A8276' }}>Suscripciones · este mes</p>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Suscripciones · este mes</p>
               <span className="text-xs font-black" style={{ color: '#FF7F6B' }}>{formatARS(subsTotal)}</span>
             </div>
             <div className="flex flex-col gap-2">
@@ -309,18 +309,18 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
         {/* AI insights */}
         <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
           <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8A8276' }}>Insights ✨</p>
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Insights ✨</p>
             <button
               onClick={handleRefresh}
               disabled={refreshing}
               className="text-xs font-bold px-3 py-1.5 rounded-full"
-              style={{ background: refreshing ? '#ECE5DC' : '#7EC8A4', color: refreshing ? '#8A8276' : '#FFFFFF' }}
+              style={{ background: refreshing ? '#ECE5DC' : '#7EC8A4', color: refreshing ? '#6B6459' : '#FFFFFF' }}
             >
               {refreshing ? 'Analizando…' : 'Actualizar'}
             </button>
           </div>
           {insights.length === 0 ? (
-            <p className="text-sm text-center py-4" style={{ color: '#8A8276' }}>Tocá &quot;Actualizar&quot; para que la IA analice tus gastos.</p>
+            <p className="text-sm text-center py-4" style={{ color: '#6B6459' }}>Tocá &quot;Actualizar&quot; para que la IA analice tus gastos.</p>
           ) : (
             <div className="flex flex-col gap-2">
               {insights.map((ins) => {

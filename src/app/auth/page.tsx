@@ -67,7 +67,7 @@ export default function AuthPage() {
         <div className="text-center mb-10">
           <div className="text-5xl mb-3">💚</div>
           <h1 className="text-4xl font-black tracking-tight" style={{ color: '#2D2D2D' }}>Morchis</h1>
-          <p className="text-base mt-1" style={{ color: '#8A8276' }}>Nuestra plata, juntos</p>
+          <p className="text-base mt-1" style={{ color: '#6B6459' }}>Nuestra plata, juntos</p>
         </div>
 
         {/* Mode toggle (only login/signup) */}
@@ -80,7 +80,7 @@ export default function AuthPage() {
                 className="flex-1 py-2.5 text-sm font-bold rounded-xl transition-colors"
                 style={{
                   background: mode === m ? '#FFFFFF' : 'transparent',
-                  color: mode === m ? '#2D2D2D' : '#8A8276',
+                  color: mode === m ? '#2D2D2D' : '#6B6459',
                 }}
               >
                 {m === 'login' ? 'Entrar' : 'Crear cuenta'}
@@ -141,7 +141,7 @@ export default function AuthPage() {
           <button
             onClick={() => setMode('reset')}
             className="block text-center text-xs mt-4 underline w-full"
-            style={{ color: '#8A8276' }}
+            style={{ color: '#6B6459' }}
           >
             Olvidé mi contraseña
           </button>
@@ -150,13 +150,13 @@ export default function AuthPage() {
           <button
             onClick={() => setMode('login')}
             className="block text-center text-xs mt-4 underline w-full"
-            style={{ color: '#8A8276' }}
+            style={{ color: '#6B6459' }}
           >
             ← Volver a entrar
           </button>
         )}
 
-        <p className="text-center text-xs mt-6" style={{ color: '#8A8276' }}>
+        <p className="text-center text-xs mt-6" style={{ color: '#6B6459' }}>
           Tu sesión se mantiene activa. No vas a tener que volver a entrar.
         </p>
       </div>

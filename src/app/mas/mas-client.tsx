@@ -73,7 +73,7 @@ export default function MasClient({ profile }: { profile: Profile }) {
           >
             <span className="text-2xl">💌</span>
             <p className="flex-1 font-semibold" style={{ color: '#2D2D2D' }}>Invitar a mi pareja</p>
-            <span style={{ color: '#8A8276' }}>→</span>
+            <span style={{ color: '#6B6459' }}>→</span>
           </button>
           {menuItems.map((item) => (
             <Link
@@ -84,7 +84,7 @@ export default function MasClient({ profile }: { profile: Profile }) {
             >
               <span className="text-2xl">{item.icon}</span>
               <p className="flex-1 font-semibold" style={{ color: '#2D2D2D' }}>{item.label}</p>
-              <span style={{ color: '#8A8276' }}>→</span>
+              <span style={{ color: '#6B6459' }}>→</span>
             </Link>
           ))}
         </div>
@@ -92,7 +92,7 @@ export default function MasClient({ profile }: { profile: Profile }) {
         <button
           onClick={logout}
           className="w-full py-4 rounded-3xl text-sm font-bold border"
-          style={{ borderColor: '#ECE5DC', color: '#8A8276', background: '#FFFFFF' }}
+          style={{ borderColor: '#ECE5DC', color: '#6B6459', background: '#FFFFFF' }}
         >
           Cerrar sesión
         </button>

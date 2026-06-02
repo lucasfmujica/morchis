@@ -9,7 +9,7 @@ const steps = [
     title: 'Instalá Morchis en tu iPhone',
     body: (
       <>
-        <p className="text-base text-center" style={{ color: '#8A8276' }}>
+        <p className="text-base text-center" style={{ color: '#6B6459' }}>
           Para que se abra como una app de verdad, seguí estos pasos en Safari:
         </p>
         <ol className="mt-4 space-y-3 text-left">
@@ -35,7 +35,7 @@ const steps = [
     emoji: '💚',
     title: '¡Todo listo, Morch!',
     body: (
-      <p className="text-base text-center" style={{ color: '#8A8276' }}>
+      <p className="text-base text-center" style={{ color: '#6B6459' }}>
         Ya podés empezar a registrar gastos e ingresos juntos. Tocá <strong>+</strong> para agregar tu primer movimiento.
       </p>
     ),
@@ -92,7 +92,7 @@ export default function OnboardingPage() {
           <button
             onClick={() => router.push('/home')}
             className="w-full py-3 text-sm text-center"
-            style={{ color: '#8A8276' }}
+            style={{ color: '#6B6459' }}
           >
             Saltar
           </button>

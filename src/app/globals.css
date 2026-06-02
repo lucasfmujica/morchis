@@ -15,7 +15,7 @@
   --color-coral-deep: #E5604C;
   --color-charcoal: #2D2D2D;
   --color-surface: #FFFFFF;
-  --color-muted-text: #8A8276;
+  --color-muted-text: #6B6459;
   --color-hairline: #ECE5DC;
 
   --color-background: var(--background);
@@ -55,7 +55,7 @@
   --secondary: #E4F2EA;
   --secondary-foreground: #2D2D2D;
   --muted: #E4F2EA;
-  --muted-foreground: #8A8276;
+  --muted-foreground: #6B6459;
   --accent: #FFE7E2;
   --accent-foreground: #2D2D2D;
   --destructive: #FF7F6B;

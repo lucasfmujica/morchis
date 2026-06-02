@@ -164,7 +164,7 @@ export default function CategoriasClient({ profile }: { profile: Profile }) {
                     className="flex-1 py-2.5 text-sm font-bold"
                     style={{
                       background: kind === k ? (k === 'expense' ? '#FF7F6B' : '#7EC8A4') : 'transparent',
-                      color: kind === k ? '#FFFFFF' : '#8A8276',
+                      color: kind === k ? '#FFFFFF' : '#6B6459',
                       borderRadius: '14px',
                     }}
                   >
@@ -174,7 +174,7 @@ export default function CategoriasClient({ profile }: { profile: Profile }) {
               </div>
             )}
             <div>
-              <p className="text-xs font-bold mb-2" style={{ color: '#8A8276' }}>Ícono</p>
+              <p className="text-xs font-bold mb-2" style={{ color: '#6B6459' }}>Ícono</p>
               <div className="flex flex-wrap gap-2">
                 {ICONS.map((ic) => (
                   <button
@@ -195,7 +195,7 @@ export default function CategoriasClient({ profile }: { profile: Profile }) {
               <button
                 onClick={() => setShowForm(false)}
                 className="flex-1 py-3 rounded-2xl border text-sm font-bold"
-                style={{ borderColor: '#ECE5DC', color: '#8A8276' }}
+                style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
               >
                 Cancelar
               </button>
@@ -217,7 +217,7 @@ export default function CategoriasClient({ profile }: { profile: Profile }) {
         { label: 'Ingresos', cats: incomeCategories },
       ].map(({ label, cats }) => (
         <div key={label} className="px-4 mb-4">
-          <p className="text-xs font-black mb-2" style={{ color: '#8A8276' }}>{label.toUpperCase()} · ESTE MES</p>
+          <p className="text-xs font-black mb-2" style={{ color: '#6B6459' }}>{label.toUpperCase()} · ESTE MES</p>
           <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
             {cats.map((c, i) => {
               const spent = monthByCategory[c.id] ?? 0;
@@ -238,12 +238,12 @@ export default function CategoriasClient({ profile }: { profile: Profile }) {
                       <div className="text-right">
                         <p
                           className="text-sm font-black"
-                          style={{ color: spent === 0 ? '#8A8276' : c.kind === 'income' ? '#5BA886' : '#2D2D2D' }}
+                          style={{ color: spent === 0 ? '#6B6459' : c.kind === 'income' ? '#5BA886' : '#2D2D2D' }}
                         >
                           {spent > 0 ? formatARS(spent) : '—'}
                         </p>
                         {hasBudget && (
-                          <p className="text-[10px]" style={{ color: '#8A8276' }}>de {formatARS(budget)}</p>
+                          <p className="text-[10px]" style={{ color: '#6B6459' }}>de {formatARS(budget)}</p>
                         )}
                       </div>
                     </div>
@@ -269,7 +269,7 @@ export default function CategoriasClient({ profile }: { profile: Profile }) {
                   <button
                     onClick={() => openEdit(c)}
                     className="px-4 flex items-center text-base"
-                    style={{ color: '#8A8276' }}
+                    style={{ color: '#6B6459' }}
                     aria-label={`Editar ${c.name}`}
                   >
                     ✏️

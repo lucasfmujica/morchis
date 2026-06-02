@@ -45,7 +45,7 @@ export default function NotificacionesClient() {
             </div>
           ))}
         </div>
-        <p className="text-xs mt-4 px-2" style={{ color: '#8A8276' }}>
+        <p className="text-xs mt-4 px-2" style={{ color: '#6B6459' }}>
           Las notificaciones requieren que hayas aceptado los permisos de notificaciones en tu dispositivo.
         </p>
       </div>

@@ -60,7 +60,7 @@ export function DonutChart({
           textAnchor="middle"
           fontSize="11"
           fontWeight="700"
-          fill="#8A8276"
+          fill="#6B6459"
         >
           {centerTop}
         </text>

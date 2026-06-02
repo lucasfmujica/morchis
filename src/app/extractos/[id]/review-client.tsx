@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { BottomNav } from '@/components/BottomNav';
+import { MoneyInput } from '@/components/MoneyInput';
 import { formatARS } from '@/lib/format';
 import { useFx } from '@/hooks/useFx';
 import { toast } from 'sonner';
@@ -100,7 +101,7 @@ function EditDraftModal({
 
         <div className="flex flex-col gap-3">
           <div>
-            <p className="text-xs font-bold mb-1" style={{ color: '#8A8276' }}>Comercio</p>
+            <p className="text-xs font-bold mb-1" style={{ color: '#6B6459' }}>Comercio</p>
             <input
               value={merchant}
               onChange={(e) => setMerchant(e.target.value)}
@@ -109,17 +110,16 @@ function EditDraftModal({
             />
           </div>
           <div>
-            <p className="text-xs font-bold mb-1" style={{ color: '#8A8276' }}>Monto (ARS)</p>
-            <input
-              type="number"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+            <p className="text-xs font-bold mb-1" style={{ color: '#6B6459' }}>Monto (ARS)</p>
+            <MoneyInput
+              value={amount ? parseInt(amount.replace(/\D/g, ''), 10) || 0 : 0}
+              onChange={(n) => setAmount(n ? String(n) : '')}
               className="w-full px-4 py-3 rounded-2xl text-sm border outline-none"
               style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
             />
           </div>
           <div>
-            <p className="text-xs font-bold mb-1" style={{ color: '#8A8276' }}>Fecha</p>
+            <p className="text-xs font-bold mb-1" style={{ color: '#6B6459' }}>Fecha</p>
             <input
               type="date"
               value={date}
@@ -129,7 +129,7 @@ function EditDraftModal({
             />
           </div>
           <div>
-            <p className="text-xs font-bold mb-1" style={{ color: '#8A8276' }}>Categoría</p>
+            <p className="text-xs font-bold mb-1" style={{ color: '#6B6459' }}>Categoría</p>
             <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto">
               {categories.filter((c) => c.kind === 'expense').map((cat) => (
                 <button
@@ -139,7 +139,7 @@ function EditDraftModal({
                   style={{
                     background: categoryId === cat.id ? '#2D2D2D' : 'transparent',
                     borderColor: categoryId === cat.id ? '#2D2D2D' : '#ECE5DC',
-                    color: categoryId === cat.id ? '#FFFFFF' : '#8A8276',
+                    color: categoryId === cat.id ? '#FFFFFF' : '#6B6459',
                   }}
                 >
                   {cat.icon} {cat.name}
@@ -242,7 +242,7 @@ function DraftCard({
               </p>
             </div>
             <div className="flex items-center gap-2 mt-0.5">
-              <p className="text-xs" style={{ color: '#8A8276' }}>
+              <p className="text-xs" style={{ color: '#6B6459' }}>
                 {new Date(draft.payload.date + 'T00:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}
               </p>
               {cat && (
@@ -256,7 +256,7 @@ function DraftCard({
                 </span>
               )}
             </div>
-            <p className="text-[11px] mt-1 truncate" style={{ color: '#8A8276' }}>
+            <p className="text-[11px] mt-1 truncate" style={{ color: '#6B6459' }}>
               {draft.payload.raw_description}
             </p>
           </div>
@@ -274,7 +274,7 @@ function DraftCard({
           <button
             onClick={onEdit}
             className="py-2 px-4 rounded-2xl text-xs font-bold"
-            style={{ background: '#ECE5DC', color: '#8A8276' }}
+            style={{ background: '#ECE5DC', color: '#6B6459' }}
           >
             ✏️ Editar
           </button>
@@ -458,7 +458,7 @@ export default function ReviewClient({
         <button onClick={() => router.push('/extractos')} className="text-2xl">←</button>
         <div>
           <h1 className="text-xl font-black" style={{ color: '#2D2D2D' }}>Revisar extracto</h1>
-          <p className="text-xs" style={{ color: '#8A8276' }}>
+          <p className="text-xs" style={{ color: '#6B6459' }}>
             {new Date(statement.created_at).toLocaleDateString('es-AR', { day: 'numeric', month: 'long' })}
           </p>
         </div>
@@ -502,7 +502,7 @@ export default function ReviewClient({
           <p className="text-base font-bold" style={{ color: '#2D2D2D' }}>
             {statement.status === 'failed' ? 'Error al analizar el resumen' : 'Todo revisado'}
           </p>
-          <p className="text-sm mt-2" style={{ color: '#8A8276' }}>
+          <p className="text-sm mt-2" style={{ color: '#6B6459' }}>
             {statement.status === 'failed'
               ? 'Intentá con otro archivo o foto más nítida.'
               : 'Los movimientos aceptados ya aparecen en Movimientos.'}
@@ -520,7 +520,7 @@ export default function ReviewClient({
       {/* Draft cards */}
       {!isParsing && drafts.length > 0 && (
         <div className="px-4">
-          <p className="text-xs font-bold mb-3" style={{ color: '#8A8276' }}>
+          <p className="text-xs font-bold mb-3" style={{ color: '#6B6459' }}>
             {drafts.length} movimiento{drafts.length !== 1 ? 's' : ''} para revisar · Deslizá → aceptar · ← rechazar
           </p>
           {drafts.map((draft) => (

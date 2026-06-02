@@ -8,6 +8,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { formatARS, formatUSD, usdToArs } from '@/lib/format';
 import { monthKey } from '@/lib/date';
+import { MoneyInput } from '@/components/MoneyInput';
 import { useFx } from '@/hooks/useFx';
 import { useInflation } from '@/hooks/useInflation';
 import { EmptyState } from '@/components/EmptyState';
@@ -148,7 +149,7 @@ function GoalSheet({
         </h2>
 
         {/* Name */}
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#8A8276' }}>Nombre</p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Nombre</p>
         <input
           type="text"
           value={name}
@@ -159,7 +160,7 @@ function GoalSheet({
         />
 
         {/* Icon */}
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#8A8276' }}>Ícono</p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Ícono</p>
         <div className="flex flex-wrap gap-2 mb-4">
           {ICON_OPTIONS.map((ic) => (
             <button
@@ -174,7 +175,7 @@ function GoalSheet({
         </div>
 
         {/* Color */}
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#8A8276' }}>Color</p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Color</p>
         <div className="flex gap-2 mb-4">
           {COLOR_OPTIONS.map((c) => (
             <button
@@ -191,14 +192,14 @@ function GoalSheet({
         </div>
 
         {/* Scope */}
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#8A8276' }}>Alcance</p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Alcance</p>
         <div className="flex rounded-2xl overflow-hidden mb-4 p-1 gap-1" style={{ background: '#ECE5DC' }}>
           {(['personal', 'household'] as const).map((s) => (
             <button
               key={s}
               onClick={() => setScope(s)}
               className="flex-1 py-1.5 text-xs font-bold rounded-xl transition-colors"
-              style={{ background: scope === s ? '#FFFFFF' : 'transparent', color: scope === s ? '#2D2D2D' : '#8A8276' }}
+              style={{ background: scope === s ? '#FFFFFF' : 'transparent', color: scope === s ? '#2D2D2D' : '#6B6459' }}
             >
               {s === 'personal' ? 'Personal' : 'Nuestra'}
             </button>
@@ -206,14 +207,14 @@ function GoalSheet({
         </div>
 
         {/* Target currency */}
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#8A8276' }}>Moneda del objetivo</p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Moneda del objetivo</p>
         <div className="flex rounded-2xl overflow-hidden mb-4 p-1 gap-1" style={{ background: '#ECE5DC' }}>
           {(['ARS', 'USD'] as const).map((cur) => (
             <button
               key={cur}
               onClick={() => setTargetCurrency(cur)}
               className="flex-1 py-1.5 text-xs font-bold rounded-xl transition-colors"
-              style={{ background: targetCurrency === cur ? '#FFFFFF' : 'transparent', color: targetCurrency === cur ? '#2D2D2D' : '#8A8276' }}
+              style={{ background: targetCurrency === cur ? '#FFFFFF' : 'transparent', color: targetCurrency === cur ? '#2D2D2D' : '#6B6459' }}
             >
               {cur === 'ARS' ? '$ ARS' : 'USD'}
             </button>
@@ -221,21 +222,19 @@ function GoalSheet({
         </div>
 
         {/* Target amount */}
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#8A8276' }}>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>
           Monto objetivo ({targetCurrency})
         </p>
-        <input
-          type="number"
-          inputMode="numeric"
-          value={targetAmount}
-          onChange={(e) => setTargetAmount(e.target.value)}
-          placeholder={targetCurrency === 'ARS' ? 'Ej: 500000' : 'Ej: 2000'}
+        <MoneyInput
+          value={targetAmount ? parseInt(targetAmount.replace(/\D/g, ''), 10) || 0 : 0}
+          onChange={(n) => setTargetAmount(n ? String(n) : '')}
+          placeholder={targetCurrency === 'ARS' ? 'Ej: 500.000' : 'Ej: 2.000'}
           className="w-full rounded-2xl px-4 py-3 text-lg font-bold mb-4 outline-none border-2 transition-colors"
           style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: targetAmount ? '#7EC8A4' : '#ECE5DC' }}
         />
 
         {/* Deadline */}
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#8A8276' }}>Fecha límite</p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Fecha límite</p>
         <input
           type="date"
           value={deadline}
@@ -386,7 +385,7 @@ export default function MetasClient({ profile }: { profile: Profile }) {
             key={t}
             onClick={() => setTab(t)}
             className="flex-1 py-1.5 text-xs font-bold rounded-xl transition-colors"
-            style={{ background: tab === t ? '#FFFFFF' : 'transparent', color: tab === t ? '#2D2D2D' : '#8A8276' }}
+            style={{ background: tab === t ? '#FFFFFF' : 'transparent', color: tab === t ? '#2D2D2D' : '#6B6459' }}
           >
             {t === 'personal' ? 'Personal' : 'Nuestra'}
           </button>
@@ -457,16 +456,16 @@ export default function MetasClient({ profile }: { profile: Profile }) {
                         </span>
                       )}
                     </div>
-                    <p className="text-xs font-semibold" style={{ color: '#8A8276' }}>
+                    <p className="text-xs font-semibold" style={{ color: '#6B6459' }}>
                       {currentDisplay} de {targetDisplay}
                     </p>
                     {showInflationAdjusted && adjustedTarget !== null && (
-                      <p className="text-[10px]" style={{ color: '#8A8276', opacity: 0.65 }}>
+                      <p className="text-[10px]" style={{ color: '#6B6459', opacity: 0.65 }}>
                         Con inflación al vencimiento ≈ {formatARS(adjustedTarget)}
                         {latestMonth ? ` (dato ${latestMonth})` : ''}
                       </p>
                     )}
-                    <p className="text-xs mt-0.5" style={{ color: '#8A8276' }}>
+                    <p className="text-xs mt-0.5" style={{ color: '#6B6459' }}>
                       Vence {new Date(g.deadline).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </p>
                     {!done && new Date(g.deadline) > new Date() && !contributedGoalIds.has(g.id) && (
@@ -491,7 +490,7 @@ export default function MetasClient({ profile }: { profile: Profile }) {
                     <button
                       onClick={() => openEdit(g)}
                       className="text-xs px-3 py-1.5 rounded-xl font-semibold"
-                      style={{ background: '#F9F5F0', color: '#8A8276' }}
+                      style={{ background: '#F9F5F0', color: '#6B6459' }}
                     >
                       Editar
                     </button>
