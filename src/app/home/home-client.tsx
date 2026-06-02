@@ -24,9 +24,6 @@ interface Profile {
 
 import Link from 'next/link';
 
-// Chofi's profile id — used for a display-only hardcoded income on the home.
-const CHOFI_PROFILE_ID = '2a62f69a-1397-48c1-8d55-7f6a6f95927f';
-
 function BudgetSummaryCard({
   budgets,
   spentByCategory,
@@ -210,6 +207,9 @@ function IncomeCard({
       </div>
       {incomeRules.length > 0 && (
         <div className="flex flex-col gap-1.5 pt-3" style={{ borderTop: '1px solid #ECE5DC' }}>
+          <p className="text-[11px] font-bold uppercase tracking-wide mb-0.5" style={{ color: '#6B6459' }}>
+            Ingresos fijos mensuales
+          </p>
           {incomeRules.map((r, i) => (
             <div key={i} className="flex items-center gap-2">
               <span className="text-sm shrink-0">💰</span>
@@ -233,7 +233,7 @@ export default function HomeClient({
   partnerName?: string;
 }) {
   const supabase = createClient();
-  const { format, secondary, toggle, showUSD, arsPerUsd } = useFx();
+  const { format, toggle, showUSD, arsPerUsd } = useFx();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   usePushSubscription(profile.id);
@@ -382,18 +382,6 @@ export default function HomeClient({
     .filter((r) => r.direction === 'income' && (!scopeProfileId || r.profile_id === scopeProfileId))
     .map((r) => ({ label: (r.label as string) ?? 'Ingreso', amount: r.amount, cadence: (r.cadence as string) ?? 'monthly' }));
 
-  // Hardcoded display-only income for Chofi (June 2026 salary). It only shows up
-  // in the home "Ingresos del mes" view — it does NOT touch accounts, projection
-  // or the end-of-month hero card.
-  const now = new Date();
-  const isJune2026 = now.getFullYear() === 2026 && now.getMonth() === 5;
-  const scopeIncludesChofi = scope === 'all' || scopeProfileId === CHOFI_PROFILE_ID;
-  const chofiHardcodedIncome = isJune2026 && scopeIncludesChofi ? 1_550_000 : 0;
-  const displayIncomeSoFar = incomeSoFar + chofiHardcodedIncome;
-  const displayIncomeRules = chofiHardcodedIncome > 0
-    ? [{ label: 'Sueldo', amount: chofiHardcodedIncome, cadence: 'monthly' }, ...incomeRules]
-    : incomeRules;
-
   // Quick-access tile values. The Cuentas total respects the scope: in "Mío" it
   // only counts my accounts, in "Nuestro" it counts both.
   const scopedAccountsFull = scopeProfileId
@@ -411,12 +399,12 @@ export default function HomeClient({
     if (t.category_id) map[t.category_id] = (map[t.category_id] ?? 0) + t.amount;
     return map;
   }, {});
-  const savingsRate = displayIncomeSoFar > 0 ? Math.round(((displayIncomeSoFar - expensesSoFar) / displayIncomeSoFar) * 100) : null;
+  const savingsRate = incomeSoFar > 0 ? Math.round(((incomeSoFar - expensesSoFar) / incomeSoFar) * 100) : null;
 
   const quickTiles = [
     { href: '/cuentas', icon: '🏦', label: 'Cuentas', value: format(totalBalance), color: totalBalance < 0 ? '#E5604C' : '#2D2D2D' },
     { href: '/analisis', icon: '💸', label: 'Gastos', value: format(monthExpenseTotal), color: '#FF7F6B' },
-    { href: '/reglas', icon: '💰', label: 'Ingresos', value: format(displayIncomeSoFar), color: '#5BA886' },
+    { href: '/reglas', icon: '💰', label: 'Ingresos', value: format(incomeSoFar), color: '#5BA886' },
     { href: '/ahorro', icon: '🐷', label: 'Ahorro', value: savingsRate == null ? '—' : `${savingsRate}%`, color: '#B8860B' },
   ];
 
@@ -428,10 +416,6 @@ export default function HomeClient({
     { key: 'all' as const, label: 'Nuestro' },
     ...(partnerProfileId ? [{ key: 'partner' as const, label: partnerName || 'Sofi' }] : []),
   ];
-
-  const projectedUsd = showUSD && arsPerUsd > 0
-    ? `≈ US$${Math.round(Math.abs(projectedBalance) / arsPerUsd).toLocaleString('es-AR')}`
-    : formatARS(Math.abs(projectedBalance));
 
   return (
     <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
@@ -538,7 +522,7 @@ export default function HomeClient({
       </div>
 
       {/* Income of the month + savings rate */}
-      <IncomeCard incomeSoFar={displayIncomeSoFar} expensesSoFar={expensesSoFar} incomeRules={displayIncomeRules} fmt={format} />
+      <IncomeCard incomeSoFar={incomeSoFar} expensesSoFar={expensesSoFar} incomeRules={incomeRules} fmt={format} />
 
       {/* Couple balance chip */}
       <CoupleBalanceChip
