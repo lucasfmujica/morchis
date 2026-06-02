@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { NumberKeypad } from '@/components/NumberKeypad';
 import { useFx } from '@/hooks/useFx';
@@ -66,6 +67,7 @@ export function AddTransactionSheet({
   const { arsPerUsd, showUSD } = useFx();
   const supabase = createClient();
   const qc = useQueryClient();
+  const router = useRouter();
 
   const [inputUSD, setInputUSD] = useState(false);
   const [raw, setRaw] = useState('');
@@ -292,6 +294,18 @@ export function AddTransactionSheet({
               >
                 {inputUSD ? 'USD' : 'ARS'}
               </button>
+              {!editTx && (
+                <button
+                  onClick={() => {
+                    onClose();
+                    router.push('/ticket');
+                  }}
+                  className="text-xs font-bold px-3 py-1 rounded-full border flex items-center gap-1"
+                  style={{ borderColor: '#ECE5DC', color: '#6B6459', background: '#FFFFFF' }}
+                >
+                  🧾 Escanear ticket
+                </button>
+              )}
             </div>
             <p
               className="text-5xl font-black tracking-tight"
