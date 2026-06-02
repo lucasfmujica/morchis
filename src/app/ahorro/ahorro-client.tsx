@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
+import { useFx } from '@/hooks/useFx';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { DonutChart } from '@/components/DonutChart';
@@ -27,12 +28,23 @@ interface MonthRow {
   rate: number | null;
 }
 
-export default function AhorroClient({ profile }: { profile: Profile }) {
+export default function AhorroClient({
+  profile,
+  partnerProfileId,
+  partnerName,
+}: {
+  profile: Profile;
+  partnerProfileId?: string;
+  partnerName?: string;
+}) {
   const supabase = createClient();
   const qc = useQueryClient();
+  const { arsPerUsd } = useFx();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   const [pendingPct, setPendingPct] = useState<number | null>(null);
+  // scope: 'me' (Mío) | 'all' (Nuestro) | 'partner' — default to "Mío"
+  const [scope, setScope] = useState<'me' | 'all' | 'partner'>('me');
 
   const today = new Date();
   const months = lastSixMonths(today);
@@ -44,12 +56,23 @@ export default function AhorroClient({ profile }: { profile: Profile }) {
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('amount, type, occurred_on')
+        .select('amount, type, occurred_on, profile_id, currency')
         .eq('household_id', profile.household_id)
         .gte('occurred_on', rangeStart);
       return data ?? [];
     },
   });
+
+  const scopeProfileId =
+    scope === 'me' ? profile.id : scope === 'partner' ? partnerProfileId : undefined;
+  const toArs = (amount: number, currency?: string | null) =>
+    currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount;
+
+  const scopeTabs = [
+    { key: 'me' as const, label: 'Mío' },
+    { key: 'all' as const, label: 'Nuestro' },
+    ...(partnerProfileId ? [{ key: 'partner' as const, label: partnerName || 'Sofi' }] : []),
+  ];
 
   const { data: goalRows = [] } = useQuery({
     queryKey: ['savings_goals', profile.household_id],
@@ -64,13 +87,18 @@ export default function AhorroClient({ profile }: { profile: Profile }) {
 
   const goalMap = new Map(goalRows.map((g) => [g.month, g.target_pct]));
 
+  // Respect the Mío/Nuestro/pareja scope and normalize USD→ARS so the savings
+  // rate is computed on a single currency.
+  const scopedTxns = scopeProfileId ? txns.filter((t) => t.profile_id === scopeProfileId) : txns;
+
   const rows: MonthRow[] = months.map((m) => {
     let income = 0;
     let expense = 0;
-    for (const t of txns) {
+    for (const t of scopedTxns) {
       if (!t.occurred_on.startsWith(m.key)) continue;
-      if (t.type === 'income') income += t.amount;
-      else if (t.type === 'expense') expense += t.amount;
+      const amt = toArs(t.amount, t.currency);
+      if (t.type === 'income') income += amt;
+      else if (t.type === 'expense') expense += amt;
     }
     const saved = income - expense;
     return { ...m, income, expense, saved, rate: income > 0 ? saved / income : null };
@@ -113,6 +141,23 @@ export default function AhorroClient({ profile }: { profile: Profile }) {
         <Link href="/mas" className="text-2xl">←</Link>
         <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Ahorro 🐷</h1>
       </header>
+
+      {/* Scope toggle: Mío / Nuestro / pareja */}
+      <div className="mx-4 mb-3 flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#ECE5DC' }}>
+        {scopeTabs.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setScope(tab.key)}
+            className="flex-1 py-1.5 text-xs font-bold rounded-xl transition-colors"
+            style={{
+              background: scope === tab.key ? '#FFFFFF' : 'transparent',
+              color: scope === tab.key ? '#2D2D2D' : '#6B6459',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
       <div className="px-4 flex flex-col gap-4">
         {/* This month savings goal */}

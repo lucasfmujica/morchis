@@ -15,5 +15,22 @@ export default async function AhorroPage() {
 
   if (!profile?.household_id) redirect('/household');
 
-  return <AhorroClient profile={profile as Parameters<typeof AhorroClient>[0]['profile']} />;
+  const { data: householdMembers } = await supabase
+    .from('profiles')
+    .select('id, nickname, display_name')
+    .eq('household_id', profile.household_id)
+    .neq('id', user.id)
+    .limit(1);
+
+  const partner = householdMembers?.[0];
+  const partnerProfileId = partner?.id;
+  const partnerName = partner?.nickname || partner?.display_name || undefined;
+
+  return (
+    <AhorroClient
+      profile={profile as Parameters<typeof AhorroClient>[0]['profile']}
+      partnerProfileId={partnerProfileId}
+      partnerName={partnerName}
+    />
+  );
 }
