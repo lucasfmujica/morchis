@@ -8,6 +8,7 @@ export interface AccountRow {
   currency: string;
   archived: boolean;
   initial_balance: number;
+  owner_profile_id?: string | null;
 }
 
 export interface AccountTx {

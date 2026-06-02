@@ -170,10 +170,12 @@ function IncomeCard({
   incomeSoFar,
   expensesSoFar,
   incomeRules,
+  fmt,
 }: {
   incomeSoFar: number;
   expensesSoFar: number;
   incomeRules: { label: string; amount: number; cadence: string }[];
+  fmt: (ars: number) => string;
 }) {
   const savingsRate = incomeSoFar > 0 ? (incomeSoFar - expensesSoFar) / incomeSoFar : null;
   const rateColor =
@@ -191,7 +193,7 @@ function IncomeCard({
             Ingresos del mes
           </p>
           <p className="text-3xl font-black leading-none" style={{ color: '#5BA886', fontVariantNumeric: 'tabular-nums' }}>
-            {formatARS(incomeSoFar)}
+            {fmt(incomeSoFar)}
           </p>
         </div>
         {savingsRate != null && (
@@ -212,7 +214,7 @@ function IncomeCard({
             <div key={i} className="flex items-center gap-2">
               <span className="text-sm shrink-0">💰</span>
               <span className="text-xs flex-1 truncate" style={{ color: '#2D2D2D' }}>{r.label}</span>
-              <span className="text-xs font-bold" style={{ color: '#5BA886' }}>+{formatARS(r.amount)}</span>
+              <span className="text-xs font-bold" style={{ color: '#5BA886' }}>+{fmt(r.amount)}</span>
             </div>
           ))}
         </div>
@@ -235,8 +237,8 @@ export default function HomeClient({
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   usePushSubscription(profile.id);
-  // scope: 'all' | 'me' | 'partner'
-  const [scope, setScope] = useState<'all' | 'me' | 'partner'>('all');
+  // scope: 'all' | 'me' | 'partner' — default to "Mío"
+  const [scope, setScope] = useState<'all' | 'me' | 'partner'>('me');
   const name = profile.nickname || profile.display_name || 'Morch';
 
   const { data: categories = [] } = useQuery({
@@ -261,7 +263,7 @@ export default function HomeClient({
     queryFn: async () => {
       const { data } = await supabase
         .from('accounts')
-        .select('id, type, currency, archived, initial_balance')
+        .select('id, type, currency, archived, initial_balance, owner_profile_id')
         .eq('household_id', profile.household_id);
       return (data ?? []) as AccountRow[];
     },
@@ -287,7 +289,7 @@ export default function HomeClient({
       const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       const { data } = await supabase
         .from('transactions')
-        .select('amount, type, occurred_on, profile_id, category_id')
+        .select('amount, type, occurred_on, profile_id, category_id, currency')
         .eq('household_id', profile.household_id)
         .gte('occurred_on', `${month}-01`);
       return data ?? [];
@@ -336,7 +338,7 @@ export default function HomeClient({
     queryFn: async () => {
       const { data } = await supabase
         .from('recurring_rules')
-        .select('direction, amount, next_run, active, profile_id, label, cadence')
+        .select('direction, amount, next_run, active, profile_id, label, cadence, currency')
         .eq('household_id', profile.household_id)
         .eq('active', true);
       return data ?? [];
@@ -346,14 +348,23 @@ export default function HomeClient({
   const scopeProfileId =
     scope === 'me' ? profile.id : scope === 'partner' ? partnerProfileId : undefined;
 
+  // Normalize every amount to ARS (USD × blue rate) so one currency flows through
+  // the projection and all the home totals. useFx's format() then renders it in
+  // the active currency, so a USD income never shows up as "$" pesos.
+  const toArs = (amount: number, currency?: string | null) =>
+    currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount;
+
+  const txArs = transactions.map((t) => ({ ...t, amount: toArs(t.amount, t.currency as string | null) }));
+  const rulesArs = rules.map((r) => ({ ...r, amount: toArs(r.amount, r.currency as string | null) }));
+
   const projection = computeProjection(
-    transactions.map((t) => ({
+    txArs.map((t) => ({
       type: t.type as 'income' | 'expense' | 'transfer',
       amount: t.amount,
       occurred_on: t.occurred_on,
       profile_id: t.profile_id,
     })),
-    rules.map((r) => ({
+    rulesArs.map((r) => ({
       direction: r.direction as 'income' | 'expense',
       amount: r.amount,
       next_run: r.next_run,
@@ -367,7 +378,7 @@ export default function HomeClient({
   const { projectedBalance, incomeSoFar, expensesSoFar, dailyBalances } = projection;
   const isPositive = projectedBalance >= 0;
 
-  const incomeRules = rules
+  const incomeRules = rulesArs
     .filter((r) => r.direction === 'income' && (!scopeProfileId || r.profile_id === scopeProfileId))
     .map((r) => ({ label: (r.label as string) ?? 'Ingreso', amount: r.amount, cadence: (r.cadence as string) ?? 'monthly' }));
 
@@ -383,12 +394,16 @@ export default function HomeClient({
     ? [{ label: 'Sueldo', amount: chofiHardcodedIncome, cadence: 'monthly' }, ...incomeRules]
     : incomeRules;
 
-  // Quick-access tile values
-  const totalBalance = netWorthAt(accountsFull, accountTx, todayISO(), arsPerUsd);
+  // Quick-access tile values. The Cuentas total respects the scope: in "Mío" it
+  // only counts my accounts, in "Nuestro" it counts both.
+  const scopedAccountsFull = scopeProfileId
+    ? accountsFull.filter((a) => a.owner_profile_id === scopeProfileId)
+    : accountsFull;
+  const totalBalance = netWorthAt(scopedAccountsFull, accountTx, todayISO(), arsPerUsd);
 
   // Scope-aware expenses (respect the Nuestro/Mío/Pareja toggle) for the
   // donut and the "Gastos" tile, so the whole screen reacts to the toggle.
-  const scopedExpenses = transactions.filter(
+  const scopedExpenses = txArs.filter(
     (t) => t.type === 'expense' && (!scopeProfileId || t.profile_id === scopeProfileId),
   );
   const monthExpenseTotal = scopedExpenses.reduce((s, t) => s + t.amount, 0);
@@ -399,9 +414,9 @@ export default function HomeClient({
   const savingsRate = displayIncomeSoFar > 0 ? Math.round(((displayIncomeSoFar - expensesSoFar) / displayIncomeSoFar) * 100) : null;
 
   const quickTiles = [
-    { href: '/cuentas', icon: '🏦', label: 'Cuentas', value: formatARS(totalBalance), color: totalBalance < 0 ? '#E5604C' : '#2D2D2D' },
-    { href: '/analisis', icon: '💸', label: 'Gastos', value: formatARS(monthExpenseTotal), color: '#FF7F6B' },
-    { href: '/reglas', icon: '💰', label: 'Ingresos', value: formatARS(displayIncomeSoFar), color: '#5BA886' },
+    { href: '/cuentas', icon: '🏦', label: 'Cuentas', value: format(totalBalance), color: totalBalance < 0 ? '#E5604C' : '#2D2D2D' },
+    { href: '/analisis', icon: '💸', label: 'Gastos', value: format(monthExpenseTotal), color: '#FF7F6B' },
+    { href: '/reglas', icon: '💰', label: 'Ingresos', value: format(displayIncomeSoFar), color: '#5BA886' },
     { href: '/ahorro', icon: '🐷', label: 'Ahorro', value: savingsRate == null ? '—' : `${savingsRate}%`, color: '#B8860B' },
   ];
 
@@ -409,8 +424,8 @@ export default function HomeClient({
   const greeting = greetingHour < 12 ? 'Buenos días' : greetingHour < 19 ? 'Buenas tardes' : 'Buenas noches';
 
   const scopeTabs = [
-    { key: 'all' as const, label: 'Nuestro' },
     { key: 'me' as const, label: 'Mío' },
+    { key: 'all' as const, label: 'Nuestro' },
     ...(partnerProfileId ? [{ key: 'partner' as const, label: partnerName || 'Sofi' }] : []),
   ];
 
@@ -485,11 +500,11 @@ export default function HomeClient({
         <div className="flex gap-4 mt-3 pt-3" style={{ borderTop: `1px solid ${isPositive ? '#5BA88640' : '#E5604C40'}` }}>
           <div>
             <p className="text-xs" style={{ color: isPositive ? '#5BA886' : '#E5604C', opacity: 0.75 }}>Ingresos</p>
-            <p className="text-sm font-bold" style={{ color: isPositive ? '#5BA886' : '#E5604C' }}>{formatARS(incomeSoFar)}</p>
+            <p className="text-sm font-bold" style={{ color: isPositive ? '#5BA886' : '#E5604C' }}>{format(incomeSoFar)}</p>
           </div>
           <div>
             <p className="text-xs" style={{ color: isPositive ? '#5BA886' : '#E5604C', opacity: 0.75 }}>Gastos</p>
-            <p className="text-sm font-bold" style={{ color: isPositive ? '#5BA886' : '#E5604C' }}>{formatARS(expensesSoFar)}</p>
+            <p className="text-sm font-bold" style={{ color: isPositive ? '#5BA886' : '#E5604C' }}>{format(expensesSoFar)}</p>
           </div>
           <div>
             <p className="text-xs" style={{ color: isPositive ? '#5BA886' : '#E5604C', opacity: 0.75 }}>Días rest.</p>
@@ -523,7 +538,7 @@ export default function HomeClient({
       </div>
 
       {/* Income of the month + savings rate */}
-      <IncomeCard incomeSoFar={displayIncomeSoFar} expensesSoFar={expensesSoFar} incomeRules={displayIncomeRules} />
+      <IncomeCard incomeSoFar={displayIncomeSoFar} expensesSoFar={expensesSoFar} incomeRules={displayIncomeRules} fmt={format} />
 
       {/* Couple balance chip */}
       <CoupleBalanceChip

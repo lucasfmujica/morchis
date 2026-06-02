@@ -80,6 +80,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
         .from('accounts')
         .select('id, name, type, currency, archived, owner_profile_id, initial_balance, statement_ars, statement_usd, closing_date, due_date')
         .eq('household_id', profile.household_id)
+        .eq('owner_profile_id', profile.id)
         .order('name');
       return data ?? [];
     },
