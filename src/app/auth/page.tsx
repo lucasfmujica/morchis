@@ -5,51 +5,52 @@ import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
+type Mode = 'login' | 'signup';
+
 export default function AuthPage() {
+  const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [sent, setSent] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
-  async function handleLogin(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
-    });
-    setLoading(false);
-    if (error) {
-      if (error.status === 429) {
-        toast.error('Demasiados intentos. Esperá unos minutos y volvé a intentar.');
-      } else {
-        toast.error(`Error: ${error.message}`);
-      }
-    } else {
-      setSent(true);
+    if (password.length < 6) {
+      toast.error('La contraseña debe tener al menos 6 caracteres.');
+      return;
     }
-  }
-
-  if (sent) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-6" style={{ background: '#F9F5F0' }}>
-        <div className="text-6xl mb-6">📬</div>
-        <h1 className="text-2xl font-bold text-center mb-3" style={{ color: '#2D2D2D' }}>
-          ¡Revisá tu mail!
-        </h1>
-        <p className="text-center" style={{ color: '#8A8276' }}>
-          Te mandamos un link a <strong>{email}</strong>. Tocalo para entrar a Morchis.
-        </p>
-        <button
-          className="mt-8 text-sm underline"
-          style={{ color: '#7EC8A4' }}
-          onClick={() => setSent(false)}
-        >
-          Usar otro email
-        </button>
-      </div>
-    );
+    setLoading(true);
+    try {
+      if (mode === 'login') {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+          if (error.message.toLowerCase().includes('invalid')) {
+            toast.error('Email o contraseña incorrectos.');
+          } else {
+            toast.error(error.message);
+          }
+          return;
+        }
+        router.push('/home');
+        router.refresh();
+      } else {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+        });
+        if (error) {
+          toast.error(error.message);
+          return;
+        }
+        toast.success('¡Cuenta creada! Ya podés entrar.');
+        setMode('login');
+      }
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -66,28 +67,58 @@ export default function AuthPage() {
           </p>
         </div>
 
-        <form onSubmit={handleLogin} className="flex flex-col gap-4">
-          <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-semibold mb-2"
-              style={{ color: '#2D2D2D' }}
+        {/* Mode toggle */}
+        <div
+          className="flex mb-6 rounded-2xl p-1"
+          style={{ background: '#ECE5DC' }}
+        >
+          {(['login', 'signup'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className="flex-1 py-2.5 text-sm font-bold rounded-xl transition-colors"
+              style={{
+                background: mode === m ? '#FFFFFF' : 'transparent',
+                color: mode === m ? '#2D2D2D' : '#8A8276',
+              }}
             >
-              Tu email
+              {m === 'login' ? 'Entrar' : 'Crear cuenta'}
+            </button>
+          ))}
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div>
+            <label className="block text-sm font-semibold mb-1.5" style={{ color: '#2D2D2D' }}>
+              Email
             </label>
             <input
-              id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="vos@ejemplo.com"
               required
-              className="w-full px-4 py-3 rounded-2xl text-base outline-none focus:ring-2 border"
-              style={{
-                background: '#FFFFFF',
-                border: '1.5px solid #ECE5DC',
-                color: '#2D2D2D',
-              }}
+              autoComplete="email"
+              className="w-full px-4 py-3 rounded-2xl text-base outline-none border"
+              style={{ background: '#FFFFFF', borderColor: '#ECE5DC', color: '#2D2D2D' }}
+              onFocus={(e) => (e.target.style.borderColor = '#7EC8A4')}
+              onBlur={(e) => (e.target.style.borderColor = '#ECE5DC')}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold mb-1.5" style={{ color: '#2D2D2D' }}>
+              Contraseña
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Mínimo 6 caracteres"
+              required
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+              className="w-full px-4 py-3 rounded-2xl text-base outline-none border"
+              style={{ background: '#FFFFFF', borderColor: '#ECE5DC', color: '#2D2D2D' }}
               onFocus={(e) => (e.target.style.borderColor = '#7EC8A4')}
               onBlur={(e) => (e.target.style.borderColor = '#ECE5DC')}
             />
@@ -95,16 +126,16 @@ export default function AuthPage() {
 
           <button
             type="submit"
-            disabled={loading || !email}
-            className="w-full py-4 rounded-2xl text-base font-bold text-white transition-opacity disabled:opacity-50"
+            disabled={loading || !email || !password}
+            className="w-full py-4 rounded-2xl text-base font-bold text-white transition-opacity disabled:opacity-50 mt-2"
             style={{ background: '#7EC8A4' }}
           >
-            {loading ? 'Enviando...' : 'Entrar con email'}
+            {loading ? '…' : mode === 'login' ? 'Entrar' : 'Crear cuenta'}
           </button>
         </form>
 
-        <p className="text-center text-sm mt-8" style={{ color: '#8A8276' }}>
-          Te mandamos un link mágico. Sin contraseñas.
+        <p className="text-center text-xs mt-8" style={{ color: '#8A8276' }}>
+          Tu sesión se mantiene activa. No vas a tener que volver a entrar.
         </p>
       </div>
     </div>
