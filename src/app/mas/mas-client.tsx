@@ -52,6 +52,7 @@ export default function MasClient({ profile }: { profile: Profile }) {
     { href: '/metas', icon: '🎯', label: 'Metas y objetivos' },
     { href: '/reglas', icon: '📅', label: 'Ingresos y gastos fijos' },
     { href: '/pareja', icon: '👫', label: 'Vista de pareja' },
+    { href: '/ticket', icon: '🧾', label: 'Escanear ticket' },
     { href: '/extractos', icon: '🧾', label: 'Extractos de tarjeta' },
     { href: '/simulador', icon: '🔮', label: 'Simulador de compras' },
     { href: '/mas/pin', icon: '🔐', label: 'Bloqueo con PIN' },

@@ -54,13 +54,24 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
   });
 
   const { data: txns = [] } = useQuery({
-    queryKey: ['transactions', profile.household_id, '6mo'],
+    queryKey: ['transactions', profile.household_id, '6mo-analisis'],
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('amount, type, occurred_on, category_id')
+        .select('amount, type, occurred_on, category_id, profile_id')
         .eq('household_id', profile.household_id)
         .gte('occurred_on', rangeStart);
+      return data ?? [];
+    },
+  });
+
+  const { data: members = [] } = useQuery({
+    queryKey: ['household-members', profile.household_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, nickname, display_name')
+        .eq('household_id', profile.household_id);
       return data ?? [];
     },
   });
@@ -122,6 +133,32 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
     color: r.cat!.color || DONUT_PALETTE[i % DONUT_PALETTE.length],
   }));
   if (restTotal > 0) segments.push({ label: 'Otras', value: restTotal, color: '#C4B9AE' });
+
+  // Subscriptions radar — current-month spend in subscription-type categories
+  const SUB_NAMES = new Set(['streaming', 'servicios digitales', 'suscripciones']);
+  const subCatIds = new Set(categories.filter((c) => SUB_NAMES.has(c.name.trim().toLowerCase())).map((c) => c.id));
+  const subRows = [...spentByCat.entries()]
+    .filter(([id]) => subCatIds.has(id))
+    .map(([id, value]) => ({ cat: catById.get(id), value }))
+    .filter((r) => r.cat && r.value > 0)
+    .sort((a, b) => b.value - a.value);
+  const subsTotal = subRows.reduce((s, r) => s + r.value, 0);
+
+  // Per-person comparison — current-month expenses by profile
+  const spentByPerson = new Map<string, number>();
+  for (const t of txns) {
+    if (t.type !== 'expense' || !t.occurred_on.startsWith(currentKey) || !t.profile_id) continue;
+    spentByPerson.set(t.profile_id, (spentByPerson.get(t.profile_id) ?? 0) + t.amount);
+  }
+  const memberName = (id: string) => {
+    const m = members.find((x) => x.id === id);
+    const base = m?.nickname || m?.display_name || 'Morch';
+    return id === profile.id ? `${base} (vos)` : base;
+  };
+  const personRows = [...spentByPerson.entries()]
+    .map(([id, value]) => ({ id, name: memberName(id), value }))
+    .sort((a, b) => b.value - a.value);
+  const personMax = Math.max(1, ...personRows.map((r) => r.value));
 
   // 6-month income vs expense
   const trendRows = months.map((m) => {
@@ -227,6 +264,46 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
           </div>
           <MonthlyBars rows={trendRows} />
         </div>
+
+        {/* Per-person comparison */}
+        {personRows.length > 1 && (
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#8A8276' }}>Quién gastó qué · este mes</p>
+            <div className="flex flex-col gap-3">
+              {personRows.map((p, i) => (
+                <div key={p.id}>
+                  <div className="flex justify-between items-baseline mb-1">
+                    <span className="text-sm font-bold" style={{ color: '#2D2D2D' }}>{p.name}</span>
+                    <span className="text-sm font-black" style={{ color: '#FF7F6B' }}>{formatARS(p.value)}</span>
+                  </div>
+                  <div className="h-2 rounded-full overflow-hidden" style={{ background: '#ECE5DC' }}>
+                    <div className="h-full rounded-full" style={{ width: `${(p.value / personMax) * 100}%`, background: i === 0 ? '#FF7F6B' : '#6FA8DC' }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Subscriptions radar */}
+        {subRows.length > 0 && (
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8A8276' }}>Suscripciones · este mes</p>
+              <span className="text-xs font-black" style={{ color: '#FF7F6B' }}>{formatARS(subsTotal)}</span>
+            </div>
+            <div className="flex flex-col gap-2">
+              {subRows.map((r) => (
+                <Link key={r.cat!.id} href={`/categorias/${r.cat!.id}`} className="flex items-center gap-2">
+                  <span className="text-lg">{r.cat!.icon}</span>
+                  <span className="text-sm flex-1 truncate" style={{ color: '#2D2D2D' }}>{r.cat!.name}</span>
+                  <span className="text-sm font-bold" style={{ color: '#2D2D2D' }}>{formatARS(r.value)}</span>
+                  <span className="text-[10px]" style={{ color: '#C4B9AE' }}>›</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* AI insights */}
         <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>

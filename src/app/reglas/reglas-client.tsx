@@ -43,6 +43,63 @@ function monthlyEquivalent(amount: number, cadence: string): number {
   return amount;
 }
 
+function daysUntil(dateStr: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = new Date(dateStr + 'T00:00:00');
+  return Math.round((d.getTime() - today.getTime()) / 86400000);
+}
+
+function UpcomingBills({ rules }: { rules: Rule[] }) {
+  const upcoming = rules
+    .filter((r) => r.active && r.next_run != null && daysUntil(r.next_run) >= 0 && daysUntil(r.next_run) <= 35)
+    .sort((a, b) => (a.next_run! < b.next_run! ? -1 : 1));
+
+  if (upcoming.length === 0) return null;
+
+  const totalExpense = upcoming
+    .filter((r) => r.direction === 'expense')
+    .reduce((s, r) => s + r.amount, 0);
+
+  function whenLabel(d: number) {
+    if (d === 0) return 'Hoy';
+    if (d === 1) return 'Mañana';
+    return `En ${d} días`;
+  }
+
+  return (
+    <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8A8276' }}>Próximos vencimientos</p>
+        <span className="text-xs font-black" style={{ color: '#FF7F6B' }}>{formatARS(totalExpense)}</span>
+      </div>
+      <div className="flex flex-col gap-2.5">
+        {upcoming.map((r) => {
+          const d = daysUntil(r.next_run!);
+          const soon = d <= 3;
+          return (
+            <div key={r.id} className="flex items-center gap-3">
+              <div
+                className="w-9 h-9 rounded-full flex items-center justify-center text-sm flex-shrink-0"
+                style={{ background: r.direction === 'income' ? '#E4F2EA' : soon ? '#FFE7E2' : '#F0EDE8' }}
+              >
+                {r.direction === 'income' ? '💰' : '📤'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold truncate" style={{ color: '#2D2D2D' }}>{r.label}</p>
+                <p className="text-xs font-semibold" style={{ color: soon ? '#E5604C' : '#8A8276' }}>{whenLabel(d)}</p>
+              </div>
+              <p className="text-sm font-black flex-shrink-0" style={{ color: r.direction === 'income' ? '#7EC8A4' : '#FF7F6B' }}>
+                {r.direction === 'income' ? '+' : '-'}{formatARS(r.amount)}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function FixedSummaryCard({ rules }: { rules: Rule[] }) {
   const active = rules.filter((r) => r.active);
   const incomeMonthly = active
@@ -423,6 +480,9 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
       </header>
 
       <div className="px-4 flex flex-col gap-4">
+        {/* Upcoming bills this month */}
+        {!showForm && !editRule && <UpcomingBills rules={rules} />}
+
         {/* Monthly summary */}
         {!showForm && !editRule && rules.length > 0 && <FixedSummaryCard rules={rules} />}
 

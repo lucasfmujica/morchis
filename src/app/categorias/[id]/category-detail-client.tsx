@@ -78,6 +78,41 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
     },
   });
 
+  const txIds = txns.map((t) => t.id);
+  const { data: items = [] } = useQuery({
+    queryKey: ['cat-items', category.id, txIds],
+    enabled: txIds.length > 0,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('transaction_items')
+        .select('transaction_id, item_group, line_total')
+        .in('transaction_id', txIds);
+      return data ?? [];
+    },
+  });
+
+  const thisMonthTxIds = new Set(txns.filter((t) => t.occurred_on.startsWith(currentKey)).map((t) => t.id));
+  const groupTotals = (() => {
+    const map = new Map<string, number>();
+    for (const it of items) {
+      if (!thisMonthTxIds.has(it.transaction_id)) continue;
+      map.set(it.item_group, (map.get(it.item_group) ?? 0) + it.line_total);
+    }
+    const total = [...map.values()].reduce((a, b) => a + b, 0);
+    return { rows: [...map.entries()].map(([g, v]) => ({ g, v, pct: total > 0 ? v / total : 0 })).sort((a, b) => b.v - a.v), total };
+  })();
+
+  const GROUP_META: Record<string, { icon: string; color: string }> = {
+    comida: { icon: '🍎', color: '#7EC8A4' },
+    bebidas: { icon: '🥤', color: '#6FA8DC' },
+    snacks: { icon: '🍫', color: '#F5A623' },
+    limpieza: { icon: '🧼', color: '#5C9CE6' },
+    'cuidado personal': { icon: '🧴', color: '#E89AC7' },
+    hogar: { icon: '🏠', color: '#B084CC' },
+    mascotas: { icon: '🐾', color: '#A0855B' },
+    otros: { icon: '🏷️', color: '#C4B9AE' },
+  };
+
   const monthRows = months.map((m) => ({
     key: m.key,
     label: m.label,
@@ -131,6 +166,32 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
           <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#8A8276' }}>Evolución · 6 meses</p>
           <SingleBars rows={monthRows} color={accent} />
         </div>
+
+        {/* In what the money went — from scanned receipts */}
+        {groupTotals.rows.length > 0 && (
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#8A8276' }}>En qué se fue · este mes</p>
+            <div className="flex flex-col gap-2.5">
+              {groupTotals.rows.map(({ g, v, pct }) => {
+                const meta = GROUP_META[g] ?? GROUP_META.otros;
+                return (
+                  <div key={g}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span>{meta.icon}</span>
+                      <span className="text-sm capitalize flex-1" style={{ color: '#2D2D2D' }}>{g}</span>
+                      <span className="text-xs font-semibold" style={{ color: '#8A8276' }}>{Math.round(pct * 100)}%</span>
+                      <span className="text-sm font-bold w-24 text-right" style={{ color: meta.color }}>{formatARS(v)}</span>
+                    </div>
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#ECE5DC' }}>
+                      <div className="h-full rounded-full" style={{ width: `${pct * 100}%`, background: meta.color }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[11px] mt-3" style={{ color: '#8A8276' }}>Detalle según tickets escaneados 🧾</p>
+          </div>
+        )}
 
         {/* This month's movements */}
         <div>

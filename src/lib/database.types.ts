@@ -841,6 +841,54 @@ export type Database = {
           },
         ]
       }
+      transaction_items: {
+        Row: {
+          created_at: string
+          household_id: string
+          id: string
+          item_group: string
+          line_total: number
+          name: string
+          qty: number | null
+          transaction_id: string
+        }
+        Insert: {
+          created_at?: string
+          household_id: string
+          id?: string
+          item_group?: string
+          line_total?: number
+          name: string
+          qty?: number | null
+          transaction_id: string
+        }
+        Update: {
+          created_at?: string
+          household_id?: string
+          id?: string
+          item_group?: string
+          line_total?: number
+          name?: string
+          qty?: number | null
+          transaction_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transaction_items_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_items_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       transactions: {
         Row: {
           account_id: string | null

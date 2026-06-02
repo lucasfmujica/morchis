@@ -333,6 +333,19 @@ export default function MetasClient({ profile }: { profile: Profile }) {
     },
   });
 
+  const monthPrefix = new Date().toISOString().slice(0, 7);
+  const { data: contribThisMonth = [] } = useQuery({
+    queryKey: ['contrib-month', profile.household_id, monthPrefix],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('goal_contributions')
+        .select('goal_id, occurred_on')
+        .gte('occurred_on', `${monthPrefix}-01`);
+      return data ?? [];
+    },
+  });
+  const contributedGoalIds = new Set(contribThisMonth.map((c) => c.goal_id));
+
   const archiveMutation = useMutation({
     mutationFn: async (id: string) => {
       await supabase.from('goals').update({ archived: true }).eq('id', id);
@@ -455,6 +468,11 @@ export default function MetasClient({ profile }: { profile: Profile }) {
                     <p className="text-xs mt-0.5" style={{ color: '#8A8276' }}>
                       Vence {new Date(g.deadline).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </p>
+                    {!done && new Date(g.deadline) > new Date() && !contributedGoalIds.has(g.id) && (
+                      <p className="text-[11px] font-bold mt-1 inline-block px-2 py-0.5 rounded-full" style={{ background: '#FBF1D8', color: '#B8860B' }}>
+                        💸 Aportá este mes
+                      </p>
+                    )}
                     {/* progress bar */}
                     <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: '#ECE5DC' }}>
                       <div
