@@ -41,9 +41,27 @@ const CADENCE_LABEL: Record<string, string> = {
   monthly: 'Mensual',
 };
 
-// Normalize any cadence to an approximate monthly amount so totals are comparable.
-function monthlyEquivalent(amount: number, cadence: string): number {
-  if (cadence === 'weekly') return amount * (52 / 12);
+const WEEKDAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+// Count how many times a given weekday (0=Sun..6=Sat) falls in a month.
+function weekdayOccurrencesInMonth(weekday: number, year: number, month: number): number {
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  let count = 0;
+  for (let day = 1; day <= daysInMonth; day++) {
+    if (new Date(year, month, day).getDay() === weekday) count++;
+  }
+  return count;
+}
+
+// Normalize any cadence to the actual amount for the current month so totals
+// reflect the real number of occurrences (e.g. a weekly expense on Thursdays
+// counts the exact number of Thursdays in this month, not an average of 4.33).
+function monthlyEquivalent(amount: number, cadence: string, anchorDay: number | null): number {
+  if (cadence === 'weekly') {
+    const now = new Date();
+    const weekday = anchorDay != null ? ((anchorDay % 7) + 7) % 7 : now.getDay();
+    return amount * weekdayOccurrencesInMonth(weekday, now.getFullYear(), now.getMonth());
+  }
   if (cadence === 'biweekly') return amount * 2;
   return amount;
 }
@@ -109,10 +127,10 @@ function FixedSummaryCard({ rules }: { rules: Rule[] }) {
   const active = rules.filter((r) => r.active);
   const incomeMonthly = active
     .filter((r) => r.direction === 'income')
-    .reduce((s, r) => s + monthlyEquivalent(r.amount, r.cadence), 0);
+    .reduce((s, r) => s + monthlyEquivalent(r.amount, r.cadence, r.anchor_day), 0);
   const expenseMonthly = active
     .filter((r) => r.direction === 'expense')
-    .reduce((s, r) => s + monthlyEquivalent(r.amount, r.cadence), 0);
+    .reduce((s, r) => s + monthlyEquivalent(r.amount, r.cadence, r.anchor_day), 0);
   const margin = incomeMonthly - expenseMonthly;
   const savingsRate = incomeMonthly > 0 ? margin / incomeMonthly : null;
   const marginPositive = margin >= 0;
@@ -273,7 +291,14 @@ function RuleForm({
           {(['weekly', 'biweekly', 'monthly'] as const).map((c) => (
             <button
               key={c}
-              onClick={() => setCadence(c)}
+              onClick={() => {
+                setCadence(c);
+                // Keep anchor day within the valid range for the new cadence:
+                // weekly uses 0..6 (weekday), others use 1..28 (day of month).
+                const n = parseInt(anchorDay, 10);
+                if (c === 'weekly' && (isNaN(n) || n > 6)) setAnchorDay('1');
+                if (c !== 'weekly' && (isNaN(n) || n < 1)) setAnchorDay('1');
+              }}
               className="flex-1 py-2 rounded-xl text-xs font-bold border transition-colors"
               style={{
                 background: cadence === c ? '#E4F2EA' : '#FFFFFF',
@@ -290,17 +315,30 @@ function RuleForm({
       {/* Anchor day */}
       <div>
         <p className="text-xs font-semibold mb-1" style={{ color: '#6B6459' }}>
-          {cadence === 'weekly' ? 'Día de semana (0=Dom … 6=Sáb)' : 'Día del mes'}
+          {cadence === 'weekly' ? 'Día de la semana' : 'Día del mes'}
         </p>
-        <input
-          type="number"
-          min={cadence === 'weekly' ? 0 : 1}
-          max={cadence === 'weekly' ? 6 : 28}
-          value={anchorDay}
-          onChange={(e) => setAnchorDay(e.target.value)}
-          className="w-24 px-4 py-2 rounded-xl text-sm border outline-none"
-          style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
-        />
+        {cadence === 'weekly' ? (
+          <select
+            value={anchorDay}
+            onChange={(e) => setAnchorDay(e.target.value)}
+            className="w-full px-4 py-2 rounded-xl text-sm border outline-none bg-white"
+            style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+          >
+            {WEEKDAYS.map((d, i) => (
+              <option key={i} value={String(i)}>{d}</option>
+            ))}
+          </select>
+        ) : (
+          <input
+            type="number"
+            min={1}
+            max={28}
+            value={anchorDay}
+            onChange={(e) => setAnchorDay(e.target.value)}
+            className="w-24 px-4 py-2 rounded-xl text-sm border outline-none"
+            style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+          />
+        )}
       </div>
 
       {/* Scope */}
