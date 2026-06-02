@@ -57,7 +57,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   const [editTx, setEditTx] = useState<Tx | null>(null);
   const [search, setSearch] = useState('');
-  const [filterScope, setFilterScope] = useState<'all' | 'personal' | 'household'>('all');
+  const [filterScope, setFilterScope] = useState<'all' | 'personal' | 'household'>('personal');
   const [filterShared, setFilterShared] = useState<boolean | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [showChart, setShowChart] = useState(false);
@@ -101,8 +101,15 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     },
   });
 
+  // Visibility rule: each user only sees their own personal movements plus the
+  // shared household ones. The partner's personal movements never show here.
+  const visibleTransactions = useMemo(
+    () => transactions.filter((tx) => tx.scope === 'household' || tx.profile_id === profile.id),
+    [transactions, profile.id],
+  );
+
   const filtered = useMemo(() => {
-    return transactions.filter((tx) => {
+    return visibleTransactions.filter((tx) => {
       if (filterScope !== 'all' && tx.scope !== filterScope) return false;
       if (filterShared !== null && tx.is_shared !== filterShared) return false;
       if (filterCategory !== 'all' && tx.category_id !== filterCategory) return false;
@@ -114,7 +121,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       }
       return true;
     });
-  }, [transactions, filterScope, filterShared, filterCategory, search]);
+  }, [visibleTransactions, filterScope, filterShared, filterCategory, search]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, Tx[]>();
@@ -137,11 +144,11 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   const monthSummary = useMemo(() => {
     const now = new Date();
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const current = transactions.filter((tx) => tx.occurred_on.startsWith(month));
+    const current = visibleTransactions.filter((tx) => tx.occurred_on.startsWith(month));
     const expenses = current.filter((tx) => tx.type === 'expense').reduce((s, tx) => s + tx.amount, 0);
     const income = current.filter((tx) => tx.type === 'income').reduce((s, tx) => s + tx.amount, 0);
     return { expenses, income };
-  }, [transactions]);
+  }, [visibleTransactions]);
 
   // Chart data: top 5 categories current vs previous month
   const chartData = useMemo(() => {
@@ -153,7 +160,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     const curMap = new Map<string, number>();
     const prevMap = new Map<string, number>();
 
-    for (const tx of transactions) {
+    for (const tx of visibleTransactions) {
       if (tx.type !== 'expense') continue;
       const id = tx.category_id ?? '__none__';
       if (tx.occurred_on.startsWith(curMonth)) {
@@ -172,7 +179,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       'Este mes': cur,
       'Mes anterior': prevMap.get(id) ?? 0,
     }));
-  }, [transactions, categories]);
+  }, [visibleTransactions, categories]);
 
   async function handleDelete(id: string) {
     const { error } = await supabase.from('transactions').delete().eq('id', id);
@@ -395,7 +402,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
 
       {/* By-category summary */}
       <CategorySummary
-        transactions={transactions.filter((tx) => {
+        transactions={visibleTransactions.filter((tx) => {
           const now = new Date();
           const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
           return tx.occurred_on.startsWith(month) && tx.type === 'expense';

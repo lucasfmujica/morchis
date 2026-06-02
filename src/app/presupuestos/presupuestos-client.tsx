@@ -238,9 +238,12 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
     },
   });
 
-  // Load this month's expenses grouped by category
-  const { data: spentByCategory = {} } = useQuery<Record<string, number>>({
-    queryKey: ['spent-by-category', profile.household_id, monthStart],
+  // Load this month's expense rows (with scope + owner) so each budget counts the
+  // right spend: household budgets count shared expenses, personal budgets count
+  // only my own personal expenses.
+  type ExpenseRow = { category_id: string | null; amount: number; scope: string; profile_id: string };
+  const { data: expenseRows = [] } = useQuery<ExpenseRow[]>({
+    queryKey: ['budget-expense-rows', profile.household_id, monthStart],
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
@@ -248,15 +251,21 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
         .eq('household_id', profile.household_id)
         .eq('type', 'expense')
         .gte('occurred_on', monthStart);
-
-      const map: Record<string, number> = {};
-      for (const t of data ?? []) {
-        if (!t.category_id) continue;
-        map[t.category_id] = (map[t.category_id] ?? 0) + t.amount;
-      }
-      return map;
+      return (data ?? []) as ExpenseRow[];
     },
   });
+
+  function spentForBudget(b: Budget): number {
+    return expenseRows
+      .filter(
+        (t) =>
+          t.category_id === b.category_id &&
+          (b.scope === 'household'
+            ? t.scope === 'household'
+            : t.scope === 'personal' && t.profile_id === profile.id),
+      )
+      .reduce((s, t) => s + t.amount, 0);
+  }
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -265,7 +274,10 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['budgets'] }),
   });
 
-  const filteredBudgets = budgets.filter((b) => b.scope === tab);
+  // Personal budgets are per-user: only show my own. Household budgets are shared.
+  const filteredBudgets = budgets.filter(
+    (b) => b.scope === tab && (tab === 'household' || b.profile_id === profile.id),
+  );
 
   const catMap = Object.fromEntries(categories.map((c) => [c.id, c]));
 
@@ -321,7 +333,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
         ) : (
           filteredBudgets.map((b) => {
             const cat = catMap[b.category_id];
-            const spent = spentByCategory[b.category_id] ?? 0;
+            const spent = spentForBudget(b);
             const over = spent > b.amount;
             return (
               <div key={b.id} className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>

@@ -71,7 +71,7 @@ export function AddTransactionSheet({
   const [scope, setScope] = useState<'personal' | 'household'>('personal');
   const [isShared, setIsShared] = useState(false);
   const [merchant, setMerchant] = useState('');
-  const [date, setDate] = useState(today());
+  const [date, setDate] = useState(todayISO());
   const [installments, setInstallments] = useState(1);
   const [saving, setSaving] = useState(false);
 
@@ -94,16 +94,12 @@ export function AddTransactionSheet({
         setScope('personal');
         setIsShared(false);
         setMerchant('');
-        setDate(today());
+        setDate(todayISO());
       }
       setInstallments(1);
       setInputUSD(false);
     }
   }, [open, editTx, initialType]);
-
-  function today() {
-    return todayISO();
-  }
 
   function addMonthsISO(iso: string, k: number) {
     const [y, m, d] = iso.split('-').map(Number);
@@ -324,21 +320,29 @@ export function AddTransactionSheet({
           {/* Keypad */}
           <NumberKeypad onDigit={handleDigit} onBackspace={handleBackspace} />
 
+          {/* Scope — explicit segmented control so it's clear whether the
+              movement is personal (solo mío) or del hogar (compartido). */}
+          <div className="px-4 mt-3">
+            <p className="text-xs font-bold mb-1.5" style={{ color: '#6B6459' }}>¿De quién es este movimiento?</p>
+            <div className="flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#ECE5DC' }}>
+              {(['personal', 'household'] as const).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setScope(s)}
+                  className="flex-1 py-2 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1"
+                  style={{
+                    background: scope === s ? (s === 'household' ? '#7EC8A4' : '#FFFFFF') : 'transparent',
+                    color: scope === s ? (s === 'household' ? '#FFFFFF' : '#2D2D2D') : '#6B6459',
+                  }}
+                >
+                  {s === 'personal' ? '👤 Personal (solo mío)' : '🏠 Hogar (compartido)'}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Options row */}
           <div className="flex gap-2 px-4 mt-3 flex-wrap">
-            {/* Scope */}
-            <button
-              onClick={() => setScope(scope === 'personal' ? 'household' : 'personal')}
-              className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold border"
-              style={{
-                background: scope === 'household' ? '#E4F2EA' : '#FFFFFF',
-                borderColor: scope === 'household' ? '#7EC8A4' : '#ECE5DC',
-                color: scope === 'household' ? '#5BA886' : '#6B6459',
-              }}
-            >
-              {scope === 'household' ? '🏠 Hogar' : '👤 Personal'}
-            </button>
-
             {/* Shared */}
             <button
               onClick={() => setIsShared((v) => !v)}
