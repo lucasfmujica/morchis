@@ -58,6 +58,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   const [search, setSearch] = useState('');
   const [filterScope, setFilterScope] = useState<'all' | 'personal' | 'household'>('all');
   const [filterShared, setFilterShared] = useState<boolean | null>(null);
+  const [filterCategory, setFilterCategory] = useState<string>('all');
   const [showChart, setShowChart] = useState(false);
 
   const { data: categories = [] } = useQuery({
@@ -103,6 +104,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     return transactions.filter((tx) => {
       if (filterScope !== 'all' && tx.scope !== filterScope) return false;
       if (filterShared !== null && tx.is_shared !== filterShared) return false;
+      if (filterCategory !== 'all' && tx.category_id !== filterCategory) return false;
       if (search) {
         const q = search.toLowerCase();
         const m = tx.merchant?.toLowerCase() ?? '';
@@ -111,7 +113,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       }
       return true;
     });
-  }, [transactions, filterScope, filterShared, search]);
+  }, [transactions, filterScope, filterShared, filterCategory, search]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, Tx[]>();
@@ -297,6 +299,26 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
           >
             🤝 Compartidos
           </button>
+        </div>
+
+        {/* Category filter */}
+        <div className="flex items-center gap-2">
+          <select
+            value={filterCategory}
+            onChange={(e) => setFilterCategory(e.target.value)}
+            className="flex-1 px-3 py-2 rounded-2xl text-xs font-bold border bg-white outline-none"
+            style={{ borderColor: filterCategory !== 'all' ? '#7EC8A4' : '#ECE5DC', color: filterCategory !== 'all' ? '#5BA886' : '#8A8276' }}
+          >
+            <option value="all">Todas las categorías</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
+            ))}
+          </select>
+          {filterCategory !== 'all' && (
+            <span className="text-xs font-black whitespace-nowrap" style={{ color: '#FF7F6B' }}>
+              {format(filtered.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0))}
+            </span>
+          )}
         </div>
       </div>
 
