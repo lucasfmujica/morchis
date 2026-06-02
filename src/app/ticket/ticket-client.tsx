@@ -52,18 +52,21 @@ export default function TicketClient({ profile }: { profile: Profile }) {
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [categoryId, setCategoryId] = useState<string>('');
 
-  const { data: categories = [] } = useQuery({
+  // Shared cache key with the rest of the app, so we fetch ALL categories
+  // (filtering to 'expense' in the query here would poison that shared cache
+  // and hide income categories elsewhere). We filter to expense in the UI.
+  const { data: allCategories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],
     queryFn: async () => {
       const { data } = await supabase
         .from('categories')
-        .select('id, name, icon, kind')
+        .select('id, name, icon, kind, color')
         .eq('household_id', profile.household_id)
-        .eq('kind', 'expense')
         .order('name');
       return data ?? [];
     },
   });
+  const categories = allCategories.filter((c) => c.kind === 'expense');
 
   function defaultCategory(suggested: string): string {
     const lc = suggested.toLowerCase();

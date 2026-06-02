@@ -11,6 +11,7 @@ import { formatARS } from '@/lib/format';
 import { todayISO } from '@/lib/date';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
+import { SecondaryButton } from '@/components/SecondaryButton';
 
 const ACCOUNT_TYPES = [
   { value: 'checking', label: 'Cuenta corriente' },
@@ -42,13 +43,17 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],
     queryFn: async () => {
-      const { data } = await supabase.from('categories').select('id, name, icon, kind').eq('household_id', profile.household_id).order('name');
+      const { data } = await supabase.from('categories').select('id, name, icon, kind, color').eq('household_id', profile.household_id).order('name');
       return data ?? [];
     },
   });
 
   const { data: accounts = [] } = useQuery({
-    queryKey: ['accounts', profile.household_id],
+    // Distinct key (…'detail') so it doesn't collide with the lightweight
+    // ['accounts', household] query used elsewhere (id/name/type only),
+    // which would otherwise overwrite the cache and drop initial_balance.
+    // Still invalidated by invalidateQueries(['accounts']) via prefix match.
+    queryKey: ['accounts', profile.household_id, 'detail'],
     queryFn: async () => {
       const { data } = await supabase
         .from('accounts')
@@ -130,6 +135,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
         if (error) throw error;
       }
       await qc.invalidateQueries({ queryKey: ['accounts'] });
+      await qc.invalidateQueries({ queryKey: ['accounts-full'] });
       toast.success(editId ? 'Cuenta actualizada ✓' : 'Cuenta creada ✓');
       setShowForm(false);
     } catch (e) {
@@ -144,6 +150,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
     const { error } = await supabase.from('accounts').update({ archived: !archived }).eq('id', id);
     if (error) { toast.error('Error al actualizar.'); return; }
     await qc.invalidateQueries({ queryKey: ['accounts'] });
+    await qc.invalidateQueries({ queryKey: ['accounts-full'] });
     toast.success(!archived ? 'Cuenta archivada' : 'Cuenta restaurada');
   }
 
@@ -208,13 +215,9 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
               </p>
             </div>
             <div className="flex gap-2">
-              <button
-                onClick={() => setShowForm(false)}
-                className="flex-1 py-3 rounded-2xl border text-sm font-bold"
-                style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
-              >
+              <SecondaryButton onClick={() => setShowForm(false)} className="flex-1 py-3 text-sm">
                 Cancelar
-              </button>
+              </SecondaryButton>
               <PrimaryButton
                 onClick={handleSave}
                 disabled={!name.trim()}

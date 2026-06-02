@@ -33,8 +33,8 @@ export function ConfirmDialog({
         <div className="flex gap-3 mt-2">
           <button
             onClick={onCancel}
-            className="flex-1 py-3 rounded-2xl text-sm font-bold border"
-            style={{ borderColor: '#ECE5DC', color: '#6B6459', background: '#FFFFFF' }}
+            className="flex-1 py-3 rounded-2xl text-sm font-bold transition-all duration-150 active:scale-[0.97]"
+            style={{ background: '#F0EDE8', color: '#2D2D2D', border: '1px solid #E0D8CC' }}
           >
             {cancelLabel}
           </button>

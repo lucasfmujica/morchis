@@ -156,7 +156,7 @@ export default function ParejaClient({
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],
     queryFn: async () => {
-      const { data } = await supabase.from('categories').select('id, name, icon, kind').eq('household_id', profile.household_id).order('name');
+      const { data } = await supabase.from('categories').select('id, name, icon, kind, color').eq('household_id', profile.household_id).order('name');
       return data ?? [];
     },
   });

@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { formatARS } from '@/lib/format';
 import { monthKey } from '@/lib/date';
 import { PrimaryButton } from '@/components/PrimaryButton';
+import { SecondaryButton } from '@/components/SecondaryButton';
 import Link from 'next/link';
 
 const ICONS = ['🛒', '🍕', '🚇', '💊', '🎭', '📚', '✈️', '🏠', '💼', '💵', '📱', '💻', '👗', '🏷️', '💰', '🎯', '🎮', '🐾', '🌿', '⚽'];
@@ -37,7 +38,7 @@ export default function CategoriasClient({ profile }: { profile: Profile }) {
     queryFn: async () => {
       const { data } = await supabase
         .from('categories')
-        .select('id, name, icon, kind, is_default')
+        .select('id, name, icon, kind, color, is_default')
         .eq('household_id', profile.household_id)
         .order('kind')
         .order('name');
@@ -193,13 +194,9 @@ export default function CategoriasClient({ profile }: { profile: Profile }) {
               </div>
             </div>
             <div className="flex gap-2">
-              <button
-                onClick={() => setShowForm(false)}
-                className="flex-1 py-3 rounded-2xl border text-sm font-bold"
-                style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
-              >
+              <SecondaryButton onClick={() => setShowForm(false)} className="flex-1 py-3 text-sm">
                 Cancelar
-              </button>
+              </SecondaryButton>
               <PrimaryButton
                 onClick={handleSave}
                 disabled={!name.trim()}

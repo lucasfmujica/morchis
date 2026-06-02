@@ -206,7 +206,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
     queryFn: async () => {
       const { data } = await supabase
         .from('categories')
-        .select('id, name, icon, kind')
+        .select('id, name, icon, kind, color')
         .eq('household_id', profile.household_id)
         .order('name');
       return data ?? [];

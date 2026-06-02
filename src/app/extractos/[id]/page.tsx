@@ -35,7 +35,7 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
 
   const { data: categories = [] } = await supabase
     .from('categories')
-    .select('id, name, icon, kind')
+    .select('id, name, icon, kind, color')
     .eq('household_id', profile.household_id)
     .order('name');
 

@@ -7,6 +7,7 @@ import { formatARS } from '@/lib/format';
 import { toLocalISO } from '@/lib/date';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
+import { SecondaryButton } from '@/components/SecondaryButton';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
@@ -329,13 +330,9 @@ function RuleForm({
       </button>
 
       <div className="flex gap-3">
-        <button
-          onClick={onCancel}
-          className="flex-1 py-3 rounded-2xl text-sm font-bold border"
-          style={{ borderColor: '#ECE5DC', color: '#6B6459', background: '#FFFFFF' }}
-        >
+        <SecondaryButton onClick={onCancel} className="flex-1 py-3 text-sm">
           Cancelar
-        </button>
+        </SecondaryButton>
         <PrimaryButton
           onClick={handleSave}
           disabled={!label.trim() || !(parseInt(amountStr, 10) > 0)}
@@ -360,7 +357,7 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],
     queryFn: async () => {
-      const { data } = await supabase.from('categories').select('id, name, icon, kind').eq('household_id', profile.household_id).order('name');
+      const { data } = await supabase.from('categories').select('id, name, icon, kind, color').eq('household_id', profile.household_id).order('name');
       return data ?? [];
     },
   });
