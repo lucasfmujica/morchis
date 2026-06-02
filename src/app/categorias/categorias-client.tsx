@@ -7,6 +7,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { toast } from 'sonner';
 import { formatARS } from '@/lib/format';
+import { monthKey } from '@/lib/date';
 import Link from 'next/link';
 
 const ICONS = ['🛒', '🍕', '🚇', '💊', '🎭', '📚', '✈️', '🏠', '💼', '💵', '📱', '💻', '👗', '🏷️', '💰', '🎯', '🎮', '🐾', '🌿', '⚽'];
@@ -43,7 +44,7 @@ export default function CategoriasClient({ profile }: { profile: Profile }) {
     },
   });
 
-  const monthStart = new Date().toISOString().slice(0, 7) + '-01';
+  const monthStart = monthKey() + '-01';
 
   // This month's totals per category (expense + income).
   const { data: monthByCategory = {} } = useQuery<Record<string, number>>({

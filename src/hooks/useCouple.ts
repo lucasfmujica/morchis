@@ -2,6 +2,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
+import { todayISO } from '@/lib/date';
 import { toast } from 'sonner';
 
 export interface CoupleBalance {
@@ -100,7 +101,7 @@ export async function recordSettlement({
     to_profile: toProfileId,
     amount,
     note: note || null,
-    occurred_on: new Date().toISOString().split('T')[0],
+    occurred_on: todayISO(),
   });
   if (error) throw error;
 }

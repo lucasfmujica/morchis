@@ -9,6 +9,7 @@ import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { DonutChart } from '@/components/DonutChart';
 import { MonthlyBars, SingleBars, lastSixMonths } from '@/components/MonthlyBars';
 import { netWorthAt, type AccountRow, type AccountTx } from '@/lib/accounts';
+import { toLocalISO } from '@/lib/date';
 import { formatARS } from '@/lib/format';
 import Link from 'next/link';
 
@@ -39,7 +40,7 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
   const months = lastSixMonths(today);
   const currentKey = months[months.length - 1].key;
   const rangeStart = `${months[0].key}-01`;
-  const todayISO = today.toISOString().slice(0, 10);
+  const todayStr = toLocalISO(today);
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],
@@ -175,8 +176,8 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
   // 6-month net worth
   const nwRows = months.map((m) => {
     const [y, mo] = m.key.split('-').map(Number);
-    const monthEnd = new Date(y, mo, 0).toISOString().slice(0, 10);
-    const asOf = monthEnd > todayISO ? todayISO : monthEnd;
+    const monthEnd = toLocalISO(new Date(y, mo, 0));
+    const asOf = monthEnd > todayStr ? todayStr : monthEnd;
     return { key: m.key, label: m.label, value: netWorthAt(accounts, accountTx, asOf, arsPerUsd) };
   });
   const currentNetWorth = nwRows[nwRows.length - 1]?.value ?? 0;

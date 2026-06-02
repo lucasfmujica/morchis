@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { formatARS } from '@/lib/format';
+import { toLocalISO } from '@/lib/date';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { toast } from 'sonner';
@@ -170,22 +171,22 @@ function nextRunFromAnchor(cadence: string, anchorDay: number): string {
   if (cadence === 'monthly') {
     let d = new Date(year, month, anchorDay);
     if (d <= today) d = new Date(year, month + 1, anchorDay);
-    return d.toISOString().split('T')[0];
+    return toLocalISO(d);
   }
   if (cadence === 'weekly') {
     // next occurrence of weekday (anchorDay 0=Sun..6=Sat)
     const d = new Date(today);
     d.setDate(d.getDate() + ((anchorDay - d.getDay() + 7) % 7 || 7));
-    return d.toISOString().split('T')[0];
+    return toLocalISO(d);
   }
   if (cadence === 'biweekly') {
     // Use anchor_day as day-of-month for first occurrence; second 14 days later
     let d = new Date(year, month, anchorDay);
     if (d <= today) d = new Date(d.getTime() + 14 * 86400000);
     if (d <= today) d = new Date(year, month + 1, anchorDay);
-    return d.toISOString().split('T')[0];
+    return toLocalISO(d);
   }
-  return today.toISOString().split('T')[0];
+  return toLocalISO(today);
 }
 
 function RuleForm({

@@ -8,6 +8,7 @@ import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/EmptyState';
 import { formatARS } from '@/lib/format';
+import { todayISO } from '@/lib/date';
 
 const ACCOUNT_TYPES = [
   { value: 'checking', label: 'Cuenta corriente' },
@@ -69,19 +70,19 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
     },
   });
 
-  const todayISO = new Date().toISOString().slice(0, 10);
-  const monthStart = todayISO.slice(0, 7) + '-01';
+  const todayStr = todayISO();
+  const monthStart = todayStr.slice(0, 7) + '-01';
 
   // Asset accounts: saldo = inicial + ingresos - gastos (hasta hoy).
   // Tarjetas: gastado en el mes actual.
   function assetBalance(accountId: string, initial: number) {
     return accountTx
-      .filter((t) => t.account_id === accountId && t.occurred_on <= todayISO)
+      .filter((t) => t.account_id === accountId && t.occurred_on <= todayStr)
       .reduce((s, t) => s + (t.type === 'income' ? t.amount : t.type === 'expense' ? -t.amount : 0), initial);
   }
   function cardMonthSpend(accountId: string) {
     return accountTx
-      .filter((t) => t.account_id === accountId && t.type === 'expense' && t.occurred_on >= monthStart && t.occurred_on <= todayISO)
+      .filter((t) => t.account_id === accountId && t.type === 'expense' && t.occurred_on >= monthStart && t.occurred_on <= todayStr)
       .reduce((s, t) => s + t.amount, 0);
   }
 

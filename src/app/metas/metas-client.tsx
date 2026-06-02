@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { formatARS, formatUSD, usdToArs } from '@/lib/format';
+import { monthKey } from '@/lib/date';
 import { useFx } from '@/hooks/useFx';
 import { useInflation } from '@/hooks/useInflation';
 import { EmptyState } from '@/components/EmptyState';
@@ -333,7 +334,7 @@ export default function MetasClient({ profile }: { profile: Profile }) {
     },
   });
 
-  const monthPrefix = new Date().toISOString().slice(0, 7);
+  const monthPrefix = monthKey();
   const { data: contribThisMonth = [] } = useQuery({
     queryKey: ['contrib-month', profile.household_id, monthPrefix],
     queryFn: async () => {

@@ -9,6 +9,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { EmptyState } from '@/components/EmptyState';
 import { exportTransactionsToCSV } from '@/lib/csvExport';
 import { formatARS } from '@/lib/format';
+import { todayISO } from '@/lib/date';
 import { toast } from 'sonner';
 import {
   BarChart,
@@ -181,7 +182,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   }
 
   function handleExport() {
-    const filename = `movimientos-${new Date().toISOString().slice(0, 10)}.csv`;
+    const filename = `movimientos-${todayISO()}.csv`;
     exportTransactionsToCSV(filtered, filename);
   }
 

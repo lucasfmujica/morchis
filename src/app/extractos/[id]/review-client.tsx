@@ -377,6 +377,8 @@ export default function ReviewClient({
     if (ok) {
       await qc.invalidateQueries({ queryKey: ['drafts', statement.id] });
       await qc.invalidateQueries({ queryKey: ['transactions'] });
+      await qc.invalidateQueries({ queryKey: ['account-tx'] });
+      await qc.invalidateQueries({ queryKey: ['spent-by-category'] });
       toast.success('Movimiento aceptado');
     }
   }
@@ -440,6 +442,8 @@ export default function ReviewClient({
 
     await qc.invalidateQueries({ queryKey: ['drafts', statement.id] });
     await qc.invalidateQueries({ queryKey: ['transactions'] });
+    await qc.invalidateQueries({ queryKey: ['account-tx'] });
+    await qc.invalidateQueries({ queryKey: ['spent-by-category'] });
     toast.success(`${highConf.length} movimientos aceptados`);
     setAccepting(false);
   }

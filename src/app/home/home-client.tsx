@@ -12,6 +12,7 @@ import { InsightTopCard } from '@/components/InsightTopCard';
 import { DonutChart } from '@/components/DonutChart';
 import { computeProjection } from '@/lib/projection';
 import { netWorthAt, type AccountRow, type AccountTx } from '@/lib/accounts';
+import { todayISO } from '@/lib/date';
 import { formatARS } from '@/lib/format';
 
 interface Profile {
@@ -368,9 +369,8 @@ export default function HomeClient({
     .map((r) => ({ label: (r.label as string) ?? 'Ingreso', amount: r.amount, cadence: (r.cadence as string) ?? 'monthly' }));
 
   // Quick-access tile values
-  const todayISO = new Date().toISOString().slice(0, 10);
-  const totalBalance = netWorthAt(accountsFull, accountTx, todayISO, arsPerUsd);
-  const monthExpenseTotal = Object.values(spentByCategory).reduce((s, v) => s + v, 0);
+  const totalBalance = netWorthAt(accountsFull, accountTx, todayISO(), arsPerUsd);
+  const monthExpenseTotal = transactions.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
   const savingsRate = incomeSoFar > 0 ? Math.round(((incomeSoFar - expensesSoFar) / incomeSoFar) * 100) : null;
 
   const quickTiles = [

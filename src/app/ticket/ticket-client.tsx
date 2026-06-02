@@ -149,6 +149,8 @@ export default function TicketClient({ profile }: { profile: Profile }) {
       }
 
       await qc.invalidateQueries({ queryKey: ['transactions'] });
+      await qc.invalidateQueries({ queryKey: ['account-tx'] });
+      await qc.invalidateQueries({ queryKey: ['spent-by-category'] });
       setStatus('done');
       toast.success('Ticket guardado ✓');
     } catch (err) {

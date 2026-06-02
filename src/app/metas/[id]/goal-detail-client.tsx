@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { formatARS, formatUSD, usdToArs, arsToUsd } from '@/lib/format';
+import { todayISO } from '@/lib/date';
 import { useFx } from '@/hooks/useFx';
 
 interface Profile {
@@ -183,7 +184,7 @@ function AportarSheet({
       goal_id: goal.id,
       profile_id: profileId,
       amount: amountArs,
-      occurred_on: new Date().toISOString().split('T')[0],
+      occurred_on: todayISO(),
       note: note || null,
     });
 
@@ -309,6 +310,7 @@ export default function GoalDetailClient({ goalId, profile }: { goalId: string; 
     qc.invalidateQueries({ queryKey: ['goal', goalId] });
     qc.invalidateQueries({ queryKey: ['goal-contributions', goalId] });
     qc.invalidateQueries({ queryKey: ['goals'] });
+    qc.invalidateQueries({ queryKey: ['contrib-month'] });
   }
 
   if (!goal) {

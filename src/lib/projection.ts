@@ -70,7 +70,7 @@ export function computeProjection(
   const currentBalance = incomeSoFar - expensesSoFar;
 
   // Remaining recurring income: next_run is within the rest of this month
-  const todayStr = today.toISOString().split('T')[0];
+  const todayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayOfMonth).padStart(2, '0')}`;
   const remainingIncome = filteredRules
     .filter(
       (r) =>

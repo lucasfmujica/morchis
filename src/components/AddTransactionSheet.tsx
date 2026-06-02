@@ -6,6 +6,7 @@ import { NumberKeypad } from '@/components/NumberKeypad';
 import { useFx } from '@/hooks/useFx';
 import { createClient } from '@/lib/supabase';
 import { formatARS, formatUSD, usdToArs } from '@/lib/format';
+import { todayISO } from '@/lib/date';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -100,7 +101,7 @@ export function AddTransactionSheet({
   }, [open, editTx, initialType]);
 
   function today() {
-    return new Date().toISOString().split('T')[0];
+    return todayISO();
   }
 
   function addMonthsISO(iso: string, k: number) {
