@@ -30,6 +30,7 @@ type Tx = {
   id: string;
   amount: number;
   type: string;
+  currency: string;
   category_id: string | null;
   account_id: string | null;
   merchant: string | null;
@@ -55,7 +56,7 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('id, amount, type, category_id, account_id, merchant, occurred_on, scope, is_shared')
+        .select('id, amount, type, currency, category_id, account_id, merchant, occurred_on, scope, is_shared')
         .eq('household_id', profile.household_id)
         .eq('category_id', category.id)
         .gte('occurred_on', rangeStart)

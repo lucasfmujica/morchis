@@ -34,6 +34,7 @@ interface Rule {
   next_run: string | null;
   active: boolean;
   scope: string;
+  profile_id: string;
   category_id: string | null;
 }
 
@@ -231,7 +232,7 @@ function RuleForm({
   onCancel,
 }: {
   initial?: Partial<Rule>;
-  onSave: (data: Omit<Rule, 'id'>) => void;
+  onSave: (data: Omit<Rule, 'id' | 'profile_id'>) => void;
   onCancel: () => void;
 }) {
   const [direction, setDirection] = useState<'income' | 'expense'>(
@@ -246,7 +247,7 @@ function RuleForm({
   const [anchorDay, setAnchorDay] = useState(
     initial?.anchor_day != null ? String(initial.anchor_day) : '1',
   );
-  const [scope, setScope] = useState(initial?.scope ?? 'household');
+  const [scope, setScope] = useState(initial?.scope ?? 'personal');
   const [active, setActive] = useState(initial?.active ?? true);
 
   function handleSave() {
@@ -445,17 +446,20 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
     },
   });
 
+  // Distinct key ('full') so it doesn't collide with the lighter ['recurring_rules',
+  // household] query the Home uses. Each user only sees their own rules plus shared
+  // household ones — the partner's personal rules (e.g. su sueldo o psicóloga) stay hidden.
   const { data: rules = [], isLoading } = useQuery({
-    queryKey: ['recurring_rules', profile.household_id],
+    queryKey: ['recurring_rules', profile.household_id, 'full'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('recurring_rules')
-        .select('id, direction, label, amount, currency, cadence, anchor_day, next_run, active, scope, category_id')
+        .select('id, direction, label, amount, currency, cadence, anchor_day, next_run, active, scope, profile_id, category_id')
         .eq('household_id', profile.household_id)
         .order('direction')
         .order('label');
       if (error) throw error;
-      return (data ?? []) as Rule[];
+      return ((data ?? []) as Rule[]).filter((r) => r.scope === 'household' || r.profile_id === profile.id);
     },
   });
 
@@ -465,7 +469,7 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
   };
 
   const createMutation = useMutation({
-    mutationFn: async (data: Omit<Rule, 'id'>) => {
+    mutationFn: async (data: Omit<Rule, 'id' | 'profile_id'>) => {
       const { error } = await supabase.from('recurring_rules').insert({
         ...data,
         household_id: profile.household_id,
@@ -479,7 +483,7 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Omit<Rule, 'id'> }) => {
+    mutationFn: async ({ id, data }: { id: string; data: Omit<Rule, 'id' | 'profile_id'> }) => {
       const { error } = await supabase.from('recurring_rules').update(data).eq('id', id);
       if (error) throw error;
     },

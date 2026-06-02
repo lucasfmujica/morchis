@@ -40,6 +40,7 @@ interface EditTx {
   id: string;
   amount: number;
   type: string;
+  currency: string;
   category_id: string | null;
   account_id: string | null;
   scope: string;
@@ -86,6 +87,7 @@ export function AddTransactionSheet({
         setIsShared(editTx.is_shared);
         setMerchant(editTx.merchant ?? '');
         setDate(editTx.occurred_on);
+        setInputUSD(editTx.currency === 'USD');
       } else {
         setRaw('');
         setTxType(initialType);
@@ -95,9 +97,9 @@ export function AddTransactionSheet({
         setIsShared(false);
         setMerchant('');
         setDate(todayISO());
+        setInputUSD(false);
       }
       setInstallments(1);
-      setInputUSD(false);
     }
   }, [open, editTx, initialType]);
 
@@ -119,10 +121,12 @@ export function AddTransactionSheet({
     setRaw((prev) => prev.slice(0, -1));
   }
 
-  const arsAmount = (() => {
-    const n = parseInt(raw || '0', 10);
-    return inputUSD ? usdToArs(n, arsPerUsd) : n;
-  })();
+  // The transaction is stored in its native currency (USD stays USD instead of
+  // being force-converted to ARS), so USD accounts/income keep correct balances.
+  const nativeAmount = parseInt(raw || '0', 10);
+  const txCurrency: 'ARS' | 'USD' = inputUSD ? 'USD' : 'ARS';
+  // ARS equivalent, used only for the couple-split math and the ≈ preview.
+  const arsAmount = inputUSD ? usdToArs(nativeAmount, arsPerUsd) : nativeAmount;
 
   const displayAmount = inputUSD
     ? formatUSD(parseInt(raw || '0', 10))
@@ -138,18 +142,18 @@ export function AddTransactionSheet({
   // split into N monthly charges.
   const canInstallments = txType === 'expense' && !editTx;
   const useInstallments = canInstallments && installments > 1;
-  const perInstallment = installments > 0 ? Math.floor(arsAmount / installments) : arsAmount;
+  const perInstallment = installments > 0 ? Math.floor(nativeAmount / installments) : nativeAmount;
 
   async function handleSave() {
-    if (arsAmount === 0) return;
+    if (nativeAmount === 0) return;
     setSaving(true);
     try {
       const payload = {
         household_id: householdId,
         profile_id: profileId,
         type: txType,
-        amount: arsAmount,
-        currency: 'ARS',
+        amount: nativeAmount,
+        currency: txCurrency,
         usd_rate_snapshot: arsPerUsd,
         category_id: categoryId,
         account_id: accountId,
@@ -169,11 +173,11 @@ export function AddTransactionSheet({
       } else if (useInstallments) {
         // Split the total into N monthly charges (one transaction per cuota).
         const groupId = crypto.randomUUID();
-        const base = Math.floor(arsAmount / installments);
+        const base = Math.floor(nativeAmount / installments);
         const rows = Array.from({ length: installments }, (_, k) => ({
           ...payload,
           // last cuota absorbs the rounding remainder
-          amount: k === installments - 1 ? arsAmount - base * (installments - 1) : base,
+          amount: k === installments - 1 ? nativeAmount - base * (installments - 1) : base,
           occurred_on: addMonthsISO(date, k),
           installment_total: installments,
           installment_number: k + 1,
@@ -192,7 +196,8 @@ export function AddTransactionSheet({
               transaction_id: t.id,
               payer_profile_id: profileId,
               ower_profile_id: partnerProfileId,
-              amount: Math.round(t.amount / 2),
+              // splits are tracked in ARS for the couple balance
+              amount: Math.round((txCurrency === 'USD' ? usdToArs(t.amount, arsPerUsd) : t.amount) / 2),
             })),
           );
         }
@@ -429,7 +434,7 @@ export function AddTransactionSheet({
           <div className="px-4 pb-6 mt-4" style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}>
             <PrimaryButton
               onClick={handleSave}
-              disabled={arsAmount === 0}
+              disabled={nativeAmount === 0}
               loading={saving}
               className="w-full py-4 text-lg"
             >

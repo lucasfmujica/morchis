@@ -367,7 +367,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
                   const bal = assetBalance(a.id, a.initial_balance ?? 0);
                   return (
                     <p className="text-sm font-black mt-1" style={{ color: bal < 0 ? '#FF7F6B' : '#5BA886' }}>
-                      {formatARS(bal)}
+                      {a.currency === 'USD' ? formatUSD(bal) : formatARS(bal)}
                       <span className="text-xs font-semibold" style={{ color: '#6B6459' }}> saldo actual</span>
                     </p>
                   );

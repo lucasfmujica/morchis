@@ -37,6 +37,7 @@ type Tx = {
   id: string;
   amount: number;
   type: string;
+  currency: string;
   category_id: string | null;
   account_id: string | null;
   scope: string;
@@ -51,7 +52,11 @@ type Tx = {
 
 export default function MovimientosClient({ profile, partnerProfileId }: MovimientosClientProps) {
   const supabase = createClient();
-  const { format, secondary, toggle, showUSD } = useFx();
+  const { format, secondary, toggle, showUSD, arsPerUsd } = useFx();
+  // Normalize a stored amount to ARS so USD and ARS movements aggregate together;
+  // format()/secondary() then render it in the active display currency.
+  const toArs = (amount: number, currency: string) =>
+    currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount;
   const qc = useQueryClient();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
@@ -92,7 +97,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('id, amount, type, category_id, account_id, scope, is_shared, merchant, occurred_on, profile_id, installment_number, installment_total, categories:category_id(name, icon)')
+        .select('id, amount, type, currency, category_id, account_id, scope, is_shared, merchant, occurred_on, profile_id, installment_number, installment_total, categories:category_id(name, icon)')
         .eq('household_id', profile.household_id)
         .order('occurred_on', { ascending: false })
         .order('created_at', { ascending: false })
@@ -145,8 +150,8 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     const now = new Date();
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const current = visibleTransactions.filter((tx) => tx.occurred_on.startsWith(month));
-    const expenses = current.filter((tx) => tx.type === 'expense').reduce((s, tx) => s + tx.amount, 0);
-    const income = current.filter((tx) => tx.type === 'income').reduce((s, tx) => s + tx.amount, 0);
+    const expenses = current.filter((tx) => tx.type === 'expense').reduce((s, tx) => s + toArs(tx.amount, tx.currency), 0);
+    const income = current.filter((tx) => tx.type === 'income').reduce((s, tx) => s + toArs(tx.amount, tx.currency), 0);
     return { expenses, income };
   }, [visibleTransactions]);
 
@@ -164,9 +169,9 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       if (tx.type !== 'expense') continue;
       const id = tx.category_id ?? '__none__';
       if (tx.occurred_on.startsWith(curMonth)) {
-        curMap.set(id, (curMap.get(id) ?? 0) + tx.amount);
+        curMap.set(id, (curMap.get(id) ?? 0) + toArs(tx.amount, tx.currency));
       } else if (tx.occurred_on.startsWith(prevMonth)) {
-        prevMap.set(id, (prevMap.get(id) ?? 0) + tx.amount);
+        prevMap.set(id, (prevMap.get(id) ?? 0) + toArs(tx.amount, tx.currency));
       }
     }
 
@@ -324,7 +329,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
           </select>
           {filterCategory !== 'all' && (
             <span className="text-xs font-black whitespace-nowrap" style={{ color: '#FF7F6B' }}>
-              {format(filtered.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0))}
+              {format(filtered.filter((t) => t.type === 'expense').reduce((s, t) => s + toArs(t.amount, t.currency), 0))}
             </span>
           )}
         </div>
@@ -389,9 +394,9 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                       className="text-base font-black"
                       style={{ color: tx.type === 'expense' ? '#FF7F6B' : '#7EC8A4' }}
                     >
-                      {tx.type === 'expense' ? '-' : '+'}{format(tx.amount)}
+                      {tx.type === 'expense' ? '-' : '+'}{format(toArs(tx.amount, tx.currency))}
                     </p>
-                    <p className="text-xs" style={{ color: '#6B6459' }}>{secondary(tx.amount)}</p>
+                    <p className="text-xs" style={{ color: '#6B6459' }}>{secondary(toArs(tx.amount, tx.currency))}</p>
                   </div>
                 </button>
               ))}
@@ -402,11 +407,13 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
 
       {/* By-category summary */}
       <CategorySummary
-        transactions={visibleTransactions.filter((tx) => {
-          const now = new Date();
-          const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-          return tx.occurred_on.startsWith(month) && tx.type === 'expense';
-        })}
+        transactions={visibleTransactions
+          .filter((tx) => {
+            const now = new Date();
+            const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            return tx.occurred_on.startsWith(month) && tx.type === 'expense';
+          })
+          .map((tx) => ({ ...tx, amount: toArs(tx.amount, tx.currency) }))}
         categories={categories}
         format={format}
       />
