@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
+import { useFx } from '@/hooks/useFx';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { formatARS } from '@/lib/format';
@@ -192,6 +193,7 @@ function BudgetSheet({
 export default function PresupuestosClient({ profile }: { profile: Profile }) {
   const supabase = createClient();
   const qc = useQueryClient();
+  const { arsPerUsd } = useFx();
   const [tab, setTab] = useState<'personal' | 'household'>('personal');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
@@ -241,19 +243,23 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   // Load this month's expense rows (with scope + owner) so each budget counts the
   // right spend: household budgets count shared expenses, personal budgets count
   // only my own personal expenses.
-  type ExpenseRow = { category_id: string | null; amount: number; scope: string; profile_id: string };
+  type ExpenseRow = { category_id: string | null; amount: number; currency: string; scope: string; profile_id: string };
   const { data: expenseRows = [] } = useQuery<ExpenseRow[]>({
     queryKey: ['budget-expense-rows', profile.household_id, monthStart],
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('category_id, amount, scope, profile_id')
+        .select('category_id, amount, currency, scope, profile_id')
         .eq('household_id', profile.household_id)
         .eq('type', 'expense')
         .gte('occurred_on', monthStart);
       return (data ?? []) as ExpenseRow[];
     },
   });
+
+  // Budgets are in ARS, so USD expenses are converted at the blue rate.
+  const toArs = (amount: number, currency: string) =>
+    currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount;
 
   function spentForBudget(b: Budget): number {
     return expenseRows
@@ -264,7 +270,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
             ? t.scope === 'household'
             : t.scope === 'personal' && t.profile_id === profile.id),
       )
-      .reduce((s, t) => s + t.amount, 0);
+      .reduce((s, t) => s + toArs(t.amount, t.currency), 0);
   }
 
   const deleteMutation = useMutation({
