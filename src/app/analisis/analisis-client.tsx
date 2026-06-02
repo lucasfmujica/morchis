@@ -28,13 +28,30 @@ const SEVERITY = {
   info: { bg: '#F0EDE8', color: '#6B6459', icon: '💡' },
 } as const;
 
-export default function AnalisisClient({ profile }: { profile: Profile }) {
+export default function AnalisisClient({
+  profile,
+  partnerProfileId,
+  partnerName,
+}: {
+  profile: Profile;
+  partnerProfileId?: string;
+  partnerName?: string;
+}) {
   const supabase = createClient();
   const qc = useQueryClient();
   const { arsPerUsd } = useFx();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   const [refreshing, setRefreshing] = useState(false);
+  // scope: 'me' (Mío) | 'all' (Nuestro) | 'partner' — default to "Mío"
+  const [scope, setScope] = useState<'me' | 'all' | 'partner'>('me');
+  const scopeProfileId =
+    scope === 'me' ? profile.id : scope === 'partner' ? partnerProfileId : undefined;
+  const scopeTabs = [
+    { key: 'me' as const, label: 'Mío' },
+    { key: 'all' as const, label: 'Nuestro' },
+    ...(partnerProfileId ? [{ key: 'partner' as const, label: partnerName || 'Sofi' }] : []),
+  ];
 
   const today = new Date();
   const months = lastSixMonths(today);
@@ -82,7 +99,7 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
     queryFn: async () => {
       const { data } = await supabase
         .from('accounts')
-        .select('id, type, currency, archived, initial_balance')
+        .select('id, type, currency, archived, initial_balance, owner_profile_id')
         .eq('household_id', profile.household_id);
       return (data ?? []) as AccountRow[];
     },
@@ -117,10 +134,14 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
   const toArs = (amount: number, currency?: string | null) =>
     currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount;
 
+  // Respect the Mío/Nuestro/pareja scope.
+  const scopedTxns = scopeProfileId ? txns.filter((t) => t.profile_id === scopeProfileId) : txns;
+  const scopedAccounts = scopeProfileId ? accounts.filter((a) => a.owner_profile_id === scopeProfileId) : accounts;
+
   // Category breakdown — current month expenses
   const catById = new Map(categories.map((c) => [c.id, c]));
   const spentByCat = new Map<string, number>();
-  for (const t of txns) {
+  for (const t of scopedTxns) {
     if (t.type !== 'expense' || !t.occurred_on.startsWith(currentKey) || !t.category_id) continue;
     spentByCat.set(t.category_id, (spentByCat.get(t.category_id) ?? 0) + toArs(t.amount, t.currency));
   }
@@ -151,7 +172,7 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
 
   // Per-person comparison — current-month expenses by profile
   const spentByPerson = new Map<string, number>();
-  for (const t of txns) {
+  for (const t of scopedTxns) {
     if (t.type !== 'expense' || !t.occurred_on.startsWith(currentKey) || !t.profile_id) continue;
     spentByPerson.set(t.profile_id, (spentByPerson.get(t.profile_id) ?? 0) + toArs(t.amount, t.currency));
   }
@@ -169,7 +190,7 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
   const trendRows = months.map((m) => {
     let income = 0;
     let expense = 0;
-    for (const t of txns) {
+    for (const t of scopedTxns) {
       if (!t.occurred_on.startsWith(m.key)) continue;
       if (t.type === 'income') income += toArs(t.amount, t.currency);
       else if (t.type === 'expense') expense += toArs(t.amount, t.currency);
@@ -187,7 +208,7 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
     const [y, mo] = m.key.split('-').map(Number);
     const monthEnd = toLocalISO(new Date(y, mo, 0));
     const asOf = monthEnd > todayStr ? todayStr : monthEnd;
-    return { key: m.key, label: m.label, value: netWorthAt(accounts, accountTx, asOf, arsPerUsd) };
+    return { key: m.key, label: m.label, value: netWorthAt(scopedAccounts, accountTx, asOf, arsPerUsd) };
   });
   const currentNetWorth = nwRows[nwRows.length - 1]?.value ?? 0;
   const prevMonthKey = months[months.length - 2]?.key;
@@ -215,6 +236,23 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
       <header className="px-5 pt-14 pb-4">
         <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Análisis 📊</h1>
       </header>
+
+      {/* Scope toggle: Mío / Nuestro / pareja */}
+      <div className="mx-4 mb-3 flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#ECE5DC' }}>
+        {scopeTabs.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setScope(tab.key)}
+            className="flex-1 py-1.5 text-xs font-bold rounded-xl transition-colors"
+            style={{
+              background: scope === tab.key ? '#FFFFFF' : 'transparent',
+              color: scope === tab.key ? '#2D2D2D' : '#6B6459',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
       <div className="px-4 flex flex-col gap-4">
         {/* Net worth */}

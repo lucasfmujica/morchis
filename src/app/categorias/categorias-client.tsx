@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
+import { useFx } from '@/hooks/useFx';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { toast } from 'sonner';
@@ -24,6 +25,7 @@ interface Profile {
 export default function CategoriasClient({ profile }: { profile: Profile }) {
   const supabase = createClient();
   const qc = useQueryClient();
+  const { arsPerUsd } = useFx();
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -49,18 +51,21 @@ export default function CategoriasClient({ profile }: { profile: Profile }) {
   const monthStart = monthKey() + '-01';
 
   // This month's totals per category (expense + income).
+  // Own key (not the Home's 'spent-by-category', which is expenses-only) so the
+  // two don't overwrite each other's cache. Includes income + expense per category.
   const { data: monthByCategory = {} } = useQuery<Record<string, number>>({
-    queryKey: ['spent-by-category', profile.household_id, monthStart],
+    queryKey: ['category-month-totals', profile.household_id, monthStart, arsPerUsd],
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('category_id, amount')
+        .select('category_id, amount, currency')
         .eq('household_id', profile.household_id)
         .gte('occurred_on', monthStart);
       const map: Record<string, number> = {};
       for (const t of data ?? []) {
         if (!t.category_id) continue;
-        map[t.category_id] = (map[t.category_id] ?? 0) + t.amount;
+        const amt = t.currency === 'USD' && arsPerUsd > 0 ? Math.round(t.amount * arsPerUsd) : t.amount;
+        map[t.category_id] = (map[t.category_id] ?? 0) + amt;
       }
       return map;
     },

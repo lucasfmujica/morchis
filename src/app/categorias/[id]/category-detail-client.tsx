@@ -41,7 +41,9 @@ type Tx = {
 
 export default function CategoryDetailClient({ profile, category }: { profile: Profile; category: Category }) {
   const supabase = createClient();
-  const { format } = useFx();
+  const { format, arsPerUsd } = useFx();
+  const toArs = (amount: number, currency: string) =>
+    currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editTx, setEditTx] = useState<Tx | null>(null);
 
@@ -117,7 +119,7 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
   const monthRows = months.map((m) => ({
     key: m.key,
     label: m.label,
-    value: txns.filter((t) => t.occurred_on.startsWith(m.key)).reduce((s, t) => s + t.amount, 0),
+    value: txns.filter((t) => t.occurred_on.startsWith(m.key)).reduce((s, t) => s + toArs(t.amount, t.currency), 0),
   }));
   const thisMonth = monthRows[monthRows.length - 1].value;
   const monthsWithData = monthRows.filter((r) => r.value > 0);
@@ -213,7 +215,7 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
                     <p className="text-xs" style={{ color: '#6B6459' }}>{fmtDate(tx.occurred_on)}{tx.is_shared ? ' · compartido' : ''}</p>
                   </div>
                   <p className="text-base font-black" style={{ color: tx.type === 'expense' ? '#FF7F6B' : '#7EC8A4' }}>
-                    {tx.type === 'expense' ? '-' : '+'}{format(tx.amount)}
+                    {tx.type === 'expense' ? '-' : '+'}{format(toArs(tx.amount, tx.currency))}
                   </p>
                 </button>
               ))}

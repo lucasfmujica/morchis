@@ -178,7 +178,7 @@ export default function ParejaClient({
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('amount, type, scope, profile_id, category_id, is_shared, categories(name, icon)')
+        .select('amount, type, currency, scope, profile_id, category_id, is_shared, categories(name, icon)')
         .eq('household_id', profile.household_id)
         .gte('occurred_on', monthStart)
         .order('occurred_on', { ascending: false });
@@ -187,13 +187,16 @@ export default function ParejaClient({
   });
 
   const allTx = txData ?? [];
+  // Normalize USD→ARS so combined couple totals are in one currency.
+  const toArs = (amount: number, currency?: string | null) =>
+    currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount;
   const expenses = allTx.filter((t) => t.type === 'expense');
   const incomes = allTx.filter((t) => t.type === 'income');
-  const totalExpenses = expenses.reduce((s, t) => s + t.amount, 0);
-  const totalIncome = incomes.reduce((s, t) => s + t.amount, 0);
-  const householdExpenses = expenses.filter((t) => t.scope === 'household').reduce((s, t) => s + t.amount, 0);
-  const personalExpenses = expenses.filter((t) => t.scope === 'personal').reduce((s, t) => s + t.amount, 0);
-  const sharedExpenses = expenses.filter((t) => t.is_shared).reduce((s, t) => s + t.amount, 0);
+  const totalExpenses = expenses.reduce((s, t) => s + toArs(t.amount, t.currency), 0);
+  const totalIncome = incomes.reduce((s, t) => s + toArs(t.amount, t.currency), 0);
+  const householdExpenses = expenses.filter((t) => t.scope === 'household').reduce((s, t) => s + toArs(t.amount, t.currency), 0);
+  const personalExpenses = expenses.filter((t) => t.scope === 'personal').reduce((s, t) => s + toArs(t.amount, t.currency), 0);
+  const sharedExpenses = expenses.filter((t) => t.is_shared).reduce((s, t) => s + toArs(t.amount, t.currency), 0);
 
   // Category breakdown for shared expenses
   const sharedByCategory: Record<string, { name: string; icon: string; amount: number }> = {};
@@ -203,7 +206,7 @@ export default function ParejaClient({
     if (!sharedByCategory[key]) {
       sharedByCategory[key] = { name: cat?.name ?? 'Sin categoría', icon: cat?.icon ?? '🏷️', amount: 0 };
     }
-    sharedByCategory[key].amount += t.amount;
+    sharedByCategory[key].amount += toArs(t.amount, t.currency);
   }
   const sharedCats = Object.values(sharedByCategory).sort((a, b) => b.amount - a.amount);
 

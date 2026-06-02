@@ -222,6 +222,8 @@ export function AddTransactionSheet({
       await qc.invalidateQueries({ queryKey: ['transactions'] });
       await qc.invalidateQueries({ queryKey: ['account-tx'] });
       await qc.invalidateQueries({ queryKey: ['spent-by-category'] });
+      await qc.invalidateQueries({ queryKey: ['category-month-totals'] });
+      await qc.invalidateQueries({ queryKey: ['budget-expense-rows'] });
       await qc.invalidateQueries({ queryKey: ['summary'] });
       await qc.invalidateQueries({ queryKey: ['projection'] });
       await qc.invalidateQueries({ queryKey: ['couple-balance'] });

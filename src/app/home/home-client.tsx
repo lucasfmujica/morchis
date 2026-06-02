@@ -315,18 +315,19 @@ export default function HomeClient({
   });
 
   const { data: spentByCategory = {} } = useQuery<Record<string, number>>({
-    queryKey: ['spent-by-category', profile.household_id, monthStart],
+    queryKey: ['spent-by-category', profile.household_id, monthStart, arsPerUsd],
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('category_id, amount')
+        .select('category_id, amount, currency')
         .eq('household_id', profile.household_id)
         .eq('type', 'expense')
         .gte('occurred_on', monthStart);
       const map: Record<string, number> = {};
       for (const t of data ?? []) {
         if (!t.category_id) continue;
-        map[t.category_id] = (map[t.category_id] ?? 0) + t.amount;
+        const amt = t.currency === 'USD' && arsPerUsd > 0 ? Math.round(t.amount * arsPerUsd) : t.amount;
+        map[t.category_id] = (map[t.category_id] ?? 0) + amt;
       }
       return map;
     },

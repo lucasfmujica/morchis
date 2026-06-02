@@ -15,5 +15,22 @@ export default async function AnalisisPage() {
 
   if (!profile?.household_id) redirect('/household');
 
-  return <AnalisisClient profile={profile as Parameters<typeof AnalisisClient>[0]['profile']} />;
+  const { data: householdMembers } = await supabase
+    .from('profiles')
+    .select('id, nickname, display_name')
+    .eq('household_id', profile.household_id)
+    .neq('id', user.id)
+    .limit(1);
+
+  const partner = householdMembers?.[0];
+  const partnerProfileId = partner?.id;
+  const partnerName = partner?.nickname || partner?.display_name || undefined;
+
+  return (
+    <AnalisisClient
+      profile={profile as Parameters<typeof AnalisisClient>[0]['profile']}
+      partnerProfileId={partnerProfileId}
+      partnerName={partnerName}
+    />
+  );
 }
