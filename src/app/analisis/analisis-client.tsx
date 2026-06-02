@@ -59,7 +59,7 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('amount, type, occurred_on, category_id, profile_id')
+        .select('amount, type, occurred_on, category_id, profile_id, currency')
         .eq('household_id', profile.household_id)
         .gte('occurred_on', rangeStart);
       return data ?? [];
@@ -113,12 +113,16 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
     },
   });
 
+  // USD amounts are converted to ARS so charts/totals are in one currency.
+  const toArs = (amount: number, currency?: string | null) =>
+    currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount;
+
   // Category breakdown — current month expenses
   const catById = new Map(categories.map((c) => [c.id, c]));
   const spentByCat = new Map<string, number>();
   for (const t of txns) {
     if (t.type !== 'expense' || !t.occurred_on.startsWith(currentKey) || !t.category_id) continue;
-    spentByCat.set(t.category_id, (spentByCat.get(t.category_id) ?? 0) + t.amount);
+    spentByCat.set(t.category_id, (spentByCat.get(t.category_id) ?? 0) + toArs(t.amount, t.currency));
   }
   const catRows = [...spentByCat.entries()]
     .map(([id, value]) => ({ id, cat: catById.get(id), value }))
@@ -149,7 +153,7 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
   const spentByPerson = new Map<string, number>();
   for (const t of txns) {
     if (t.type !== 'expense' || !t.occurred_on.startsWith(currentKey) || !t.profile_id) continue;
-    spentByPerson.set(t.profile_id, (spentByPerson.get(t.profile_id) ?? 0) + t.amount);
+    spentByPerson.set(t.profile_id, (spentByPerson.get(t.profile_id) ?? 0) + toArs(t.amount, t.currency));
   }
   const memberName = (id: string) => {
     const m = members.find((x) => x.id === id);
@@ -167,22 +171,28 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
     let expense = 0;
     for (const t of txns) {
       if (!t.occurred_on.startsWith(m.key)) continue;
-      if (t.type === 'income') income += t.amount;
-      else if (t.type === 'expense') expense += t.amount;
+      if (t.type === 'income') income += toArs(t.amount, t.currency);
+      else if (t.type === 'expense') expense += toArs(t.amount, t.currency);
     }
     return { ...m, income, expense, rate: income > 0 ? (income - expense) / income : null };
   });
 
-  // 6-month net worth
+  // 6-month net worth. We only have current balances (initial_balance is a "now"
+  // snapshot), so we can't reconstruct net worth for months before there was any
+  // activity — those would wrongly show the full balance. Blank them out.
+  const allDates = [...txns.map((t) => t.occurred_on), ...accountTx.map((t) => t.occurred_on)];
+  const firstDataMonth = allDates.length ? allDates.reduce((a, b) => (a < b ? a : b)).slice(0, 7) : currentKey;
   const nwRows = months.map((m) => {
+    if (m.key < firstDataMonth) return { key: m.key, label: m.label, value: 0 };
     const [y, mo] = m.key.split('-').map(Number);
     const monthEnd = toLocalISO(new Date(y, mo, 0));
     const asOf = monthEnd > todayStr ? todayStr : monthEnd;
     return { key: m.key, label: m.label, value: netWorthAt(accounts, accountTx, asOf, arsPerUsd) };
   });
   const currentNetWorth = nwRows[nwRows.length - 1]?.value ?? 0;
-  const prevNetWorth = nwRows[nwRows.length - 2]?.value ?? 0;
-  const nwDelta = currentNetWorth - prevNetWorth;
+  const prevMonthKey = months[months.length - 2]?.key;
+  const prevHasData = prevMonthKey != null && prevMonthKey >= firstDataMonth;
+  const nwDelta = prevHasData ? currentNetWorth - (nwRows[nwRows.length - 2]?.value ?? 0) : null;
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -214,12 +224,14 @@ export default function AnalisisClient({ profile }: { profile: Profile }) {
             <p className="text-3xl font-black leading-none" style={{ color: '#2D2D2D', fontVariantNumeric: 'tabular-nums' }}>
               {formatARS(currentNetWorth)}
             </p>
-            <span
-              className="text-xs font-bold px-2 py-1 rounded-full"
-              style={{ background: nwDelta >= 0 ? '#E4F2EA' : '#FFE7E2', color: nwDelta >= 0 ? '#5BA886' : '#E5604C' }}
-            >
-              {nwDelta >= 0 ? '▲' : '▼'} {formatARS(Math.abs(nwDelta))} vs mes ant.
-            </span>
+            {nwDelta != null && (
+              <span
+                className="text-xs font-bold px-2 py-1 rounded-full"
+                style={{ background: nwDelta >= 0 ? '#E4F2EA' : '#FFE7E2', color: nwDelta >= 0 ? '#5BA886' : '#E5604C' }}
+              >
+                {nwDelta >= 0 ? '▲' : '▼'} {formatARS(Math.abs(nwDelta))} vs mes ant.
+              </span>
+            )}
           </div>
           <SingleBars rows={nwRows} color="#7EC8A4" />
         </div>

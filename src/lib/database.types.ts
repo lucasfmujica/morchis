@@ -82,6 +82,7 @@ export type Database = {
           active: boolean
           amount: number
           category_id: string
+          currency: string
           household_id: string
           id: string
           period: string
@@ -92,6 +93,7 @@ export type Database = {
           active?: boolean
           amount: number
           category_id: string
+          currency?: string
           household_id: string
           id?: string
           period?: string
@@ -102,6 +104,7 @@ export type Database = {
           active?: boolean
           amount?: number
           category_id?: string
+          currency?: string
           household_id?: string
           id?: string
           period?: string

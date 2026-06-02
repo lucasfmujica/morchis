@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
-import { formatARS } from '@/lib/format';
+import { formatARS, formatUSD } from '@/lib/format';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { EmptyState } from '@/components/EmptyState';
@@ -24,6 +24,7 @@ interface Budget {
   scope: string;
   profile_id: string | null;
   amount: number;
+  currency: string;
   active: boolean;
 }
 
@@ -40,10 +41,14 @@ function barColor(pct: number): string {
   return '#7EC8A4';
 }
 
-function BudgetBar({ spent, limit }: { spent: number; limit: number }) {
-  const pct = limit > 0 ? Math.min(spent / limit, 1) : 0;
-  const over = limit > 0 && spent > limit;
-  const color = barColor(limit > 0 ? spent / limit : 0);
+// `spent` and `limitArs` are both in ARS for the math; we render them in the
+// budget's own currency (so a USD budget shows US$).
+function BudgetBar({ spent, limitArs, currency, arsPerUsd }: { spent: number; limitArs: number; currency: string; arsPerUsd: number }) {
+  const pct = limitArs > 0 ? Math.min(spent / limitArs, 1) : 0;
+  const over = limitArs > 0 && spent > limitArs;
+  const color = barColor(limitArs > 0 ? spent / limitArs : 0);
+  const fmt = (ars: number) =>
+    currency === 'USD' && arsPerUsd > 0 ? formatUSD(Math.round(ars / arsPerUsd)) : formatARS(ars);
 
   return (
     <div>
@@ -55,10 +60,10 @@ function BudgetBar({ spent, limit }: { spent: number; limit: number }) {
       </div>
       <div className="flex justify-between mt-1">
         <span className="text-xs font-semibold" style={{ color }}>
-          {formatARS(spent)} gastado
+          {fmt(spent)} gastado
         </span>
         <span className="text-xs" style={{ color: over ? '#FF7F6B' : '#6B6459' }}>
-          {over ? `+${formatARS(spent - limit)} excedido` : `de ${formatARS(limit)}`}
+          {over ? `+${fmt(spent - limitArs)} excedido` : `de ${fmt(limitArs)}`}
         </span>
       </div>
     </div>
@@ -88,6 +93,7 @@ function BudgetSheet({
   const [scope, setScope] = useState<'personal' | 'household'>(
     (editing?.scope as 'personal' | 'household') ?? 'personal',
   );
+  const [currency, setCurrency] = useState<'ARS' | 'USD'>((editing?.currency as 'ARS' | 'USD') ?? 'ARS');
   const [saving, setSaving] = useState(false);
 
   async function save() {
@@ -99,6 +105,7 @@ function BudgetSheet({
       scope,
       profile_id: scope === 'personal' ? profileId : null,
       amount: parseInt(amount.replace(/\D/g, ''), 10),
+      currency,
       period: 'monthly',
       active: true,
     };
@@ -163,12 +170,30 @@ function BudgetSheet({
           ))}
         </div>
 
+        {/* Currency */}
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Moneda</p>
+        <div className="flex rounded-2xl overflow-hidden mb-4 p-1 gap-1" style={{ background: '#ECE5DC' }}>
+          {(['ARS', 'USD'] as const).map((c) => (
+            <button
+              key={c}
+              onClick={() => setCurrency(c)}
+              className="flex-1 py-1.5 text-xs font-bold rounded-xl transition-colors"
+              style={{
+                background: currency === c ? '#FFFFFF' : 'transparent',
+                color: currency === c ? '#2D2D2D' : '#6B6459',
+              }}
+            >
+              {c === 'ARS' ? 'ARS (Pesos)' : 'USD (Dólares)'}
+            </button>
+          ))}
+        </div>
+
         {/* Amount */}
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Límite mensual (ARS)</p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Límite mensual ({currency})</p>
         <MoneyInput
           value={amount ? parseInt(amount.replace(/\D/g, ''), 10) || 0 : 0}
           onChange={(n) => setAmount(n ? String(n) : '')}
-          placeholder="Ej: 50.000"
+          placeholder={currency === 'USD' ? 'Ej: 440' : 'Ej: 50.000'}
           className="w-full rounded-2xl px-4 py-3 text-lg font-bold mb-5 outline-none border-2 transition-colors"
           style={{
             background: '#F9F5F0',
@@ -340,7 +365,8 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
           filteredBudgets.map((b) => {
             const cat = catMap[b.category_id];
             const spent = spentForBudget(b);
-            const over = spent > b.amount;
+            const limitArs = toArs(b.amount, b.currency);
+            const over = spent > limitArs;
             return (
               <div key={b.id} className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
                 <div className="flex items-center justify-between mb-3">
@@ -375,7 +401,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
                     </button>
                   </div>
                 </div>
-                <BudgetBar spent={spent} limit={b.amount} />
+                <BudgetBar spent={spent} limitArs={limitArs} currency={b.currency} arsPerUsd={arsPerUsd} />
               </div>
             );
           })
