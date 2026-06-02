@@ -8,6 +8,7 @@ import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { toast } from 'sonner';
 import { formatARS } from '@/lib/format';
 import { monthKey } from '@/lib/date';
+import { PrimaryButton } from '@/components/PrimaryButton';
 import Link from 'next/link';
 
 const ICONS = ['🛒', '🍕', '🚇', '💊', '🎭', '📚', '✈️', '🏠', '💼', '💵', '📱', '💻', '👗', '🏷️', '💰', '🎯', '🎮', '🐾', '🌿', '⚽'];
@@ -199,14 +200,14 @@ export default function CategoriasClient({ profile }: { profile: Profile }) {
               >
                 Cancelar
               </button>
-              <button
+              <PrimaryButton
                 onClick={handleSave}
-                disabled={saving}
-                className="flex-1 py-3 rounded-2xl text-sm font-bold text-white disabled:opacity-40"
-                style={{ background: '#7EC8A4' }}
+                disabled={!name.trim()}
+                loading={saving}
+                className="flex-1 py-3 text-sm"
               >
                 {saving ? 'Guardando…' : 'Guardar'}
-              </button>
+              </PrimaryButton>
             </div>
           </div>
         </div>

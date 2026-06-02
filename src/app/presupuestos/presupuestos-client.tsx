@@ -7,6 +7,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { formatARS } from '@/lib/format';
 import { MoneyInput } from '@/components/MoneyInput';
+import { PrimaryButton } from '@/components/PrimaryButton';
 import { EmptyState } from '@/components/EmptyState';
 
 interface Profile {
@@ -175,14 +176,14 @@ function BudgetSheet({
           }}
         />
 
-        <button
+        <PrimaryButton
           onClick={save}
-          disabled={saving || !categoryId || !amount}
-          className="w-full py-4 rounded-2xl font-bold text-white"
-          style={{ background: saving || !categoryId || !amount ? '#ECE5DC' : '#7EC8A4' }}
+          disabled={!categoryId || !amount}
+          loading={saving}
+          className="w-full py-4"
         >
           {saving ? 'Guardando…' : 'Guardar'}
-        </button>
+        </PrimaryButton>
       </div>
     </div>
   );

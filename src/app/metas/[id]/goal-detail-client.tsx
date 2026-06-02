@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase';
 import { formatARS, formatUSD, usdToArs, arsToUsd } from '@/lib/format';
 import { todayISO } from '@/lib/date';
 import { MoneyInput } from '@/components/MoneyInput';
+import { PrimaryButton } from '@/components/PrimaryButton';
 import { useFx } from '@/hooks/useFx';
 
 interface Profile {
@@ -250,14 +251,14 @@ function AportarSheet({
           style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: note ? '#7EC8A4' : '#ECE5DC' }}
         />
 
-        <button
+        <PrimaryButton
           onClick={save}
-          disabled={saving || !amountNum}
-          className="w-full py-4 rounded-2xl font-bold text-white"
-          style={{ background: saving || !amountNum ? '#ECE5DC' : '#7EC8A4' }}
+          disabled={!amountNum}
+          loading={saving}
+          className="w-full py-4"
         >
           {saving ? 'Guardando…' : 'Aportar'}
-        </button>
+        </PrimaryButton>
       </div>
     </div>
   );

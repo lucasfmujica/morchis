@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { BottomNav } from '@/components/BottomNav';
 import { MoneyInput } from '@/components/MoneyInput';
+import { PrimaryButton } from '@/components/PrimaryButton';
 import { formatARS } from '@/lib/format';
 import { toast } from 'sonner';
 import Link from 'next/link';
@@ -323,13 +324,13 @@ export default function TicketClient({ profile }: { profile: Profile }) {
               </div>
             </div>
 
-            <button
+            <PrimaryButton
               onClick={handleSave}
-              className="w-full py-4 rounded-2xl text-sm font-bold text-white"
-              style={{ background: '#7EC8A4' }}
+              disabled={receipt.total <= 0}
+              className="w-full py-4 text-sm"
             >
               Guardar gasto de {formatARS(receipt.total)}
-            </button>
+            </PrimaryButton>
             <button
               onClick={() => { setReceipt(null); setStatus('idle'); }}
               className="w-full py-3 rounded-2xl text-sm font-bold"

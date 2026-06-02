@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { formatARS } from '@/lib/format';
 import { todayISO } from '@/lib/date';
 import { MoneyInput } from '@/components/MoneyInput';
+import { PrimaryButton } from '@/components/PrimaryButton';
 
 const ACCOUNT_TYPES = [
   { value: 'checking', label: 'Cuenta corriente' },
@@ -214,14 +215,14 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
               >
                 Cancelar
               </button>
-              <button
+              <PrimaryButton
                 onClick={handleSave}
-                disabled={saving}
-                className="flex-1 py-3 rounded-2xl text-sm font-bold text-white disabled:opacity-40"
-                style={{ background: '#7EC8A4' }}
+                disabled={!name.trim()}
+                loading={saving}
+                className="flex-1 py-3 text-sm"
               >
                 {saving ? 'Guardando…' : 'Guardar'}
-              </button>
+              </PrimaryButton>
             </div>
           </div>
         </div>

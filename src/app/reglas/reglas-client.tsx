@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase';
 import { formatARS } from '@/lib/format';
 import { toLocalISO } from '@/lib/date';
 import { MoneyInput } from '@/components/MoneyInput';
+import { PrimaryButton } from '@/components/PrimaryButton';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
@@ -335,13 +336,13 @@ function RuleForm({
         >
           Cancelar
         </button>
-        <button
+        <PrimaryButton
           onClick={handleSave}
-          className="flex-1 py-3 rounded-2xl text-sm font-bold text-white"
-          style={{ background: '#7EC8A4' }}
+          disabled={!label.trim() || !(parseInt(amountStr, 10) > 0)}
+          className="flex-1 py-3 text-sm"
         >
           Guardar
-        </button>
+        </PrimaryButton>
       </div>
     </div>
   );

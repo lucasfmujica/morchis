@@ -6,6 +6,7 @@ import { NumberKeypad } from '@/components/NumberKeypad';
 import { useFx } from '@/hooks/useFx';
 import { createClient } from '@/lib/supabase';
 import { formatARS, formatUSD, usdToArs } from '@/lib/format';
+import { PrimaryButton } from '@/components/PrimaryButton';
 import { todayISO } from '@/lib/date';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -422,14 +423,14 @@ export function AddTransactionSheet({
 
           {/* Save button */}
           <div className="px-4 pb-6 mt-4" style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}>
-            <button
+            <PrimaryButton
               onClick={handleSave}
-              disabled={arsAmount === 0 || saving}
-              className="w-full py-4 rounded-2xl text-lg font-black text-white disabled:opacity-40 transition-opacity"
-              style={{ background: '#7EC8A4' }}
+              disabled={arsAmount === 0}
+              loading={saving}
+              className="w-full py-4 text-lg"
             >
               {saving ? 'Guardando…' : 'Guardar'}
-            </button>
+            </PrimaryButton>
           </div>
         </div>
       </SheetContent>
