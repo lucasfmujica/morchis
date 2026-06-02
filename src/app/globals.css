@@ -1,26 +1,81 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* Morchis design tokens */
+  --color-sage: #7EC8A4;
+  --color-sage-soft: #E4F2EA;
+  --color-sage-deep: #5BA886;
+  --color-cream: #F9F5F0;
+  --color-coral: #FF7F6B;
+  --color-coral-soft: #FFE7E2;
+  --color-coral-deep: #E5604C;
+  --color-charcoal: #2D2D2D;
+  --color-surface: #FFFFFF;
+  --color-muted-text: #8A8276;
+  --color-hairline: #ECE5DC;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-nunito), system-ui, sans-serif;
+  --font-nunito: var(--font-nunito);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  /* Map Morchis tokens to shadcn variables */
+  --background: #F9F5F0;
+  --foreground: #2D2D2D;
+  --card: #FFFFFF;
+  --card-foreground: #2D2D2D;
+  --popover: #FFFFFF;
+  --popover-foreground: #2D2D2D;
+  --primary: #7EC8A4;
+  --primary-foreground: #FFFFFF;
+  --secondary: #E4F2EA;
+  --secondary-foreground: #2D2D2D;
+  --muted: #E4F2EA;
+  --muted-foreground: #8A8276;
+  --accent: #FFE7E2;
+  --accent-foreground: #2D2D2D;
+  --destructive: #FF7F6B;
+  --border: #ECE5DC;
+  --input: #ECE5DC;
+  --ring: #7EC8A4;
+  --radius: 1rem;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-nunito), system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
 }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}

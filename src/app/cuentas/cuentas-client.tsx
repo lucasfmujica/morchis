@@ -1,0 +1,229 @@
+'use client';
+
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { createClient } from '@/lib/supabase';
+import { BottomNav } from '@/components/BottomNav';
+import { AddTransactionSheet } from '@/components/AddTransactionSheet';
+import { toast } from 'sonner';
+
+const ACCOUNT_TYPES = [
+  { value: 'checking', label: 'Cuenta corriente' },
+  { value: 'savings', label: 'Caja de ahorro' },
+  { value: 'cash', label: 'Efectivo' },
+  { value: 'credit', label: 'Tarjeta de crédito' },
+];
+
+interface Profile {
+  id: string;
+  household_id: string;
+  nickname: string | null;
+  display_name: string | null;
+}
+
+export default function CuentasClient({ profile }: { profile: Profile }) {
+  const supabase = createClient();
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const [type, setType] = useState('checking');
+  const [currency, setCurrency] = useState('ARS');
+  const [saving, setSaving] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  const { data: categories = [] } = useQuery({
+    queryKey: ['categories', profile.household_id],
+    queryFn: async () => {
+      const { data } = await supabase.from('categories').select('id, name, icon, kind').eq('household_id', profile.household_id).order('name');
+      return data ?? [];
+    },
+  });
+
+  const { data: accounts = [] } = useQuery({
+    queryKey: ['accounts', profile.household_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('accounts')
+        .select('id, name, type, currency, archived, owner_profile_id')
+        .eq('household_id', profile.household_id)
+        .order('name');
+      return data ?? [];
+    },
+  });
+
+  function openNew() {
+    setEditId(null);
+    setName('');
+    setType('checking');
+    setCurrency('ARS');
+    setShowForm(true);
+  }
+
+  function openEdit(a: (typeof accounts)[0]) {
+    setEditId(a.id);
+    setName(a.name);
+    setType(a.type);
+    setCurrency(a.currency);
+    setShowForm(true);
+  }
+
+  async function handleSave() {
+    if (!name.trim()) { toast.error('Ingresá un nombre.'); return; }
+    setSaving(true);
+    try {
+      if (editId) {
+        const { error } = await supabase.from('accounts').update({ name: name.trim(), type, currency }).eq('id', editId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('accounts').insert({
+          household_id: profile.household_id,
+          owner_profile_id: profile.id,
+          name: name.trim(),
+          type,
+          currency,
+          archived: false,
+        });
+        if (error) throw error;
+      }
+      await qc.invalidateQueries({ queryKey: ['accounts'] });
+      toast.success(editId ? 'Cuenta actualizada ✓' : 'Cuenta creada ✓');
+      setShowForm(false);
+    } catch (e) {
+      toast.error('No se pudo guardar.');
+      console.error(e);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleArchive(id: string, archived: boolean) {
+    const { error } = await supabase.from('accounts').update({ archived: !archived }).eq('id', id);
+    if (error) { toast.error('Error al actualizar.'); return; }
+    await qc.invalidateQueries({ queryKey: ['accounts'] });
+    toast.success(!archived ? 'Cuenta archivada' : 'Cuenta restaurada');
+  }
+
+  return (
+    <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
+      <header className="px-5 pt-14 pb-4 flex items-center justify-between">
+        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Cuentas</h1>
+        <button
+          onClick={openNew}
+          className="text-sm font-bold px-4 py-2 rounded-2xl text-white"
+          style={{ background: '#7EC8A4' }}
+        >
+          + Nueva
+        </button>
+      </header>
+
+      {showForm && (
+        <div className="mx-4 mb-4 rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+          <p className="text-base font-black mb-4" style={{ color: '#2D2D2D' }}>
+            {editId ? 'Editar cuenta' : 'Nueva cuenta'}
+          </p>
+          <div className="flex flex-col gap-3">
+            <input
+              type="text"
+              placeholder="Nombre (ej: Cuenta Galicia)"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="px-4 py-3 rounded-2xl border text-sm outline-none"
+              style={{ borderColor: '#ECE5DC' }}
+            />
+            <select
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              className="px-4 py-3 rounded-2xl border text-sm bg-white"
+              style={{ borderColor: '#ECE5DC' }}
+            >
+              {ACCOUNT_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+            <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              className="px-4 py-3 rounded-2xl border text-sm bg-white"
+              style={{ borderColor: '#ECE5DC' }}
+            >
+              <option value="ARS">ARS (Pesos)</option>
+              <option value="USD">USD (Dólares)</option>
+            </select>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowForm(false)}
+                className="flex-1 py-3 rounded-2xl border text-sm font-bold"
+                style={{ borderColor: '#ECE5DC', color: '#8A8276' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex-1 py-3 rounded-2xl text-sm font-bold text-white disabled:opacity-40"
+                style={{ background: '#7EC8A4' }}
+              >
+                {saving ? 'Guardando…' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="px-4 flex flex-col gap-3">
+        {accounts.length === 0 && !showForm && (
+          <div className="text-center py-16">
+            <p className="text-4xl mb-3">🏦</p>
+            <p className="text-base font-semibold" style={{ color: '#2D2D2D' }}>Sin cuentas todavía</p>
+            <p className="text-sm mt-1" style={{ color: '#8A8276' }}>Agregá tu primera cuenta arriba.</p>
+          </div>
+        )}
+        {accounts.map((a) => (
+          <div
+            key={a.id}
+            className="rounded-3xl px-5 py-4 flex items-center gap-3"
+            style={{ background: '#FFFFFF', opacity: a.archived ? 0.5 : 1 }}
+          >
+            <span className="text-2xl">{a.type === 'cash' ? '💵' : a.type === 'credit' ? '💳' : '🏦'}</span>
+            <div className="flex-1">
+              <p className="font-bold" style={{ color: '#2D2D2D' }}>{a.name}</p>
+              <p className="text-xs" style={{ color: '#8A8276' }}>
+                {ACCOUNT_TYPES.find((t) => t.value === a.type)?.label} · {a.currency}
+                {a.archived && ' · Archivada'}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              {!a.archived && (
+                <button
+                  onClick={() => openEdit(a)}
+                  className="text-xs font-bold px-3 py-1.5 rounded-xl border"
+                  style={{ borderColor: '#ECE5DC', color: '#8A8276' }}
+                >
+                  Editar
+                </button>
+              )}
+              <button
+                onClick={() => handleArchive(a.id, a.archived)}
+                className="text-xs font-bold px-3 py-1.5 rounded-xl border"
+                style={{ borderColor: '#ECE5DC', color: '#8A8276' }}
+              >
+                {a.archived ? 'Restaurar' : 'Archivar'}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <BottomNav onFab={() => setSheetOpen(true)} />
+      <AddTransactionSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        householdId={profile.household_id}
+        profileId={profile.id}
+        categories={categories}
+        accounts={accounts.filter((a) => !a.archived)}
+      />
+    </div>
+  );
+}
