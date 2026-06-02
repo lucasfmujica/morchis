@@ -51,6 +51,7 @@ export default function MasClient({ profile }: { profile: Profile }) {
     { href: '/ahorro', icon: '🐷', label: 'Ahorro' },
     { href: '/metas', icon: '🎯', label: 'Metas y objetivos' },
     { href: '/reglas', icon: '📅', label: 'Ingresos y gastos fijos' },
+    { href: '/deudas', icon: '🤝', label: 'Deudas' },
     { href: '/pareja', icon: '👫', label: 'Vista de pareja' },
     { href: '/ticket', icon: '🧾', label: 'Escanear ticket' },
     { href: '/extractos', icon: '🧾', label: 'Extractos de tarjeta' },

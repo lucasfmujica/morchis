@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
-import { formatARS } from '@/lib/format';
+import { formatARS, formatUSD } from '@/lib/format';
+import { useFx } from '@/hooks/useFx';
 import { toLocalISO } from '@/lib/date';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
@@ -27,12 +28,22 @@ interface Rule {
   direction: 'income' | 'expense';
   label: string;
   amount: number;
+  currency: 'ARS' | 'USD';
   cadence: 'weekly' | 'biweekly' | 'monthly';
   anchor_day: number | null;
   next_run: string | null;
   active: boolean;
   scope: string;
   category_id: string | null;
+}
+
+// A rule's amount is stored in its own currency. Format it accordingly,
+// and convert to ARS (using the blue rate) when aggregating mixed currencies.
+function fmtMoney(amount: number, currency: string): string {
+  return currency === 'USD' ? formatUSD(amount) : formatARS(amount);
+}
+function toArs(amount: number, currency: string, arsPerUsd: number): number {
+  return currency === 'USD' ? Math.round(amount * arsPerUsd) : amount;
 }
 
 const CADENCE_LABEL: Record<string, string> = {
@@ -74,6 +85,7 @@ function daysUntil(dateStr: string): number {
 }
 
 function UpcomingBills({ rules }: { rules: Rule[] }) {
+  const { arsPerUsd } = useFx();
   const upcoming = rules
     .filter((r) => r.active && r.next_run != null && daysUntil(r.next_run) >= 0 && daysUntil(r.next_run) <= 35)
     .sort((a, b) => (a.next_run! < b.next_run! ? -1 : 1));
@@ -82,7 +94,7 @@ function UpcomingBills({ rules }: { rules: Rule[] }) {
 
   const totalExpense = upcoming
     .filter((r) => r.direction === 'expense')
-    .reduce((s, r) => s + r.amount, 0);
+    .reduce((s, r) => s + toArs(r.amount, r.currency, arsPerUsd), 0);
 
   function whenLabel(d: number) {
     if (d === 0) return 'Hoy';
@@ -113,7 +125,7 @@ function UpcomingBills({ rules }: { rules: Rule[] }) {
                 <p className="text-xs font-semibold" style={{ color: soon ? '#E5604C' : '#6B6459' }}>{whenLabel(d)}</p>
               </div>
               <p className="text-sm font-black flex-shrink-0" style={{ color: r.direction === 'income' ? '#7EC8A4' : '#FF7F6B' }}>
-                {r.direction === 'income' ? '+' : '-'}{formatARS(r.amount)}
+                {r.direction === 'income' ? '+' : '-'}{fmtMoney(r.amount, r.currency)}
               </p>
             </div>
           );
@@ -124,13 +136,15 @@ function UpcomingBills({ rules }: { rules: Rule[] }) {
 }
 
 function FixedSummaryCard({ rules }: { rules: Rule[] }) {
+  const { arsPerUsd } = useFx();
   const active = rules.filter((r) => r.active);
+  // Everything is normalized to ARS so USD and ARS rules can be summed together.
   const incomeMonthly = active
     .filter((r) => r.direction === 'income')
-    .reduce((s, r) => s + monthlyEquivalent(r.amount, r.cadence, r.anchor_day), 0);
+    .reduce((s, r) => s + monthlyEquivalent(toArs(r.amount, r.currency, arsPerUsd), r.cadence, r.anchor_day), 0);
   const expenseMonthly = active
     .filter((r) => r.direction === 'expense')
-    .reduce((s, r) => s + monthlyEquivalent(r.amount, r.cadence, r.anchor_day), 0);
+    .reduce((s, r) => s + monthlyEquivalent(toArs(r.amount, r.currency, arsPerUsd), r.cadence, r.anchor_day), 0);
   const margin = incomeMonthly - expenseMonthly;
   const savingsRate = incomeMonthly > 0 ? margin / incomeMonthly : null;
   const marginPositive = margin >= 0;
@@ -225,6 +239,7 @@ function RuleForm({
   );
   const [label, setLabel] = useState(initial?.label ?? '');
   const [amountStr, setAmountStr] = useState(initial?.amount ? String(initial.amount) : '');
+  const [currency, setCurrency] = useState<'ARS' | 'USD'>(initial?.currency ?? 'ARS');
   const [cadence, setCadence] = useState<'weekly' | 'biweekly' | 'monthly'>(
     initial?.cadence ?? 'monthly',
   );
@@ -242,7 +257,7 @@ function RuleForm({
     }
     const anchor = parseInt(anchorDay, 10) || 1;
     const next_run = nextRunFromAnchor(cadence, anchor);
-    onSave({ direction, label: label.trim(), amount, cadence, anchor_day: anchor, next_run, scope, active, category_id: initial?.category_id ?? null });
+    onSave({ direction, label: label.trim(), amount, currency, cadence, anchor_day: anchor, next_run, scope, active, category_id: initial?.category_id ?? null });
   }
 
   return (
@@ -275,9 +290,31 @@ function RuleForm({
         style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
       />
 
+      {/* Currency */}
+      <div>
+        <p className="text-xs font-semibold mb-2" style={{ color: '#6B6459' }}>Moneda</p>
+        <div className="flex rounded-2xl overflow-hidden" style={{ background: '#ECE5DC' }}>
+          {(['ARS', 'USD'] as const).map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setCurrency(c)}
+              className="flex-1 py-2.5 text-sm font-bold transition-colors"
+              style={{
+                background: currency === c ? '#7EC8A4' : 'transparent',
+                color: currency === c ? '#FFFFFF' : '#6B6459',
+                borderRadius: '14px',
+              }}
+            >
+              {c === 'ARS' ? 'ARS (Pesos)' : 'USD (Dólares)'}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Amount */}
       <MoneyInput
-        placeholder="Monto en ARS"
+        placeholder={`Monto en ${currency}`}
         value={amountStr ? parseInt(amountStr, 10) || 0 : 0}
         onChange={(n) => setAmountStr(n ? String(n) : '')}
         className="w-full px-4 py-3 rounded-2xl text-sm border outline-none"
@@ -413,7 +450,7 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('recurring_rules')
-        .select('id, direction, label, amount, cadence, anchor_day, next_run, active, scope, category_id')
+        .select('id, direction, label, amount, currency, cadence, anchor_day, next_run, active, scope, category_id')
         .eq('household_id', profile.household_id)
         .order('direction')
         .order('label');
@@ -486,7 +523,7 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
           className="font-black text-sm flex-shrink-0"
           style={{ color: rule.direction === 'income' ? '#7EC8A4' : '#FF7F6B' }}
         >
-          {rule.direction === 'income' ? '+' : '-'}{formatARS(rule.amount)}
+          {rule.direction === 'income' ? '+' : '-'}{fmtMoney(rule.amount, rule.currency)}
         </p>
         <div className="flex gap-1 ml-2 flex-shrink-0">
           <button

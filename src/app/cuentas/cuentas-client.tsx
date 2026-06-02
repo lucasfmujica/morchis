@@ -7,7 +7,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/EmptyState';
-import { formatARS } from '@/lib/format';
+import { formatARS, formatUSD } from '@/lib/format';
 import { todayISO } from '@/lib/date';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
@@ -19,6 +19,22 @@ const ACCOUNT_TYPES = [
   { value: 'cash', label: 'Efectivo' },
   { value: 'credit', label: 'Tarjeta de crédito' },
 ];
+
+// Whole days from today to an ISO date (negative = already past).
+function daysUntil(dateISO: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = new Date(dateISO + 'T00:00:00');
+  return Math.round((d.getTime() - today.getTime()) / 86400000);
+}
+
+function dueLabel(dueISO: string): string {
+  const d = daysUntil(dueISO);
+  if (d < 0) return `Vencido hace ${Math.abs(d)} día${Math.abs(d) === 1 ? '' : 's'}`;
+  if (d === 0) return 'Vence hoy';
+  if (d === 1) return 'Vence mañana';
+  return `Vence en ${d} días`;
+}
 
 interface Profile {
   id: string;
@@ -36,6 +52,11 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
   const [type, setType] = useState('checking');
   const [currency, setCurrency] = useState('ARS');
   const [initialBalance, setInitialBalance] = useState('');
+  // Credit-card statement fields (only used when type === 'credit').
+  const [statementArs, setStatementArs] = useState('');
+  const [statementUsd, setStatementUsd] = useState('');
+  const [closingDate, setClosingDate] = useState('');
+  const [dueDate, setDueDate] = useState('');
   const [saving, setSaving] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
@@ -57,7 +78,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
     queryFn: async () => {
       const { data } = await supabase
         .from('accounts')
-        .select('id, name, type, currency, archived, owner_profile_id, initial_balance')
+        .select('id, name, type, currency, archived, owner_profile_id, initial_balance, statement_ars, statement_usd, closing_date, due_date')
         .eq('household_id', profile.household_id)
         .order('name');
       return data ?? [];
@@ -99,6 +120,10 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
     setType('checking');
     setCurrency('ARS');
     setInitialBalance('');
+    setStatementArs('');
+    setStatementUsd('');
+    setClosingDate('');
+    setDueDate('');
     setShowForm(true);
   }
 
@@ -108,6 +133,10 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
     setType(a.type);
     setCurrency(a.currency);
     setInitialBalance(a.initial_balance ? String(a.initial_balance) : '');
+    setStatementArs(a.statement_ars ? String(a.statement_ars) : '');
+    setStatementUsd(a.statement_usd ? String(a.statement_usd) : '');
+    setClosingDate(a.closing_date ?? '');
+    setDueDate(a.due_date ?? '');
     setShowForm(true);
   }
 
@@ -116,10 +145,18 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
     setSaving(true);
     try {
       const initialBalanceNum = parseInt(initialBalance.replace(/\D/g, ''), 10) || 0;
+      // Statement fields only apply to credit cards; clear them otherwise.
+      const isCredit = type === 'credit';
+      const cardFields = {
+        statement_ars: isCredit ? parseInt(statementArs.replace(/\D/g, ''), 10) || null : null,
+        statement_usd: isCredit ? parseInt(statementUsd.replace(/\D/g, ''), 10) || null : null,
+        closing_date: isCredit && closingDate ? closingDate : null,
+        due_date: isCredit && dueDate ? dueDate : null,
+      };
       if (editId) {
         const { error } = await supabase
           .from('accounts')
-          .update({ name: name.trim(), type, currency, initial_balance: initialBalanceNum })
+          .update({ name: name.trim(), type, currency, initial_balance: initialBalanceNum, ...cardFields })
           .eq('id', editId);
         if (error) throw error;
       } else {
@@ -131,6 +168,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
           currency,
           initial_balance: initialBalanceNum,
           archived: false,
+          ...cardFields,
         });
         if (error) throw error;
       }
@@ -200,20 +238,67 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
               <option value="ARS">ARS (Pesos)</option>
               <option value="USD">USD (Dólares)</option>
             </select>
-            <div>
-              <MoneyInput
-                placeholder={type === 'credit' ? 'Deuda inicial (opcional)' : 'Saldo inicial (opcional)'}
-                value={initialBalance ? parseInt(initialBalance.replace(/\D/g, ''), 10) || 0 : 0}
-                onChange={(n) => setInitialBalance(n ? String(n) : '')}
-                className="w-full px-4 py-3 rounded-2xl border text-sm outline-none"
-                style={{ borderColor: '#ECE5DC' }}
-              />
-              <p className="text-xs mt-1.5 px-1" style={{ color: '#6B6459' }}>
-                {type === 'credit'
-                  ? 'Mostramos cuánto llevás gastado este mes según tus movimientos.'
-                  : 'El saldo se actualiza solo con tus ingresos y gastos.'}
-              </p>
-            </div>
+            {type === 'credit' ? (
+              <div className="flex flex-col gap-3">
+                <div>
+                  <p className="text-xs font-semibold mb-1.5 px-1" style={{ color: '#6B6459' }}>Total del resumen</p>
+                  <div className="flex gap-2">
+                    <MoneyInput
+                      placeholder="Total ARS"
+                      value={statementArs ? parseInt(statementArs.replace(/\D/g, ''), 10) || 0 : 0}
+                      onChange={(n) => setStatementArs(n ? String(n) : '')}
+                      className="flex-1 w-full px-4 py-3 rounded-2xl border text-sm outline-none"
+                      style={{ borderColor: '#ECE5DC' }}
+                    />
+                    <MoneyInput
+                      placeholder="Total USD"
+                      value={statementUsd ? parseInt(statementUsd.replace(/\D/g, ''), 10) || 0 : 0}
+                      onChange={(n) => setStatementUsd(n ? String(n) : '')}
+                      className="flex-1 w-full px-4 py-3 rounded-2xl border text-sm outline-none"
+                      style={{ borderColor: '#ECE5DC' }}
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <label className="flex-1">
+                    <span className="text-xs font-semibold mb-1 px-1 block" style={{ color: '#6B6459' }}>Cierre</span>
+                    <input
+                      type="date"
+                      value={closingDate}
+                      onChange={(e) => setClosingDate(e.target.value)}
+                      className="w-full px-3 py-3 rounded-2xl border text-sm outline-none bg-white"
+                      style={{ borderColor: '#ECE5DC' }}
+                    />
+                  </label>
+                  <label className="flex-1">
+                    <span className="text-xs font-semibold mb-1 px-1 block" style={{ color: '#6B6459' }}>Vencimiento</span>
+                    <input
+                      type="date"
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                      className="w-full px-3 py-3 rounded-2xl border text-sm outline-none bg-white"
+                      style={{ borderColor: '#ECE5DC' }}
+                    />
+                  </label>
+                </div>
+                <p className="text-xs px-1" style={{ color: '#6B6459' }}>
+                  Guardamos el total y las fechas del resumen actual. Editá la tarjeta cada mes al nuevo cierre.
+                </p>
+              </div>
+            ) : (
+              <div>
+                <MoneyInput
+                  placeholder="Saldo inicial (opcional)"
+                  value={initialBalance ? parseInt(initialBalance.replace(/\D/g, ''), 10) || 0 : 0}
+                  onChange={(n) => setInitialBalance(n ? String(n) : '')}
+                  className="w-full px-4 py-3 rounded-2xl border text-sm outline-none"
+                  style={{ borderColor: '#ECE5DC' }}
+                />
+                <p className="text-xs mt-1.5 px-1" style={{ color: '#6B6459' }}>
+                  El saldo se actualiza solo con tus ingresos y gastos.
+                </p>
+              </div>
+            )}
             <div className="flex gap-2">
               <SecondaryButton onClick={() => setShowForm(false)} className="flex-1 py-3 text-sm">
                 Cancelar
@@ -254,10 +339,28 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
                 {a.archived && ' · Archivada'}
               </p>
               {a.type === 'credit' ? (
-                <p className="text-sm font-black mt-1" style={{ color: '#FF7F6B' }}>
-                  {formatARS(cardMonthSpend(a.id))}
-                  <span className="text-xs font-semibold" style={{ color: '#6B6459' }}> gastado este mes</span>
-                </p>
+                <div className="mt-1">
+                  {(a.statement_ars || a.statement_usd) ? (
+                    <p className="text-sm font-black" style={{ color: '#FF7F6B' }}>
+                      {[
+                        a.statement_ars ? formatARS(a.statement_ars) : null,
+                        a.statement_usd ? formatUSD(a.statement_usd) : null,
+                      ].filter(Boolean).join(' + ')}
+                      <span className="text-xs font-semibold" style={{ color: '#6B6459' }}> resumen</span>
+                    </p>
+                  ) : (
+                    <p className="text-sm font-black" style={{ color: '#FF7F6B' }}>
+                      {formatARS(cardMonthSpend(a.id))}
+                      <span className="text-xs font-semibold" style={{ color: '#6B6459' }}> gastado este mes</span>
+                    </p>
+                  )}
+                  {a.due_date && (
+                    <p className="text-xs font-bold mt-0.5" style={{ color: daysUntil(a.due_date) < 0 ? '#E5604C' : '#6B6459' }}>
+                      {dueLabel(a.due_date)}
+                      {a.closing_date ? ` · cierre ${a.closing_date.slice(8, 10)}/${a.closing_date.slice(5, 7)}` : ''}
+                    </p>
+                  )}
+                </div>
               ) : (
                 (() => {
                   const bal = assetBalance(a.id, a.initial_balance ?? 0);

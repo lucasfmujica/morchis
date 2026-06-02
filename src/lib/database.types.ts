@@ -17,35 +17,47 @@ export type Database = {
       accounts: {
         Row: {
           archived: boolean
+          closing_date: string | null
           created_at: string
           currency: string
+          due_date: string | null
           household_id: string
           id: string
           initial_balance: number
           name: string
           owner_profile_id: string | null
+          statement_ars: number | null
+          statement_usd: number | null
           type: string
         }
         Insert: {
           archived?: boolean
+          closing_date?: string | null
           created_at?: string
           currency?: string
+          due_date?: string | null
           household_id: string
           id?: string
           initial_balance?: number
           name: string
           owner_profile_id?: string | null
+          statement_ars?: number | null
+          statement_usd?: number | null
           type: string
         }
         Update: {
           archived?: boolean
+          closing_date?: string | null
           created_at?: string
           currency?: string
+          due_date?: string | null
           household_id?: string
           id?: string
           initial_balance?: number
           name?: string
           owner_profile_id?: string | null
+          statement_ars?: number | null
+          statement_usd?: number | null
           type?: string
         }
         Relationships: [
@@ -164,6 +176,60 @@ export type Database = {
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      debts: {
+        Row: {
+          amount: number
+          counterparty: string
+          created_at: string
+          currency: string
+          direction: string
+          household_id: string
+          id: string
+          note: string | null
+          profile_id: string
+          settled: boolean
+        }
+        Insert: {
+          amount: number
+          counterparty: string
+          created_at?: string
+          currency?: string
+          direction?: string
+          household_id: string
+          id?: string
+          note?: string | null
+          profile_id: string
+          settled?: boolean
+        }
+        Update: {
+          amount?: number
+          counterparty?: string
+          created_at?: string
+          currency?: string
+          direction?: string
+          household_id?: string
+          id?: string
+          note?: string | null
+          profile_id?: string
+          settled?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "debts_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "debts_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -575,6 +641,7 @@ export type Database = {
           anchor_day: number | null
           cadence: string
           category_id: string | null
+          currency: string
           direction: string
           household_id: string
           id: string
@@ -590,6 +657,7 @@ export type Database = {
           anchor_day?: number | null
           cadence: string
           category_id?: string | null
+          currency?: string
           direction: string
           household_id: string
           id?: string
@@ -605,6 +673,7 @@ export type Database = {
           anchor_day?: number | null
           cadence?: string
           category_id?: string | null
+          currency?: string
           direction?: string
           household_id?: string
           id?: string
