@@ -9,6 +9,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { CoupleBalanceChip } from '@/components/CoupleBalanceChip';
 import { InsightTopCard } from '@/components/InsightTopCard';
+import { DonutChart } from '@/components/DonutChart';
 import { computeProjection } from '@/lib/projection';
 import { formatARS } from '@/lib/format';
 
@@ -100,6 +101,116 @@ function Sparkline({ values, positive }: { values: number[]; positive: boolean }
   );
 }
 
+const DONUT_PALETTE = ['#7EC8A4', '#FF7F6B', '#F5A623', '#6FA8DC', '#B084CC', '#E89AC7', '#5BA886', '#C4B9AE'];
+
+function CategoryDonutCard({
+  categories,
+  spentByCategory,
+}: {
+  categories: { id: string; name: string; icon: string; color: string | null }[];
+  spentByCategory: Record<string, number>;
+}) {
+  const catById = new Map(categories.map((c) => [c.id, c]));
+  const rows = Object.entries(spentByCategory)
+    .map(([id, value]) => ({ cat: catById.get(id), value }))
+    .filter((r) => r.cat && r.value > 0)
+    .sort((a, b) => b.value - a.value);
+
+  if (rows.length === 0) return null;
+
+  const total = rows.reduce((s, r) => s + r.value, 0);
+  const TOP = 6;
+  const top = rows.slice(0, TOP);
+  const rest = rows.slice(TOP);
+  const restTotal = rest.reduce((s, r) => s + r.value, 0);
+
+  const segments = top.map((r, i) => ({
+    label: r.cat!.name,
+    value: r.value,
+    color: r.cat!.color || DONUT_PALETTE[i % DONUT_PALETTE.length],
+  }));
+  if (restTotal > 0) segments.push({ label: 'Otras', value: restTotal, color: '#C4B9AE' });
+
+  return (
+    <div className="mx-4 rounded-3xl p-5 mb-4" style={{ background: '#FFFFFF' }}>
+      <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#8A8276' }}>
+        Gastos por categoría
+      </p>
+      <div className="flex items-center gap-4">
+        <div className="shrink-0">
+          <DonutChart segments={segments} centerTop="Total" centerBottom={formatARS(total)} />
+        </div>
+        <div className="flex-1 min-w-0 flex flex-col gap-2">
+          {segments.map((seg, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: seg.color }} />
+              <span className="text-xs flex-1 truncate" style={{ color: '#2D2D2D' }}>{seg.label}</span>
+              <span className="text-xs font-semibold" style={{ color: '#8A8276' }}>
+                {Math.round((seg.value / total) * 100)}%
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IncomeCard({
+  incomeSoFar,
+  expensesSoFar,
+  incomeRules,
+}: {
+  incomeSoFar: number;
+  expensesSoFar: number;
+  incomeRules: { label: string; amount: number; cadence: string }[];
+}) {
+  const savingsRate = incomeSoFar > 0 ? (incomeSoFar - expensesSoFar) / incomeSoFar : null;
+  const rateColor =
+    savingsRate == null ? '#8A8276' : savingsRate >= 0.2 ? '#5BA886' : savingsRate >= 0 ? '#B8860B' : '#E5604C';
+  const rateBg =
+    savingsRate == null ? '#F0EDE8' : savingsRate >= 0.2 ? '#E4F2EA' : savingsRate >= 0 ? '#FBF1D8' : '#FFE7E2';
+
+  if (incomeSoFar === 0 && incomeRules.length === 0) return null;
+
+  return (
+    <div className="mx-4 rounded-3xl p-5 mb-4" style={{ background: '#FFFFFF' }}>
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#8A8276' }}>
+            Ingresos del mes
+          </p>
+          <p className="text-3xl font-black leading-none" style={{ color: '#5BA886', fontVariantNumeric: 'tabular-nums' }}>
+            {formatARS(incomeSoFar)}
+          </p>
+        </div>
+        {savingsRate != null && (
+          <div className="text-right">
+            <p className="text-[11px] font-semibold mb-1" style={{ color: '#8A8276' }}>Ahorro</p>
+            <span
+              className="inline-block text-sm font-black px-2.5 py-1 rounded-full"
+              style={{ background: rateBg, color: rateColor }}
+            >
+              {Math.round(savingsRate * 100)}%
+            </span>
+          </div>
+        )}
+      </div>
+      {incomeRules.length > 0 && (
+        <div className="flex flex-col gap-1.5 pt-3" style={{ borderTop: '1px solid #ECE5DC' }}>
+          {incomeRules.map((r, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="text-sm shrink-0">💰</span>
+              <span className="text-xs flex-1 truncate" style={{ color: '#2D2D2D' }}>{r.label}</span>
+              <span className="text-xs font-bold" style={{ color: '#5BA886' }}>+{formatARS(r.amount)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function HomeClient({
   profile,
   partnerProfileId,
@@ -121,7 +232,7 @@ export default function HomeClient({
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],
     queryFn: async () => {
-      const { data } = await supabase.from('categories').select('id, name, icon, kind').eq('household_id', profile.household_id).order('name');
+      const { data } = await supabase.from('categories').select('id, name, icon, kind, color').eq('household_id', profile.household_id).order('name');
       return data ?? [];
     },
   });
@@ -191,7 +302,7 @@ export default function HomeClient({
     queryFn: async () => {
       const { data } = await supabase
         .from('recurring_rules')
-        .select('direction, amount, next_run, active, profile_id')
+        .select('direction, amount, next_run, active, profile_id, label, cadence')
         .eq('household_id', profile.household_id)
         .eq('active', true);
       return data ?? [];
@@ -221,6 +332,10 @@ export default function HomeClient({
 
   const { projectedBalance, incomeSoFar, expensesSoFar, dailyBalances } = projection;
   const isPositive = projectedBalance >= 0;
+
+  const incomeRules = rules
+    .filter((r) => r.direction === 'income' && (!scopeProfileId || r.profile_id === scopeProfileId))
+    .map((r) => ({ label: (r.label as string) ?? 'Ingreso', amount: r.amount, cadence: (r.cadence as string) ?? 'monthly' }));
 
   const greetingHour = new Date().getHours();
   const greeting = greetingHour < 12 ? 'Buenos días' : greetingHour < 19 ? 'Buenas tardes' : 'Buenas noches';
@@ -321,6 +436,9 @@ export default function HomeClient({
         )}
       </div>
 
+      {/* Income of the month + savings rate */}
+      <IncomeCard incomeSoFar={incomeSoFar} expensesSoFar={expensesSoFar} incomeRules={incomeRules} />
+
       {/* Couple balance chip */}
       <CoupleBalanceChip
         householdId={profile.household_id}
@@ -335,9 +453,13 @@ export default function HomeClient({
       {/* Spent-vs-budget */}
       <BudgetSummaryCard budgets={budgets} spentByCategory={spentByCategory} />
 
+      {/* Spending by category donut */}
+      <CategoryDonutCard categories={categories} spentByCategory={spentByCategory} />
+
       {/* Quick links */}
       <div className="mx-4 rounded-3xl overflow-hidden mb-4" style={{ background: '#FFFFFF' }}>
         {[
+          { href: '/ahorro', icon: '🐷', label: 'Mi ahorro' },
           { href: '/movimientos', icon: '📋', label: 'Ver movimientos' },
           { href: '/insights', icon: '✨', label: 'Todos los insights' },
           { href: '/presupuestos', icon: '📊', label: 'Presupuestos' },

@@ -70,10 +70,15 @@
     @apply border-border outline-ring/50;
     -webkit-tap-highlight-color: transparent;
   }
+  html {
+    /* Stop iOS rubber-band overscroll that detaches the fixed bottom nav on scroll */
+    overscroll-behavior-y: none;
+  }
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-nunito), system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: none;
   }
   /* Tailwind v4 resets interactive elements to cursor:default — restore pointer for desktop */
   button:not(:disabled),

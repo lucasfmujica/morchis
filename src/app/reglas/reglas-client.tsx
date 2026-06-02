@@ -36,6 +36,75 @@ const CADENCE_LABEL: Record<string, string> = {
   monthly: 'Mensual',
 };
 
+// Normalize any cadence to an approximate monthly amount so totals are comparable.
+function monthlyEquivalent(amount: number, cadence: string): number {
+  if (cadence === 'weekly') return amount * (52 / 12);
+  if (cadence === 'biweekly') return amount * 2;
+  return amount;
+}
+
+function FixedSummaryCard({ rules }: { rules: Rule[] }) {
+  const active = rules.filter((r) => r.active);
+  const incomeMonthly = active
+    .filter((r) => r.direction === 'income')
+    .reduce((s, r) => s + monthlyEquivalent(r.amount, r.cadence), 0);
+  const expenseMonthly = active
+    .filter((r) => r.direction === 'expense')
+    .reduce((s, r) => s + monthlyEquivalent(r.amount, r.cadence), 0);
+  const margin = incomeMonthly - expenseMonthly;
+  const savingsRate = incomeMonthly > 0 ? margin / incomeMonthly : null;
+  const marginPositive = margin >= 0;
+
+  if (active.length === 0) return null;
+
+  return (
+    <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+      <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#8A8276' }}>
+        Resumen mensual estimado
+      </p>
+      <div className="flex gap-3 mb-4">
+        <div className="flex-1 rounded-2xl px-3 py-3" style={{ background: '#E4F2EA' }}>
+          <p className="text-[11px] font-semibold" style={{ color: '#5BA886' }}>Ingresos fijos</p>
+          <p className="text-lg font-black leading-tight" style={{ color: '#5BA886', fontVariantNumeric: 'tabular-nums' }}>
+            {formatARS(Math.round(incomeMonthly))}
+          </p>
+        </div>
+        <div className="flex-1 rounded-2xl px-3 py-3" style={{ background: '#FFE7E2' }}>
+          <p className="text-[11px] font-semibold" style={{ color: '#E5604C' }}>Gastos fijos</p>
+          <p className="text-lg font-black leading-tight" style={{ color: '#E5604C', fontVariantNumeric: 'tabular-nums' }}>
+            {formatARS(Math.round(expenseMonthly))}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-end justify-between pt-3" style={{ borderTop: '1px solid #ECE5DC' }}>
+        <div>
+          <p className="text-[11px] font-semibold" style={{ color: '#8A8276' }}>Margen fijo / mes</p>
+          <p
+            className="text-2xl font-black leading-none"
+            style={{ color: marginPositive ? '#5BA886' : '#E5604C', fontVariantNumeric: 'tabular-nums' }}
+          >
+            {!marginPositive && '−'}{formatARS(Math.abs(Math.round(margin)))}
+          </p>
+        </div>
+        {savingsRate != null && (
+          <div className="text-right">
+            <p className="text-[11px] font-semibold" style={{ color: '#8A8276' }}>Ahorro fijo</p>
+            <span
+              className="inline-block text-sm font-black px-2.5 py-1 rounded-full"
+              style={{
+                background: savingsRate >= 0.2 ? '#E4F2EA' : savingsRate >= 0 ? '#FBF1D8' : '#FFE7E2',
+                color: savingsRate >= 0.2 ? '#5BA886' : savingsRate >= 0 ? '#B8860B' : '#E5604C',
+              }}
+            >
+              {Math.round(savingsRate * 100)}%
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function nextRunFromAnchor(cadence: string, anchorDay: number): string {
   const today = new Date();
   const year = today.getFullYear();
@@ -350,10 +419,13 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
     <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
       <header className="px-5 pt-14 pb-4 flex items-center gap-3">
         <Link href="/mas" className="text-2xl">←</Link>
-        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Reglas fijas</h1>
+        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Ingresos y gastos fijos</h1>
       </header>
 
       <div className="px-4 flex flex-col gap-4">
+        {/* Monthly summary */}
+        {!showForm && !editRule && rules.length > 0 && <FixedSummaryCard rules={rules} />}
+
         {/* New rule form */}
         {showForm && !editRule && (
           <RuleForm
