@@ -6,7 +6,6 @@ import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
 import { usePrivacyStore } from '@/store/privacy';
 import { usePushSubscription } from '@/hooks/usePushSubscription';
-import { useBudgetAlerts } from '@/hooks/useBudgetAlerts';
 import {
   spentForBudget,
   toArs as budgetToArs,
@@ -473,9 +472,6 @@ export default function HomeClient({
     })
     .filter((a) => a.pct >= 0.8)
     .sort((a, b) => b.pct - a.pct);
-
-  // Fire a local notification the first time a budget hits 80% / 100%.
-  useBudgetAlerts(budgetAlerts.map((a) => ({ id: a.id, name: a.name, pct: a.pct })));
 
   const quickTiles = [
     { href: '/cuentas', icon: '🏦', label: 'Cuentas', value: mask(format(totalBalance)), color: totalBalance < 0 ? '#E5604C' : '#2D2D2D' },

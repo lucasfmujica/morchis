@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase';
 import { formatARS, formatUSD, usdToArs } from '@/lib/format';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { todayISO } from '@/lib/date';
+import { triggerBudgetAlerts } from '@/lib/notifyBudgets';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -328,6 +329,8 @@ export function AddTransactionSheet({
       await qc.invalidateQueries({ queryKey: ['projection'] });
       await qc.invalidateQueries({ queryKey: ['couple-balance'] });
       await qc.invalidateQueries({ queryKey: ['couple-transactions'] });
+      // Best-effort push if this pushed a budget past 80% / 100% (for me or my partner).
+      if (txType === 'expense') triggerBudgetAlerts(supabase);
       toast.success(
         editTx
           ? 'Movimiento actualizado ✓'

@@ -7,6 +7,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { formatARS } from '@/lib/format';
+import { triggerBudgetAlerts } from '@/lib/notifyBudgets';
 import { toast } from 'sonner';
 import Link from 'next/link';
 
@@ -156,6 +157,7 @@ export default function TicketClient({ profile }: { profile: Profile }) {
       await qc.invalidateQueries({ queryKey: ['transactions'] });
       await qc.invalidateQueries({ queryKey: ['account-tx'] });
       await qc.invalidateQueries({ queryKey: ['spent-by-category'] });
+      triggerBudgetAlerts(supabase);
       setStatus('done');
       toast.success('Ticket guardado ✓');
     } catch (err) {
