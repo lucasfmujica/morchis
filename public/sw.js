@@ -30,3 +30,25 @@ self.addEventListener('fetch', (e) => {
     caches.match(e.request).then((cached) => cached || fetch(e.request))
   );
 });
+
+// Web Push
+self.addEventListener('push', (e) => {
+  if (!e.data) return;
+  let data = {};
+  try { data = e.data.json(); } catch { data = { title: 'Morchis', body: e.data.text() }; }
+  const title = data.title || 'Morchis';
+  const options = {
+    body: data.body || '',
+    icon: '/apple-touch-icon.png',
+    badge: '/apple-touch-icon.png',
+    data: { url: data.url || '/home' },
+    vibrate: [100, 50, 100],
+  };
+  e.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = e.notification.data?.url || '/home';
+  e.waitUntil(clients.openWindow(url));
+});

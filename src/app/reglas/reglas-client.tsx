@@ -8,6 +8,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import { EmptyState } from '@/components/EmptyState';
 
 interface Profile {
   id: string;
@@ -223,6 +224,7 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
   const supabase = createClient();
   const qc = useQueryClient();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   const [showForm, setShowForm] = useState(false);
   const [editRule, setEditRule] = useState<Rule | null>(null);
 
@@ -403,19 +405,18 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
         )}
 
         {!isLoading && rules.length === 0 && !showForm && (
-          <div className="rounded-3xl p-8 text-center" style={{ background: '#FFFFFF' }}>
-            <p className="text-4xl mb-3">📅</p>
-            <p className="font-bold" style={{ color: '#2D2D2D' }}>Sin reglas todavía</p>
-            <p className="text-sm mt-1" style={{ color: '#8A8276' }}>
-              Agregá tu sueldo, alquiler u otros fijos para que la proyección sea precisa.
-            </p>
-          </div>
+          <EmptyState
+            icon="📅"
+            title="Sin reglas fijas"
+            subtitle="Agregá ingresos o gastos recurrentes."
+          />
         )}
       </div>
 
-      <BottomNav onFab={() => setSheetOpen(true)} />
+      <BottomNav onFab={(type) => { setFabType(type); setSheetOpen(true); }} />
       <AddTransactionSheet
         open={sheetOpen}
+        initialType={fabType}
         onClose={() => setSheetOpen(false)}
         householdId={profile.household_id}
         profileId={profile.id}

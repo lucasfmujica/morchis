@@ -6,7 +6,19 @@ import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { BottomNav } from '@/components/BottomNav';
+import { EmptyState } from '@/components/EmptyState';
+import { exportTransactionsToCSV } from '@/lib/csvExport';
+import { formatARS } from '@/lib/format';
 import { toast } from 'sonner';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  ResponsiveContainer,
+  Tooltip,
+  Legend,
+} from 'recharts';
 
 interface Profile {
   id: string;
@@ -39,10 +51,12 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   const { format, secondary, toggle, showUSD } = useFx();
   const qc = useQueryClient();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   const [editTx, setEditTx] = useState<Tx | null>(null);
   const [search, setSearch] = useState('');
   const [filterScope, setFilterScope] = useState<'all' | 'personal' | 'household'>('all');
   const [filterShared, setFilterShared] = useState<boolean | null>(null);
+  const [showChart, setShowChart] = useState(false);
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],
@@ -124,11 +138,47 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     return { expenses, income };
   }, [transactions]);
 
+  // Chart data: top 5 categories current vs previous month
+  const chartData = useMemo(() => {
+    const now = new Date();
+    const curMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+
+    const curMap = new Map<string, number>();
+    const prevMap = new Map<string, number>();
+
+    for (const tx of transactions) {
+      if (tx.type !== 'expense') continue;
+      const id = tx.category_id ?? '__none__';
+      if (tx.occurred_on.startsWith(curMonth)) {
+        curMap.set(id, (curMap.get(id) ?? 0) + tx.amount);
+      } else if (tx.occurred_on.startsWith(prevMonth)) {
+        prevMap.set(id, (prevMap.get(id) ?? 0) + tx.amount);
+      }
+    }
+
+    // rank by current month
+    const sorted = [...curMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const catMap = Object.fromEntries(categories.map((c) => [c.id, c]));
+
+    return sorted.map(([id, cur]) => ({
+      name: catMap[id]?.icon ? `${catMap[id].icon} ${catMap[id].name}` : 'Sin cat.',
+      'Este mes': cur,
+      'Mes anterior': prevMap.get(id) ?? 0,
+    }));
+  }, [transactions, categories]);
+
   async function handleDelete(id: string) {
     const { error } = await supabase.from('transactions').delete().eq('id', id);
     if (error) { toast.error('No se pudo eliminar.'); return; }
     await qc.invalidateQueries({ queryKey: ['transactions'] });
     toast.success('Eliminado');
+  }
+
+  function handleExport() {
+    const filename = `movimientos-${new Date().toISOString().slice(0, 10)}.csv`;
+    exportTransactionsToCSV(filtered, filename);
   }
 
   return (
@@ -139,13 +189,22 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
           <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Movimientos</h1>
           <p className="text-xs mt-0.5" style={{ color: '#8A8276' }}>Este mes</p>
         </div>
-        <button
-          onClick={toggle}
-          className="text-xs font-bold px-3 py-1.5 rounded-full border"
-          style={{ borderColor: '#7EC8A4', color: '#7EC8A4' }}
-        >
-          {showUSD ? 'USD' : 'ARS'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            className="text-xs font-bold px-3 py-1.5 rounded-full border"
+            style={{ borderColor: '#ECE5DC', color: '#8A8276' }}
+          >
+            Exportar CSV
+          </button>
+          <button
+            onClick={toggle}
+            className="text-xs font-bold px-3 py-1.5 rounded-full border"
+            style={{ borderColor: '#7EC8A4', color: '#7EC8A4' }}
+          >
+            {showUSD ? 'USD' : 'ARS'}
+          </button>
+        </div>
       </header>
 
       {/* Month summary */}
@@ -163,6 +222,42 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
           </div>
         </div>
       </div>
+
+      {/* Comparar meses toggle */}
+      <div className="px-4 mb-3">
+        <button
+          onClick={() => setShowChart((v) => !v)}
+          className="text-xs font-bold px-4 py-2 rounded-full border"
+          style={{
+            background: showChart ? '#2D2D2D' : '#FFFFFF',
+            borderColor: showChart ? '#2D2D2D' : '#ECE5DC',
+            color: showChart ? '#FFFFFF' : '#8A8276',
+          }}
+        >
+          📊 Comparar meses
+        </button>
+      </div>
+
+      {/* Chart section */}
+      {showChart && (
+        <div className="mx-4 mb-4 rounded-3xl p-4" style={{ background: '#FFFFFF' }}>
+          <p className="text-sm font-black mb-3" style={{ color: '#2D2D2D' }}>Top 5 categorías</p>
+          {chartData.length === 0 ? (
+            <p className="text-sm text-center py-4" style={{ color: '#8A8276' }}>Sin datos de gastos este mes.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={chartData} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#8A8276' }} />
+                <YAxis tickFormatter={(v) => formatARS(v)} tick={{ fontSize: 9, fill: '#8A8276' }} width={70} />
+                <Tooltip formatter={(v) => formatARS(Number(v))} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="Este mes" fill="#7EC8A4" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Mes anterior" fill="#8A8276" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      )}
 
       {/* Search + filters */}
       <div className="px-4 mb-3 flex flex-col gap-2">
@@ -206,11 +301,11 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       {/* Transactions grouped by day */}
       <div className="px-4 flex flex-col gap-4">
         {grouped.length === 0 && (
-          <div className="text-center py-16">
-            <p className="text-4xl mb-3">📋</p>
-            <p className="text-base font-semibold" style={{ color: '#2D2D2D' }}>Sin movimientos</p>
-            <p className="text-sm mt-1" style={{ color: '#8A8276' }}>Tocá + para agregar uno.</p>
-          </div>
+          <EmptyState
+            icon="💸"
+            title="Sin movimientos"
+            subtitle="Registrá tu primer gasto o ingreso."
+          />
         )}
         {grouped.map(([date, txs]) => (
           <div key={date}>
@@ -221,8 +316,11 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
               {txs.map((tx, i) => (
                 <button
                   key={tx.id}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
-                  style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left animate-in fade-in slide-in-from-bottom-2 duration-200"
+                  style={{
+                    borderTop: i > 0 ? '1px solid #ECE5DC' : 'none',
+                    animationDelay: `${i * 30}ms`,
+                  }}
                   onClick={() => {
                     setEditTx(tx);
                     setSheetOpen(true);
@@ -276,10 +374,11 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
         format={format}
       />
 
-      <BottomNav onFab={() => { setEditTx(null); setSheetOpen(true); }} />
+      <BottomNav onFab={(type) => { setEditTx(null); setFabType(type); setSheetOpen(true); }} />
 
       <AddTransactionSheet
         open={sheetOpen}
+        initialType={fabType}
         onClose={() => { setSheetOpen(false); setEditTx(null); }}
         householdId={profile.household_id}
         profileId={profile.id}

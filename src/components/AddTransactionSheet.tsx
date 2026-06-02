@@ -31,6 +31,7 @@ interface AddTransactionSheetProps {
   categories: Category[];
   accounts: Account[];
   editTx?: EditTx | null;
+  initialType?: 'expense' | 'income';
 }
 
 interface EditTx {
@@ -54,6 +55,7 @@ export function AddTransactionSheet({
   categories,
   accounts,
   editTx,
+  initialType = 'expense',
 }: AddTransactionSheetProps) {
   const { arsPerUsd, showUSD } = useFx();
   const supabase = createClient();
@@ -83,7 +85,7 @@ export function AddTransactionSheet({
         setDate(editTx.occurred_on);
       } else {
         setRaw('');
-        setTxType('expense');
+        setTxType(initialType);
         setCategoryId(null);
         setAccountId(accounts[0]?.id ?? null);
         setScope('personal');
@@ -93,7 +95,7 @@ export function AddTransactionSheet({
       }
       setInputUSD(false);
     }
-  }, [open, editTx]);
+  }, [open, editTx, initialType]);
 
   function today() {
     return new Date().toISOString().split('T')[0];
@@ -173,6 +175,8 @@ export function AddTransactionSheet({
       await qc.invalidateQueries({ queryKey: ['transactions'] });
       await qc.invalidateQueries({ queryKey: ['summary'] });
       await qc.invalidateQueries({ queryKey: ['projection'] });
+      await qc.invalidateQueries({ queryKey: ['couple-balance'] });
+      await qc.invalidateQueries({ queryKey: ['couple-transactions'] });
       toast.success(editTx ? 'Movimiento actualizado ✓' : 'Guardado ✓');
       onClose();
     } catch (e) {

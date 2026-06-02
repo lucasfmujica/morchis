@@ -1,0 +1,146 @@
+'use client';
+
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { createClient } from '@/lib/supabase';
+import { BottomNav } from '@/components/BottomNav';
+import { AddTransactionSheet } from '@/components/AddTransactionSheet';
+
+interface Insight {
+  id: string;
+  title: string;
+  body: string;
+  severity: 'info' | 'positive' | 'warning';
+  kind: string | null;
+  period: string | null;
+  created_at: string;
+  seen: boolean;
+}
+
+const SEVERITY_STYLE: Record<string, { bg: string; border: string; color: string; icon: string; label: string }> = {
+  positive: { bg: '#E4F2EA', border: '#7EC8A4', color: '#5BA886', icon: '✨', label: 'Positivo' },
+  warning:  { bg: '#FFE7E2', border: '#FF7F6B', color: '#E5604C', icon: '⚠️', label: 'Atención' },
+  info:     { bg: '#F0EDE8', border: '#C4B9AE', color: '#8A8276', icon: '💡', label: 'Info' },
+};
+
+export default function InsightsClient({ householdId, profileId }: { householdId: string; profileId: string }) {
+  const supabase = createClient();
+  const qc = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
+
+  const { data: insights = [], isLoading } = useQuery<Insight[]>({
+    queryKey: ['insights', householdId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('insights')
+        .select('id, title, body, severity, kind, period, created_at, seen')
+        .eq('household_id', householdId)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      return (data ?? []) as Insight[];
+    },
+  });
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-insights`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ mode: 'full' }),
+      });
+      // Generate purchasing power insight in parallel (best-effort)
+      fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/purchasing-power-insight`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      }).catch(() => {});
+      await qc.invalidateQueries({ queryKey: ['insights', householdId] });
+      await qc.invalidateQueries({ queryKey: ['top-insight', householdId] });
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
+      <header className="flex items-center justify-between px-5 pt-14 pb-4">
+        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Insights ✨</h1>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="text-sm font-bold px-3 py-1.5 rounded-full"
+          style={{ background: refreshing ? '#ECE5DC' : '#7EC8A4', color: refreshing ? '#8A8276' : '#FFFFFF' }}
+        >
+          {refreshing ? 'Analizando…' : 'Actualizar'}
+        </button>
+      </header>
+
+      <div className="px-4 space-y-3">
+        {isLoading && (
+          <div className="rounded-3xl p-5 animate-pulse" style={{ background: '#ECE5DC', height: 80 }} />
+        )}
+
+        {!isLoading && insights.length === 0 && (
+          <div className="rounded-3xl p-6 text-center" style={{ background: '#FFFFFF' }}>
+            <p className="text-4xl mb-3">🤔</p>
+            <p className="font-bold" style={{ color: '#2D2D2D' }}>Todavía no hay insights</p>
+            <p className="text-sm mt-1" style={{ color: '#8A8276' }}>Tocá "Actualizar" para que la IA analice tus gastos.</p>
+          </div>
+        )}
+
+        {insights.map(insight => {
+          const s = SEVERITY_STYLE[insight.severity] ?? SEVERITY_STYLE.info;
+          return (
+            <div
+              key={insight.id}
+              className="rounded-3xl p-5"
+              style={{ background: s.bg, border: `1px solid ${s.border}` }}
+            >
+              <div className="flex items-start gap-3">
+                <span className="text-2xl shrink-0 mt-0.5">{s.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span
+                      className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                      style={{ background: `${s.color}22`, color: s.color }}
+                    >
+                      {s.label}
+                    </span>
+                    {insight.period && (
+                      <span className="text-[10px]" style={{ color: s.color, opacity: 0.6 }}>
+                        {insight.period}
+                      </span>
+                    )}
+                  </div>
+                  <p className="font-black text-sm leading-tight" style={{ color: s.color }}>{insight.title}</p>
+                  <p className="text-xs mt-1 leading-snug" style={{ color: s.color, opacity: 0.85 }}>{insight.body}</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <BottomNav onFab={(type) => { setFabType(type); setSheetOpen(true); }} />
+      <AddTransactionSheet
+        open={sheetOpen}
+        initialType={fabType}
+        onClose={() => setSheetOpen(false)}
+        householdId={householdId}
+        profileId={profileId}
+        categories={[]}
+        accounts={[]}
+      />
+    </div>
+  );
+}

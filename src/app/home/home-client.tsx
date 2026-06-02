@@ -4,8 +4,11 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
+import { usePushSubscription } from '@/hooks/usePushSubscription';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
+import { CoupleBalanceChip } from '@/components/CoupleBalanceChip';
+import { InsightTopCard } from '@/components/InsightTopCard';
 import { computeProjection } from '@/lib/projection';
 import { formatARS } from '@/lib/format';
 
@@ -109,6 +112,8 @@ export default function HomeClient({
   const supabase = createClient();
   const { format, secondary, toggle, showUSD, arsPerUsd } = useFx();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
+  usePushSubscription(profile.id);
   // scope: 'all' | 'me' | 'partner'
   const [scope, setScope] = useState<'all' | 'me' | 'partner'>('all');
   const name = profile.nickname || profile.display_name || 'Morch';
@@ -311,10 +316,21 @@ export default function HomeClient({
 
         {incomeSoFar === 0 && expensesSoFar === 0 && (
           <p className="text-xs mt-3" style={{ color: isPositive ? '#5BA886' : '#E5604C' }}>
-            Todavía no hay movimientos este mes. Tocá + para empezar.
+            Todavía no hay movimientos este mes. Tocá + para registrar un ingreso o gasto.
           </p>
         )}
       </div>
+
+      {/* Couple balance chip */}
+      <CoupleBalanceChip
+        householdId={profile.household_id}
+        myProfileId={profile.id}
+        partnerProfileId={partnerProfileId}
+        partnerName={partnerName}
+      />
+
+      {/* AI insight card */}
+      <InsightTopCard householdId={profile.household_id} profileId={profile.id} />
 
       {/* Spent-vs-budget */}
       <BudgetSummaryCard budgets={budgets} spentByCategory={spentByCategory} />
@@ -323,8 +339,8 @@ export default function HomeClient({
       <div className="mx-4 rounded-3xl overflow-hidden mb-4" style={{ background: '#FFFFFF' }}>
         {[
           { href: '/movimientos', icon: '📋', label: 'Ver movimientos' },
+          { href: '/insights', icon: '✨', label: 'Todos los insights' },
           { href: '/presupuestos', icon: '📊', label: 'Presupuestos' },
-          { href: '/reglas', icon: '📅', label: 'Reglas fijas' },
         ].map((item, i) => (
           <a
             key={item.href}
@@ -339,10 +355,11 @@ export default function HomeClient({
         ))}
       </div>
 
-      <BottomNav onFab={() => setSheetOpen(true)} />
+      <BottomNav onFab={(type) => { setFabType(type); setSheetOpen(true); }} />
 
       <AddTransactionSheet
         open={sheetOpen}
+        initialType={fabType}
         onClose={() => setSheetOpen(false)}
         householdId={profile.household_id}
         profileId={profile.id}

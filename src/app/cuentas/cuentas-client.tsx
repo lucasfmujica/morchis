@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { toast } from 'sonner';
+import { EmptyState } from '@/components/EmptyState';
 
 const ACCOUNT_TYPES = [
   { value: 'checking', label: 'Cuenta corriente' },
@@ -31,6 +32,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
   const [currency, setCurrency] = useState('ARS');
   const [saving, setSaving] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],
@@ -173,11 +175,12 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
 
       <div className="px-4 flex flex-col gap-3">
         {accounts.length === 0 && !showForm && (
-          <div className="text-center py-16">
-            <p className="text-4xl mb-3">🏦</p>
-            <p className="text-base font-semibold" style={{ color: '#2D2D2D' }}>Sin cuentas todavía</p>
-            <p className="text-sm mt-1" style={{ color: '#8A8276' }}>Agregá tu primera cuenta arriba.</p>
-          </div>
+          <EmptyState
+            icon="🏦"
+            title="Sin cuentas"
+            subtitle="Agregá una cuenta para empezar."
+            action={{ label: '+ Nueva cuenta', onClick: openNew }}
+          />
         )}
         {accounts.map((a) => (
           <div
@@ -215,9 +218,10 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
         ))}
       </div>
 
-      <BottomNav onFab={() => setSheetOpen(true)} />
+      <BottomNav onFab={(type) => { setFabType(type); setSheetOpen(true); }} />
       <AddTransactionSheet
         open={sheetOpen}
+        initialType={fabType}
         onClose={() => setSheetOpen(false)}
         householdId={profile.household_id}
         profileId={profile.id}

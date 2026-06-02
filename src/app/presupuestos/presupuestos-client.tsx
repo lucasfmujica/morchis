@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { formatARS } from '@/lib/format';
+import { EmptyState } from '@/components/EmptyState';
 
 interface Profile {
   id: string;
@@ -193,6 +194,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   const qc = useQueryClient();
   const [tab, setTab] = useState<'personal' | 'household'>('personal');
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   const [editing, setEditing] = useState<Budget | null>(null);
   const [budgetSheetOpen, setBudgetSheetOpen] = useState(false);
 
@@ -310,20 +312,12 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
       {/* Budget cards */}
       <div className="px-4 flex flex-col gap-3">
         {filteredBudgets.length === 0 ? (
-          <div className="rounded-3xl p-6 text-center" style={{ background: '#FFFFFF' }}>
-            <p className="text-3xl mb-2">📊</p>
-            <p className="font-semibold" style={{ color: '#2D2D2D' }}>Sin presupuestos todavía</p>
-            <p className="text-sm mt-1" style={{ color: '#8A8276' }}>
-              Tocá + para crear uno y ver cuánto gastás.
-            </p>
-            <button
-              onClick={openNew}
-              className="mt-4 px-5 py-2.5 rounded-2xl text-sm font-bold text-white"
-              style={{ background: '#7EC8A4' }}
-            >
-              Crear presupuesto
-            </button>
-          </div>
+          <EmptyState
+            icon="📊"
+            title="Sin presupuestos"
+            subtitle="Creá un presupuesto para controlar tus gastos."
+            action={{ label: 'Crear presupuesto', onClick: openNew }}
+          />
         ) : (
           filteredBudgets.map((b) => {
             const cat = catMap[b.category_id];
@@ -370,10 +364,11 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
         )}
       </div>
 
-      <BottomNav onFab={() => setSheetOpen(true)} />
+      <BottomNav onFab={(type) => { setFabType(type); setSheetOpen(true); }} />
 
       <AddTransactionSheet
         open={sheetOpen}
+        initialType={fabType}
         onClose={() => setSheetOpen(false)}
         householdId={profile.household_id}
         profileId={profile.id}

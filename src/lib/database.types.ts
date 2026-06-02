@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      inflation_rates: {
+        Row: {
+          id: string
+          date: string
+          source: string
+          monthly_pct: number
+          fetched_at: string
+        }
+        Insert: {
+          id?: string
+          date: string
+          source?: string
+          monthly_pct: number
+          fetched_at?: string
+        }
+        Update: {
+          id?: string
+          date?: string
+          source?: string
+          monthly_pct?: number
+          fetched_at?: string
+        }
+        Relationships: []
+      }
       accounts: {
         Row: {
           archived: boolean
@@ -502,6 +526,41 @@ export type Database = {
             columns: ["household_id"]
             isOneToOne: false
             referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      push_subscriptions: {
+        Row: {
+          auth_key: string
+          created_at: string
+          endpoint: string
+          id: string
+          p256dh: string
+          profile_id: string
+        }
+        Insert: {
+          auth_key: string
+          created_at?: string
+          endpoint: string
+          id?: string
+          p256dh: string
+          profile_id: string
+        }
+        Update: {
+          auth_key?: string
+          created_at?: string
+          endpoint?: string
+          id?: string
+          p256dh?: string
+          profile_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_subscriptions_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]

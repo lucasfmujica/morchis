@@ -3,6 +3,7 @@ import { Nunito } from 'next/font/google';
 import './globals.css';
 import { Toaster } from '@/components/ui/sonner';
 import { Providers } from './providers';
+import { AppLockWrapper } from '@/components/AppLockWrapper';
 
 const nunito = Nunito({
   subsets: ['latin'],
@@ -41,7 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
       </head>
       <body className="min-h-screen bg-[#F9F5F0] text-[#2D2D2D] antialiased" style={{ fontFamily: 'var(--font-nunito), system-ui, sans-serif' }}>
-        <Providers>{children}</Providers>
+        <Providers><AppLockWrapper>{children}</AppLockWrapper></Providers>
         <Toaster position="top-center" richColors />
         <script
           dangerouslySetInnerHTML={{

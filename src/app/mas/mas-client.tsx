@@ -19,6 +19,7 @@ export default function MasClient({ profile }: { profile: Profile }) {
   const supabase = createClient();
   const router = useRouter();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],
@@ -42,10 +43,15 @@ export default function MasClient({ profile }: { profile: Profile }) {
   }
 
   const menuItems = [
-    { href: '/presupuestos', icon: '📊', label: 'Presupuestos' },
-    { href: '/reglas', icon: '📅', label: 'Reglas fijas' },
     { href: '/cuentas', icon: '🏦', label: 'Cuentas' },
     { href: '/categorias', icon: '🏷️', label: 'Categorías' },
+    { href: '/presupuestos', icon: '📊', label: 'Presupuestos' },
+    { href: '/reglas', icon: '📅', label: 'Reglas fijas' },
+    { href: '/pareja', icon: '👫', label: 'Vista de pareja' },
+    { href: '/extractos', icon: '🧾', label: 'Extractos de tarjeta' },
+    { href: '/simulador', icon: '🔮', label: 'Simulador de compras' },
+    { href: '/mas/pin', icon: '🔐', label: 'Bloqueo con PIN' },
+    { href: '/mas/notificaciones', icon: '🔔', label: 'Notificaciones' },
   ];
 
   return (
@@ -79,9 +85,10 @@ export default function MasClient({ profile }: { profile: Profile }) {
         </button>
       </div>
 
-      <BottomNav onFab={() => setSheetOpen(true)} />
+      <BottomNav onFab={(type) => { setFabType(type); setSheetOpen(true); }} />
       <AddTransactionSheet
         open={sheetOpen}
+        initialType={fabType}
         onClose={() => setSheetOpen(false)}
         householdId={profile.household_id}
         profileId={profile.id}

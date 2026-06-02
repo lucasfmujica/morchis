@@ -26,6 +26,7 @@ export default function CategoriasClient({ profile }: { profile: Profile }) {
   const [kind, setKind] = useState<'expense' | 'income'>('expense');
   const [saving, setSaving] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],
@@ -194,9 +195,10 @@ export default function CategoriasClient({ profile }: { profile: Profile }) {
         </div>
       ))}
 
-      <BottomNav onFab={() => setSheetOpen(true)} />
+      <BottomNav onFab={(type) => { setFabType(type); setSheetOpen(true); }} />
       <AddTransactionSheet
         open={sheetOpen}
+        initialType={fabType}
         onClose={() => setSheetOpen(false)}
         householdId={profile.household_id}
         profileId={profile.id}

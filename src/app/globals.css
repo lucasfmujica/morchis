@@ -75,6 +75,19 @@
     font-family: var(--font-nunito), system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
+  /* Tailwind v4 resets interactive elements to cursor:default — restore pointer for desktop */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  a[href],
+  label[for],
+  select:not(:disabled),
+  summary {
+    cursor: pointer;
+  }
+  button:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
 }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
