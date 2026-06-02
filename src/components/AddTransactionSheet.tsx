@@ -172,6 +172,7 @@ export function AddTransactionSheet({
 
       await qc.invalidateQueries({ queryKey: ['transactions'] });
       await qc.invalidateQueries({ queryKey: ['summary'] });
+      await qc.invalidateQueries({ queryKey: ['projection'] });
       toast.success(editTx ? 'Movimiento actualizado ✓' : 'Guardado ✓');
       onClose();
     } catch (e) {

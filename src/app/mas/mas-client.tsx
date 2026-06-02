@@ -42,6 +42,8 @@ export default function MasClient({ profile }: { profile: Profile }) {
   }
 
   const menuItems = [
+    { href: '/presupuestos', icon: '📊', label: 'Presupuestos' },
+    { href: '/reglas', icon: '📅', label: 'Reglas fijas' },
     { href: '/cuentas', icon: '🏦', label: 'Cuentas' },
     { href: '/categorias', icon: '🏷️', label: 'Categorías' },
   ];

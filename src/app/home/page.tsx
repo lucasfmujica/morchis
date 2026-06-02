@@ -17,12 +17,20 @@ export default async function HomePage() {
 
   const { data: householdMembers } = await supabase
     .from('profiles')
-    .select('id')
+    .select('id, nickname, display_name')
     .eq('household_id', profile.household_id)
     .neq('id', user.id)
     .limit(1);
 
-  const partnerProfileId = householdMembers?.[0]?.id;
+  const partner = householdMembers?.[0];
+  const partnerProfileId = partner?.id;
+  const partnerName = partner?.nickname || partner?.display_name || undefined;
 
-  return <HomeClient profile={profile as Parameters<typeof HomeClient>[0]['profile']} partnerProfileId={partnerProfileId} />;
+  return (
+    <HomeClient
+      profile={profile as Parameters<typeof HomeClient>[0]['profile']}
+      partnerProfileId={partnerProfileId}
+      partnerName={partnerName}
+    />
+  );
 }
