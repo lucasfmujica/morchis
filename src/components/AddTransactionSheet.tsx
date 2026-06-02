@@ -70,6 +70,7 @@ export function AddTransactionSheet({
   const [isShared, setIsShared] = useState(false);
   const [merchant, setMerchant] = useState('');
   const [date, setDate] = useState(today());
+  const [installments, setInstallments] = useState(1);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -93,12 +94,19 @@ export function AddTransactionSheet({
         setMerchant('');
         setDate(today());
       }
+      setInstallments(1);
       setInputUSD(false);
     }
   }, [open, editTx, initialType]);
 
   function today() {
     return new Date().toISOString().split('T')[0];
+  }
+
+  function addMonthsISO(iso: string, k: number) {
+    const [y, m, d] = iso.split('-').map(Number);
+    const dt = new Date(y, m - 1 + k, d);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
   }
 
   function handleDigit(d: string) {
@@ -128,6 +136,12 @@ export function AddTransactionSheet({
 
   const visibleCategories = categories.filter((c) => c.kind === txType);
 
+  // Cuotas: only for new expenses. The entered amount is the TOTAL purchase,
+  // split into N monthly charges.
+  const canInstallments = txType === 'expense' && !editTx;
+  const useInstallments = canInstallments && installments > 1;
+  const perInstallment = installments > 0 ? Math.floor(arsAmount / installments) : arsAmount;
+
   async function handleSave() {
     if (arsAmount === 0) return;
     setSaving(true);
@@ -154,6 +168,36 @@ export function AddTransactionSheet({
           .update(payload)
           .eq('id', editTx.id);
         if (error) throw error;
+      } else if (useInstallments) {
+        // Split the total into N monthly charges (one transaction per cuota).
+        const groupId = crypto.randomUUID();
+        const base = Math.floor(arsAmount / installments);
+        const rows = Array.from({ length: installments }, (_, k) => ({
+          ...payload,
+          // last cuota absorbs the rounding remainder
+          amount: k === installments - 1 ? arsAmount - base * (installments - 1) : base,
+          occurred_on: addMonthsISO(date, k),
+          installment_total: installments,
+          installment_number: k + 1,
+          installment_group_id: groupId,
+        }));
+
+        const { data: txs, error } = await supabase
+          .from('transactions')
+          .insert(rows)
+          .select('id, amount');
+        if (error) throw error;
+
+        if (isShared && partnerProfileId && txs) {
+          await supabase.from('splits').insert(
+            txs.map((t) => ({
+              transaction_id: t.id,
+              payer_profile_id: profileId,
+              ower_profile_id: partnerProfileId,
+              amount: Math.round(t.amount / 2),
+            })),
+          );
+        }
       } else {
         const { data: tx, error } = await supabase
           .from('transactions')
@@ -173,11 +217,19 @@ export function AddTransactionSheet({
       }
 
       await qc.invalidateQueries({ queryKey: ['transactions'] });
+      await qc.invalidateQueries({ queryKey: ['account-tx'] });
+      await qc.invalidateQueries({ queryKey: ['spent-by-category'] });
       await qc.invalidateQueries({ queryKey: ['summary'] });
       await qc.invalidateQueries({ queryKey: ['projection'] });
       await qc.invalidateQueries({ queryKey: ['couple-balance'] });
       await qc.invalidateQueries({ queryKey: ['couple-transactions'] });
-      toast.success(editTx ? 'Movimiento actualizado ✓' : 'Guardado ✓');
+      toast.success(
+        editTx
+          ? 'Movimiento actualizado ✓'
+          : useInstallments
+            ? `${installments} cuotas guardadas ✓`
+            : 'Guardado ✓',
+      );
       onClose();
     } catch (e) {
       toast.error('No se pudo guardar. Intentá de nuevo.');
@@ -324,6 +376,36 @@ export function AddTransactionSheet({
               style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
             />
           </div>
+
+          {/* Cuotas (solo para gastos nuevos) */}
+          {canInstallments && (
+            <div className="px-4 mt-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-xs font-bold" style={{ color: '#8A8276' }}>Cuotas</p>
+                {useInstallments && (
+                  <p className="text-xs font-bold" style={{ color: '#FF7F6B' }}>
+                    {installments} × {formatARS(perInstallment)} por mes
+                  </p>
+                )}
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                {[1, 3, 6, 9, 12, 18, 24].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setInstallments(n)}
+                    className="flex-shrink-0 px-3.5 py-2 rounded-2xl text-sm font-bold border transition-colors"
+                    style={{
+                      background: installments === n ? '#FFE7E2' : '#FFFFFF',
+                      borderColor: installments === n ? '#FF7F6B' : '#ECE5DC',
+                      color: installments === n ? '#FF7F6B' : '#8A8276',
+                    }}
+                  >
+                    {n === 1 ? '1 pago' : `${n}`}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Merchant/description */}
           <div className="px-4 mt-3">

@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
+import { InvitePartnerModal } from '@/components/InvitePartnerModal';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
@@ -20,6 +21,7 @@ export default function MasClient({ profile }: { profile: Profile }) {
   const router = useRouter();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],
@@ -62,12 +64,20 @@ export default function MasClient({ profile }: { profile: Profile }) {
 
       <div className="px-4 flex flex-col gap-3">
         <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
-          {menuItems.map((item, i) => (
+          <button
+            onClick={() => setInviteOpen(true)}
+            className="w-full flex items-center gap-3 px-5 py-4 text-left"
+          >
+            <span className="text-2xl">💌</span>
+            <p className="flex-1 font-semibold" style={{ color: '#2D2D2D' }}>Invitar a mi pareja</p>
+            <span style={{ color: '#8A8276' }}>→</span>
+          </button>
+          {menuItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
               className="flex items-center gap-3 px-5 py-4"
-              style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}
+              style={{ borderTop: '1px solid #ECE5DC' }}
             >
               <span className="text-2xl">{item.icon}</span>
               <p className="flex-1 font-semibold" style={{ color: '#2D2D2D' }}>{item.label}</p>
@@ -95,6 +105,7 @@ export default function MasClient({ profile }: { profile: Profile }) {
         categories={categories}
         accounts={accounts}
       />
+      <InvitePartnerModal open={inviteOpen} onClose={() => setInviteOpen(false)} />
     </div>
   );
 }

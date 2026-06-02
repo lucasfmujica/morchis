@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { toast } from 'sonner';
+import { formatARS } from '@/lib/format';
 
 const ICONS = ['🛒', '🍕', '🚇', '💊', '🎭', '📚', '✈️', '🏠', '💼', '💵', '📱', '💻', '👗', '🏷️', '💰', '🎯', '🎮', '🐾', '🌿', '⚽'];
 
@@ -38,6 +39,43 @@ export default function CategoriasClient({ profile }: { profile: Profile }) {
         .order('kind')
         .order('name');
       return data ?? [];
+    },
+  });
+
+  const monthStart = new Date().toISOString().slice(0, 7) + '-01';
+
+  // This month's totals per category (expense + income).
+  const { data: monthByCategory = {} } = useQuery<Record<string, number>>({
+    queryKey: ['spent-by-category', profile.household_id, monthStart],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('transactions')
+        .select('category_id, amount')
+        .eq('household_id', profile.household_id)
+        .gte('occurred_on', monthStart);
+      const map: Record<string, number> = {};
+      for (const t of data ?? []) {
+        if (!t.category_id) continue;
+        map[t.category_id] = (map[t.category_id] ?? 0) + t.amount;
+      }
+      return map;
+    },
+  });
+
+  // Active budget amount per category (summed across scopes).
+  const { data: budgetByCategory = {} } = useQuery<Record<string, number>>({
+    queryKey: ['budgets', profile.household_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('budgets')
+        .select('category_id, amount')
+        .eq('household_id', profile.household_id)
+        .eq('active', true);
+      const map: Record<string, number> = {};
+      for (const b of data ?? []) {
+        map[b.category_id] = (map[b.category_id] ?? 0) + b.amount;
+      }
+      return map;
     },
   });
 
@@ -177,20 +215,57 @@ export default function CategoriasClient({ profile }: { profile: Profile }) {
         { label: 'Ingresos', cats: incomeCategories },
       ].map(({ label, cats }) => (
         <div key={label} className="px-4 mb-4">
-          <p className="text-xs font-black mb-2" style={{ color: '#8A8276' }}>{label.toUpperCase()}</p>
+          <p className="text-xs font-black mb-2" style={{ color: '#8A8276' }}>{label.toUpperCase()} · ESTE MES</p>
           <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
-            {cats.map((c, i) => (
-              <button
-                key={c.id}
-                onClick={() => openEdit(c)}
-                className="w-full flex items-center gap-3 px-4 py-3.5"
-                style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}
-              >
-                <span className="text-2xl">{c.icon}</span>
-                <p className="flex-1 text-sm font-semibold text-left" style={{ color: '#2D2D2D' }}>{c.name}</p>
-                <span className="text-xs" style={{ color: '#8A8276' }}>Editar →</span>
-              </button>
-            ))}
+            {cats.map((c, i) => {
+              const spent = monthByCategory[c.id] ?? 0;
+              const budget = budgetByCategory[c.id] ?? 0;
+              const hasBudget = c.kind === 'expense' && budget > 0;
+              const pct = hasBudget ? spent / budget : 0;
+              const barCol = pct >= 1 ? '#FF7F6B' : pct >= 0.8 ? '#F5A623' : '#7EC8A4';
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => openEdit(c)}
+                  className="w-full px-4 py-3.5 text-left"
+                  style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">{c.icon}</span>
+                    <p className="flex-1 text-sm font-semibold" style={{ color: '#2D2D2D' }}>{c.name}</p>
+                    <div className="text-right">
+                      <p
+                        className="text-sm font-black"
+                        style={{ color: spent === 0 ? '#8A8276' : c.kind === 'income' ? '#5BA886' : '#2D2D2D' }}
+                      >
+                        {spent > 0 ? formatARS(spent) : '—'}
+                      </p>
+                      {hasBudget && (
+                        <p className="text-[10px]" style={{ color: '#8A8276' }}>de {formatARS(budget)}</p>
+                      )}
+                    </div>
+                  </div>
+                  {hasBudget && (
+                    <div className="mt-2 ml-9">
+                      <div className="h-2 rounded-full overflow-hidden" style={{ background: '#ECE5DC' }}>
+                        <div
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min(pct * 100, 100)}%`, background: barCol }}
+                        />
+                      </div>
+                      <div className="flex justify-between mt-0.5">
+                        <span className="text-[10px] font-bold" style={{ color: barCol }}>
+                          {Math.round(pct * 100)}%
+                        </span>
+                        {pct >= 1 && (
+                          <span className="text-[10px] font-bold" style={{ color: '#FF7F6B' }}>Excedido</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       ))}

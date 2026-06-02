@@ -7,6 +7,7 @@ import { useFx } from '@/hooks/useFx';
 import { useCoupleBalance, recordSettlement } from '@/hooks/useCouple';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
+import { InvitePartnerModal } from '@/components/InvitePartnerModal';
 import { formatARS } from '@/lib/format';
 import { toast } from 'sonner';
 import Link from 'next/link';
@@ -142,6 +143,7 @@ export default function ParejaClient({
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   const [settleOpen, setSettleOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const myName = profile.nickname || profile.display_name || 'Yo';
 
@@ -264,7 +266,18 @@ export default function ParejaClient({
       {/* Who owes whom */}
       {!partner ? (
         <div className="mx-4 rounded-3xl p-5 mb-4 text-center" style={{ background: '#FFFFFF' }}>
-          <p className="text-sm" style={{ color: '#8A8276' }}>Todavía no hay pareja vinculada al hogar.</p>
+          <p className="text-3xl mb-2">👫</p>
+          <p className="text-sm font-bold" style={{ color: '#2D2D2D' }}>Todavía no hay pareja vinculada al hogar</p>
+          <p className="text-sm mt-1 mb-4" style={{ color: '#8A8276' }}>
+            Invitá a tu pareja para compartir esta vista y dividir gastos.
+          </p>
+          <button
+            onClick={() => setInviteOpen(true)}
+            className="px-5 py-3 rounded-2xl text-sm font-black text-white"
+            style={{ background: '#7EC8A4' }}
+          >
+            💌 Invitar a mi pareja
+          </button>
         </div>
       ) : (
         <div
@@ -374,6 +387,8 @@ export default function ParejaClient({
           partnerProfileId={partner.id}
         />
       )}
+
+      <InvitePartnerModal open={inviteOpen} onClose={() => setInviteOpen(false)} />
     </div>
   );
 }

@@ -43,6 +43,8 @@ type Tx = {
   merchant: string | null;
   occurred_on: string;
   profile_id: string;
+  installment_number: number | null;
+  installment_total: number | null;
   categories: { name: string; icon: string } | null;
 };
 
@@ -88,7 +90,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('id, amount, type, category_id, account_id, scope, is_shared, merchant, occurred_on, profile_id, categories:category_id(name, icon)')
+        .select('id, amount, type, category_id, account_id, scope, is_shared, merchant, occurred_on, profile_id, installment_number, installment_total, categories:category_id(name, icon)')
         .eq('household_id', profile.household_id)
         .order('occurred_on', { ascending: false })
         .order('created_at', { ascending: false })
@@ -343,6 +345,11 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                       {tx.scope === 'household' && (
                         <span className="text-xs px-1.5 py-0.5 rounded-md font-semibold" style={{ background: '#E4F2EA', color: '#5BA886' }}>
                           Hogar
+                        </span>
+                      )}
+                      {tx.installment_total && tx.installment_total > 1 && (
+                        <span className="text-xs px-1.5 py-0.5 rounded-md font-semibold" style={{ background: '#ECE5DC', color: '#8A8276' }}>
+                          Cuota {tx.installment_number}/{tx.installment_total}
                         </span>
                       )}
                     </div>

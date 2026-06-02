@@ -14,30 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      inflation_rates: {
-        Row: {
-          id: string
-          date: string
-          source: string
-          monthly_pct: number
-          fetched_at: string
-        }
-        Insert: {
-          id?: string
-          date: string
-          source?: string
-          monthly_pct: number
-          fetched_at?: string
-        }
-        Update: {
-          id?: string
-          date?: string
-          source?: string
-          monthly_pct?: number
-          fetched_at?: string
-        }
-        Relationships: []
-      }
       accounts: {
         Row: {
           archived: boolean
@@ -45,6 +21,7 @@ export type Database = {
           currency: string
           household_id: string
           id: string
+          initial_balance: number
           name: string
           owner_profile_id: string | null
           type: string
@@ -55,6 +32,7 @@ export type Database = {
           currency?: string
           household_id: string
           id?: string
+          initial_balance?: number
           name: string
           owner_profile_id?: string | null
           type: string
@@ -65,6 +43,7 @@ export type Database = {
           currency?: string
           household_id?: string
           id?: string
+          initial_balance?: number
           name?: string
           owner_profile_id?: string | null
           type?: string
@@ -403,6 +382,30 @@ export type Database = {
           fx_source?: string
           id?: string
           name?: string
+        }
+        Relationships: []
+      }
+      inflation_rates: {
+        Row: {
+          date: string
+          fetched_at: string
+          id: string
+          monthly_pct: number
+          source: string
+        }
+        Insert: {
+          date: string
+          fetched_at?: string
+          id?: string
+          monthly_pct: number
+          source?: string
+        }
+        Update: {
+          date?: string
+          fetched_at?: string
+          id?: string
+          monthly_pct?: number
+          source?: string
         }
         Relationships: []
       }
@@ -813,6 +816,9 @@ export type Database = {
           description: string | null
           household_id: string
           id: string
+          installment_group_id: string | null
+          installment_number: number | null
+          installment_total: number | null
           is_shared: boolean
           merchant: string | null
           occurred_on: string
@@ -832,6 +838,9 @@ export type Database = {
           description?: string | null
           household_id: string
           id?: string
+          installment_group_id?: string | null
+          installment_number?: number | null
+          installment_total?: number | null
           is_shared?: boolean
           merchant?: string | null
           occurred_on?: string
@@ -851,6 +860,9 @@ export type Database = {
           description?: string | null
           household_id?: string
           id?: string
+          installment_group_id?: string | null
+          installment_number?: number | null
+          installment_total?: number | null
           is_shared?: boolean
           merchant?: string | null
           occurred_on?: string
@@ -992,6 +1004,40 @@ export type TablesUpdate<
       }
       ? U
       : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
 
 export const Constants = {

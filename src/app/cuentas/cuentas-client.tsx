@@ -7,6 +7,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/EmptyState';
+import { formatARS } from '@/lib/format';
 
 const ACCOUNT_TYPES = [
   { value: 'checking', label: 'Cuenta corriente' },
@@ -30,6 +31,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
   const [name, setName] = useState('');
   const [type, setType] = useState('checking');
   const [currency, setCurrency] = useState('ARS');
+  const [initialBalance, setInitialBalance] = useState('');
   const [saving, setSaving] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
@@ -47,18 +49,48 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
     queryFn: async () => {
       const { data } = await supabase
         .from('accounts')
-        .select('id, name, type, currency, archived, owner_profile_id')
+        .select('id, name, type, currency, archived, owner_profile_id, initial_balance')
         .eq('household_id', profile.household_id)
         .order('name');
       return data ?? [];
     },
   });
 
+  // All transactions with an account, to compute live balances / card spend.
+  const { data: accountTx = [] } = useQuery({
+    queryKey: ['account-tx', profile.household_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('transactions')
+        .select('account_id, type, amount, occurred_on')
+        .eq('household_id', profile.household_id)
+        .not('account_id', 'is', null);
+      return data ?? [];
+    },
+  });
+
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const monthStart = todayISO.slice(0, 7) + '-01';
+
+  // Asset accounts: saldo = inicial + ingresos - gastos (hasta hoy).
+  // Tarjetas: gastado en el mes actual.
+  function assetBalance(accountId: string, initial: number) {
+    return accountTx
+      .filter((t) => t.account_id === accountId && t.occurred_on <= todayISO)
+      .reduce((s, t) => s + (t.type === 'income' ? t.amount : t.type === 'expense' ? -t.amount : 0), initial);
+  }
+  function cardMonthSpend(accountId: string) {
+    return accountTx
+      .filter((t) => t.account_id === accountId && t.type === 'expense' && t.occurred_on >= monthStart && t.occurred_on <= todayISO)
+      .reduce((s, t) => s + t.amount, 0);
+  }
+
   function openNew() {
     setEditId(null);
     setName('');
     setType('checking');
     setCurrency('ARS');
+    setInitialBalance('');
     setShowForm(true);
   }
 
@@ -67,6 +99,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
     setName(a.name);
     setType(a.type);
     setCurrency(a.currency);
+    setInitialBalance(a.initial_balance ? String(a.initial_balance) : '');
     setShowForm(true);
   }
 
@@ -74,8 +107,12 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
     if (!name.trim()) { toast.error('Ingresá un nombre.'); return; }
     setSaving(true);
     try {
+      const initialBalanceNum = parseInt(initialBalance.replace(/\D/g, ''), 10) || 0;
       if (editId) {
-        const { error } = await supabase.from('accounts').update({ name: name.trim(), type, currency }).eq('id', editId);
+        const { error } = await supabase
+          .from('accounts')
+          .update({ name: name.trim(), type, currency, initial_balance: initialBalanceNum })
+          .eq('id', editId);
         if (error) throw error;
       } else {
         const { error } = await supabase.from('accounts').insert({
@@ -84,6 +121,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
           name: name.trim(),
           type,
           currency,
+          initial_balance: initialBalanceNum,
           archived: false,
         });
         if (error) throw error;
@@ -152,6 +190,22 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
               <option value="ARS">ARS (Pesos)</option>
               <option value="USD">USD (Dólares)</option>
             </select>
+            <div>
+              <input
+                type="number"
+                inputMode="numeric"
+                placeholder={type === 'credit' ? 'Deuda inicial (opcional)' : 'Saldo inicial (opcional)'}
+                value={initialBalance}
+                onChange={(e) => setInitialBalance(e.target.value)}
+                className="w-full px-4 py-3 rounded-2xl border text-sm outline-none"
+                style={{ borderColor: '#ECE5DC' }}
+              />
+              <p className="text-xs mt-1.5 px-1" style={{ color: '#8A8276' }}>
+                {type === 'credit'
+                  ? 'Mostramos cuánto llevás gastado este mes según tus movimientos.'
+                  : 'El saldo se actualiza solo con tus ingresos y gastos.'}
+              </p>
+            </div>
             <div className="flex gap-2">
               <button
                 onClick={() => setShowForm(false)}
@@ -189,14 +243,30 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
             style={{ background: '#FFFFFF', opacity: a.archived ? 0.5 : 1 }}
           >
             <span className="text-2xl">{a.type === 'cash' ? '💵' : a.type === 'credit' ? '💳' : '🏦'}</span>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <p className="font-bold" style={{ color: '#2D2D2D' }}>{a.name}</p>
               <p className="text-xs" style={{ color: '#8A8276' }}>
                 {ACCOUNT_TYPES.find((t) => t.value === a.type)?.label} · {a.currency}
                 {a.archived && ' · Archivada'}
               </p>
+              {a.type === 'credit' ? (
+                <p className="text-sm font-black mt-1" style={{ color: '#FF7F6B' }}>
+                  {formatARS(cardMonthSpend(a.id))}
+                  <span className="text-xs font-semibold" style={{ color: '#8A8276' }}> gastado este mes</span>
+                </p>
+              ) : (
+                (() => {
+                  const bal = assetBalance(a.id, a.initial_balance ?? 0);
+                  return (
+                    <p className="text-sm font-black mt-1" style={{ color: bal < 0 ? '#FF7F6B' : '#5BA886' }}>
+                      {formatARS(bal)}
+                      <span className="text-xs font-semibold" style={{ color: '#8A8276' }}> saldo actual</span>
+                    </p>
+                  );
+                })()
+              )}
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-shrink-0">
               {!a.archived && (
                 <button
                   onClick={() => openEdit(a)}
