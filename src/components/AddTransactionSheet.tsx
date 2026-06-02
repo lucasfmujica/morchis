@@ -10,7 +10,7 @@ import { formatARS, formatUSD, usdToArs } from '@/lib/format';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { todayISO } from '@/lib/date';
 import { toast } from 'sonner';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 interface Category {
   id: string;
@@ -34,6 +34,7 @@ interface AddTransactionSheetProps {
   householdId: string;
   profileId: string;
   partnerProfileId?: string;
+  partnerName?: string;
   categories: Category[];
   accounts: Account[];
   editTx?: EditTx | null;
@@ -59,6 +60,7 @@ export function AddTransactionSheet({
   householdId,
   profileId,
   partnerProfileId,
+  partnerName,
   categories,
   accounts,
   editTx,
@@ -69,6 +71,26 @@ export function AddTransactionSheet({
   const qc = useQueryClient();
   const router = useRouter();
 
+  // Resolve the partner from the household when the opening page didn't pass it,
+  // so "Compartido" always creates a split (the silent-no-split bug otherwise).
+  const { data: resolvedPartner } = useQuery({
+    queryKey: ['sheet-partner', householdId, profileId],
+    enabled: !!householdId,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, nickname, display_name')
+        .eq('household_id', householdId)
+        .neq('id', profileId)
+        .limit(1)
+        .maybeSingle();
+      return data;
+    },
+  });
+  const effectivePartnerId = partnerProfileId ?? resolvedPartner?.id ?? null;
+  const effectivePartnerName =
+    partnerName ?? resolvedPartner?.nickname ?? resolvedPartner?.display_name ?? 'Tu pareja';
+
   const [inputUSD, setInputUSD] = useState(false);
   const [raw, setRaw] = useState('');
   const [txType, setTxType] = useState<'expense' | 'income'>('expense');
@@ -76,6 +98,8 @@ export function AddTransactionSheet({
   const [accountId, setAccountId] = useState<string | null>(null);
   const [scope, setScope] = useState<'personal' | 'household'>('personal');
   const [isShared, setIsShared] = useState(false);
+  // Percentage of a shared expense that *I* cover. Partner owes the rest.
+  const [myShare, setMyShare] = useState(50);
   const [merchant, setMerchant] = useState('');
   const [date, setDate] = useState(todayISO());
   const [installments, setInstallments] = useState(1);
@@ -93,6 +117,7 @@ export function AddTransactionSheet({
         setMerchant(editTx.merchant ?? '');
         setDate(editTx.occurred_on);
         setInputUSD(editTx.currency === 'USD');
+        setMyShare(50); // refined from the existing split below, once it loads
       } else {
         setRaw('');
         setTxType(initialType);
@@ -104,10 +129,35 @@ export function AddTransactionSheet({
         setMerchant('');
         setDate(todayISO());
         setInputUSD(false);
+        setMyShare(50);
       }
       setInstallments(1);
     }
   }, [open, editTx, initialType]);
+
+  // When editing an already-shared expense, load the saved split so the
+  // percentage control reflects how it was actually divided.
+  useEffect(() => {
+    if (!open || !editTx?.is_shared) return;
+    let cancelled = false;
+    (async () => {
+      const { data: split } = await supabase
+        .from('splits')
+        .select('amount')
+        .eq('transaction_id', editTx.id)
+        .maybeSingle();
+      if (cancelled || !split || editTx.amount <= 0) return;
+      const arsTotal =
+        editTx.currency === 'USD' ? usdToArs(editTx.amount, arsPerUsd) : editTx.amount;
+      if (arsTotal <= 0) return;
+      // split.amount is what the partner owes me → my share is the remainder.
+      const partnerPct = Math.round((split.amount / arsTotal) * 100);
+      setMyShare(Math.min(100, Math.max(0, 100 - partnerPct)));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, editTx, arsPerUsd, supabase]);
 
   function addMonthsISO(iso: string, k: number) {
     const [y, m, d] = iso.split('-').map(Number);
@@ -168,6 +218,16 @@ export function AddTransactionSheet({
   const useInstallments = canInstallments && installments > 1;
   const perInstallment = installments > 0 ? Math.floor(nativeAmount / installments) : nativeAmount;
 
+  // Shared split: I cover `myShare`% of the bill; my partner owes the rest.
+  // We can only divide when we actually know who the partner is.
+  const canSplit = isShared && !!effectivePartnerId;
+  // How much the partner owes me, in ARS, for a given ARS amount.
+  const partnerOwesArs = (ars: number) => Math.round((ars * (100 - myShare)) / 100);
+  // Live preview amounts in the entered currency.
+  const partnerShareNative = Math.round((nativeAmount * (100 - myShare)) / 100);
+  const myShareNative = nativeAmount - partnerShareNative;
+  const fmtNative = (n: number) => (inputUSD ? formatUSD(n) : formatARS(n));
+
   async function handleSave() {
     if (nativeAmount === 0) return;
     setSaving(true);
@@ -194,6 +254,20 @@ export function AddTransactionSheet({
           .update(payload)
           .eq('id', editTx.id);
         if (error) throw error;
+
+        // Re-sync the split to match the current shared/percentage choice.
+        // (Editing previously never touched splits, so toggling "Compartido"
+        // on an existing movement silently did nothing.)
+        await supabase.from('splits').delete().eq('transaction_id', editTx.id);
+        const owed = partnerOwesArs(arsAmount);
+        if (canSplit && owed > 0) {
+          await supabase.from('splits').insert({
+            transaction_id: editTx.id,
+            payer_profile_id: profileId,
+            ower_profile_id: effectivePartnerId,
+            amount: owed,
+          });
+        }
       } else if (useInstallments) {
         // Split the total into N monthly charges (one transaction per cuota).
         const groupId = crypto.randomUUID();
@@ -214,16 +288,17 @@ export function AddTransactionSheet({
           .select('id, amount');
         if (error) throw error;
 
-        if (isShared && partnerProfileId && txs) {
-          await supabase.from('splits').insert(
-            txs.map((t) => ({
+        if (canSplit && txs) {
+          const splitRows = txs
+            .map((t) => ({
               transaction_id: t.id,
               payer_profile_id: profileId,
-              ower_profile_id: partnerProfileId,
+              ower_profile_id: effectivePartnerId,
               // splits are tracked in ARS for the couple balance
-              amount: Math.round((txCurrency === 'USD' ? usdToArs(t.amount, arsPerUsd) : t.amount) / 2),
-            })),
-          );
+              amount: partnerOwesArs(txCurrency === 'USD' ? usdToArs(t.amount, arsPerUsd) : t.amount),
+            }))
+            .filter((r) => r.amount > 0);
+          if (splitRows.length > 0) await supabase.from('splits').insert(splitRows);
         }
       } else {
         const { data: tx, error } = await supabase
@@ -233,12 +308,13 @@ export function AddTransactionSheet({
           .single();
         if (error) throw error;
 
-        if (isShared && partnerProfileId && tx) {
+        const owed = partnerOwesArs(arsAmount);
+        if (canSplit && tx && owed > 0) {
           await supabase.from('splits').insert({
             transaction_id: tx.id,
             payer_profile_id: profileId,
-            ower_profile_id: partnerProfileId,
-            amount: Math.round(arsAmount / 2),
+            ower_profile_id: effectivePartnerId,
+            amount: owed,
           });
         }
       }
@@ -425,6 +501,63 @@ export function AddTransactionSheet({
               style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
             />
           </div>
+
+          {/* Split percentage — only when "Compartido" is on */}
+          {isShared && (
+            <div className="px-4 mt-3">
+              {effectivePartnerId ? (
+                <div className="rounded-2xl p-3 border" style={{ background: '#FFFFFF', borderColor: '#ECE5DC' }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-bold" style={{ color: '#6B6459' }}>¿Cómo lo dividen?</p>
+                    <div className="flex gap-1">
+                      {[
+                        { label: '50/50', v: 50 },
+                        { label: 'Yo todo', v: 100 },
+                        { label: `${effectivePartnerName}`, v: 0 },
+                      ].map((p) => (
+                        <button
+                          key={p.label}
+                          onClick={() => setMyShare(p.v)}
+                          className="px-2 py-1 rounded-lg text-[11px] font-bold border"
+                          style={{
+                            background: myShare === p.v ? '#FFE7E2' : '#FFFFFF',
+                            borderColor: myShare === p.v ? '#FF7F6B' : '#ECE5DC',
+                            color: myShare === p.v ? '#FF7F6B' : '#6B6459',
+                          }}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={myShare}
+                    onChange={(e) => setMyShare(parseInt(e.target.value, 10))}
+                    className="w-full"
+                    style={{ accentColor: '#FF7F6B' }}
+                  />
+                  <div className="flex justify-between mt-1.5">
+                    <div>
+                      <p className="text-[11px]" style={{ color: '#6B6459' }}>Yo ({myShare}%)</p>
+                      <p className="text-sm font-bold" style={{ color: '#2D2D2D' }}>{fmtNative(myShareNative)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[11px]" style={{ color: '#6B6459' }}>{effectivePartnerName} ({100 - myShare}%)</p>
+                      <p className="text-sm font-bold" style={{ color: '#2D2D2D' }}>{fmtNative(partnerShareNative)}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-[11px]" style={{ color: '#B8860B' }}>
+                  ⚠️ Invitá a tu pareja al hogar para poder dividir el gasto.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Cuotas (solo para gastos nuevos) */}
           {canInstallments && (
