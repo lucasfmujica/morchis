@@ -6,6 +6,13 @@ import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
 import { usePrivacyStore } from '@/store/privacy';
 import { usePushSubscription } from '@/hooks/usePushSubscription';
+import { useBudgetAlerts } from '@/hooks/useBudgetAlerts';
+import {
+  spentForBudget,
+  toArs as budgetToArs,
+  BUDGET_EXPENSE_SELECT,
+  type BudgetExpenseRow,
+} from '@/lib/budgets';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { CoupleBalanceChip } from '@/components/CoupleBalanceChip';
@@ -336,10 +343,25 @@ export default function HomeClient({
     queryFn: async () => {
       const { data } = await supabase
         .from('budgets')
-        .select('id, category_id, scope, amount')
+        .select('id, category_id, scope, amount, currency, profile_id')
         .eq('household_id', profile.household_id)
         .eq('active', true);
       return data ?? [];
+    },
+  });
+
+  // Expense rows (with splits) for accurate per-budget spend — used by the
+  // budget alerts below so shared expenses count each person's real share.
+  const { data: budgetRows = [] } = useQuery<BudgetExpenseRow[]>({
+    queryKey: ['budget-expense-rows', profile.household_id, monthStart],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('transactions')
+        .select(BUDGET_EXPENSE_SELECT)
+        .eq('household_id', profile.household_id)
+        .eq('type', 'expense')
+        .gte('occurred_on', monthStart);
+      return (data ?? []) as BudgetExpenseRow[];
     },
   });
 
@@ -430,6 +452,30 @@ export default function HomeClient({
     return map;
   }, {});
   const savingsRate = incomeSoFar > 0 ? Math.round(((incomeSoFar - expensesSoFar) / incomeSoFar) * 100) : null;
+
+  // Per-budget spend with shared expenses counted as each person's real share.
+  // Only my budgets matter on my home: household ones + my own personal ones.
+  const catById = Object.fromEntries(categories.map((c) => [c.id, c]));
+  const budgetAlerts = budgets
+    .filter((b) => b.scope === 'household' || b.profile_id === profile.id)
+    .map((b) => {
+      const spent = spentForBudget(b, budgetRows, profile.id, arsPerUsd);
+      const limit = budgetToArs(b.amount, b.currency, arsPerUsd);
+      const cat = catById[b.category_id];
+      return {
+        id: b.id,
+        name: cat?.name ?? 'Categoría',
+        icon: cat?.icon ?? '📦',
+        spent,
+        limit,
+        pct: limit > 0 ? spent / limit : 0,
+      };
+    })
+    .filter((a) => a.pct >= 0.8)
+    .sort((a, b) => b.pct - a.pct);
+
+  // Fire a local notification the first time a budget hits 80% / 100%.
+  useBudgetAlerts(budgetAlerts.map((a) => ({ id: a.id, name: a.name, pct: a.pct })));
 
   const quickTiles = [
     { href: '/cuentas', icon: '🏦', label: 'Cuentas', value: mask(format(totalBalance)), color: totalBalance < 0 ? '#E5604C' : '#2D2D2D' },
@@ -581,6 +627,40 @@ export default function HomeClient({
 
       {/* Spent-vs-budget */}
       <BudgetSummaryCard budgets={budgets} spentByCategory={spentByCategory} hideAmounts={hideAmounts} />
+
+      {/* Per-category budget alerts (only categories near or over the limit) */}
+      {budgetAlerts.length > 0 && (
+        <div className="mx-4 rounded-3xl p-5 mb-4" style={{ background: '#FFFFFF' }}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>
+            Atención al presupuesto
+          </p>
+          <div className="flex flex-col gap-3">
+            {budgetAlerts.map((a) => {
+              const over = a.pct >= 1;
+              const color = over ? '#FF7F6B' : '#B8860B';
+              return (
+                <Link key={a.id} href="/presupuestos" className="block">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <span>{a.icon}</span>
+                      <span className="text-sm font-semibold" style={{ color: '#2D2D2D' }}>{a.name}</span>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: over ? '#FFE7E2' : '#FDF1D8', color }}>
+                      {over ? 'Excedido' : `${Math.round(a.pct * 100)}%`}
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full overflow-hidden" style={{ background: '#ECE5DC' }}>
+                    <div className="h-full rounded-full" style={{ background: color, width: `${Math.min(a.pct * 100, 100)}%` }} />
+                  </div>
+                  <p className="text-[11px] mt-1" style={{ color: '#6B6459' }}>
+                    {mask(formatARS(a.spent))} de {mask(formatARS(a.limit))}
+                  </p>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Spending by category donut (scope-aware) */}
       <CategoryDonutCard categories={categories} spentByCategory={scopedSpentByCategory} hideAmounts={hideAmounts} />

@@ -10,6 +10,11 @@ import { formatARS, formatUSD } from '@/lib/format';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { EmptyState } from '@/components/EmptyState';
+import {
+  spentForBudget as computeSpentForBudget,
+  BUDGET_EXPENSE_SELECT,
+  type BudgetExpenseRow,
+} from '@/lib/budgets';
 
 interface Profile {
   id: string;
@@ -265,20 +270,20 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
     },
   });
 
-  // Load this month's expense rows (with scope + owner) so each budget counts the
-  // right spend: household budgets count shared expenses, personal budgets count
-  // only my own personal expenses.
-  type ExpenseRow = { category_id: string | null; amount: number; currency: string; scope: string; profile_id: string };
-  const { data: expenseRows = [] } = useQuery<ExpenseRow[]>({
+  // Load this month's expense rows (with scope, owner and splits) so each budget
+  // counts the right spend: household budgets count the combined household spend,
+  // personal budgets count only the owner's *share* of each expense — including
+  // their part of shared expenses, no matter who actually paid.
+  const { data: expenseRows = [] } = useQuery<BudgetExpenseRow[]>({
     queryKey: ['budget-expense-rows', profile.household_id, monthStart],
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('category_id, amount, currency, scope, profile_id')
+        .select(BUDGET_EXPENSE_SELECT)
         .eq('household_id', profile.household_id)
         .eq('type', 'expense')
         .gte('occurred_on', monthStart);
-      return (data ?? []) as ExpenseRow[];
+      return (data ?? []) as BudgetExpenseRow[];
     },
   });
 
@@ -287,15 +292,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
     currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount;
 
   function spentForBudget(b: Budget): number {
-    return expenseRows
-      .filter(
-        (t) =>
-          t.category_id === b.category_id &&
-          (b.scope === 'household'
-            ? t.scope === 'household'
-            : t.scope === 'personal' && t.profile_id === profile.id),
-      )
-      .reduce((s, t) => s + toArs(t.amount, t.currency), 0);
+    return computeSpentForBudget(b, expenseRows, profile.id, arsPerUsd);
   }
 
   const deleteMutation = useMutation({
@@ -367,6 +364,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
             const spent = spentForBudget(b);
             const limitArs = toArs(b.amount, b.currency);
             const over = spent > limitArs;
+            const near = !over && limitArs > 0 && spent / limitArs >= 0.8;
             return (
               <div key={b.id} className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
                 <div className="flex items-center justify-between mb-3">
@@ -380,6 +378,14 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
                           style={{ background: '#FFE7E2', color: '#FF7F6B' }}
                         >
                           Excedido
+                        </span>
+                      )}
+                      {near && (
+                        <span
+                          className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                          style={{ background: '#FDF1D8', color: '#B8860B' }}
+                        >
+                          Cerca del límite · {Math.round((spent / limitArs) * 100)}%
                         </span>
                       )}
                     </div>
