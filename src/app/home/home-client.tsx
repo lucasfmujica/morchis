@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
+import { usePrivacyStore } from '@/store/privacy';
 import { usePushSubscription } from '@/hooks/usePushSubscription';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
@@ -24,13 +25,36 @@ interface Profile {
 
 import Link from 'next/link';
 
+function EyeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c6.5 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+      <path d="M6.61 6.61A13.5 13.5 0 0 0 2 12s3.5 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+      <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+      <line x1="2" y1="2" x2="22" y2="22" />
+    </svg>
+  );
+}
+
 function BudgetSummaryCard({
   budgets,
   spentByCategory,
+  hideAmounts,
 }: {
   budgets: { id: string; category_id: string; scope: string; amount: number }[];
   spentByCategory: Record<string, number>;
+  hideAmounts: boolean;
 }) {
+  const m = (s: string) => (hideAmounts ? '••••••' : s);
   if (budgets.length === 0) {
     return (
       <Link href="/presupuestos" className="mx-4 rounded-3xl p-5 mb-4 flex items-center justify-between" style={{ background: '#FFFFFF' }}>
@@ -65,9 +89,9 @@ function BudgetSummaryCard({
         />
       </div>
       <div className="flex justify-between mt-2">
-        <p className="text-xs font-semibold" style={{ color: barColor }}>{formatARS(totalSpent)} gastado</p>
+        <p className="text-xs font-semibold" style={{ color: barColor }}>{m(formatARS(totalSpent))} gastado</p>
         <p className="text-xs" style={{ color: over ? '#FF7F6B' : '#6B6459' }}>
-          {over ? `+${formatARS(totalSpent - totalBudget)} excedido` : `de ${formatARS(totalBudget)}`}
+          {over ? `+${m(formatARS(totalSpent - totalBudget))} excedido` : `de ${m(formatARS(totalBudget))}`}
         </p>
       </div>
     </Link>
@@ -108,9 +132,11 @@ const DONUT_PALETTE = ['#7EC8A4', '#FF7F6B', '#F5A623', '#6FA8DC', '#B084CC', '#
 function CategoryDonutCard({
   categories,
   spentByCategory,
+  hideAmounts,
 }: {
   categories: { id: string; name: string; icon: string; color: string | null }[];
   spentByCategory: Record<string, number>;
+  hideAmounts: boolean;
 }) {
   const catById = new Map(categories.map((c) => [c.id, c]));
   const rows = Object.entries(spentByCategory)
@@ -145,7 +171,7 @@ function CategoryDonutCard({
       </div>
       <div className="flex items-center gap-4">
         <div className="shrink-0">
-          <DonutChart segments={legend} centerTop="Total" centerBottom={formatARS(total)} />
+          <DonutChart segments={legend} centerTop="Total" centerBottom={hideAmounts ? '••••' : formatARS(total)} />
         </div>
         <div className="flex-1 min-w-0 flex flex-col gap-2">
           {legend.map((seg, i) => (
@@ -234,6 +260,9 @@ export default function HomeClient({
 }) {
   const supabase = createClient();
   const { format, toggle, showUSD, arsPerUsd } = useFx();
+  const { hideAmounts, toggle: toggleHide } = usePrivacyStore();
+  // Bank-style mask: when the ojito is on, every money value renders as dots.
+  const mask = (s: string) => (hideAmounts ? '••••••' : s);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   usePushSubscription(profile.id);
@@ -252,7 +281,7 @@ export default function HomeClient({
   const { data: accounts = [] } = useQuery({
     queryKey: ['accounts', profile.household_id],
     queryFn: async () => {
-      const { data } = await supabase.from('accounts').select('id, name, type').eq('household_id', profile.household_id).eq('archived', false).order('name');
+      const { data } = await supabase.from('accounts').select('id, name, type, owner_profile_id').eq('household_id', profile.household_id).eq('archived', false).order('name');
       return data ?? [];
     },
   });
@@ -403,9 +432,9 @@ export default function HomeClient({
   const savingsRate = incomeSoFar > 0 ? Math.round(((incomeSoFar - expensesSoFar) / incomeSoFar) * 100) : null;
 
   const quickTiles = [
-    { href: '/cuentas', icon: '🏦', label: 'Cuentas', value: format(totalBalance), color: totalBalance < 0 ? '#E5604C' : '#2D2D2D' },
-    { href: '/analisis', icon: '💸', label: 'Gastos', value: format(monthExpenseTotal), color: '#FF7F6B' },
-    { href: '/reglas', icon: '💰', label: 'Ingresos', value: format(incomeSoFar), color: '#5BA886' },
+    { href: '/cuentas', icon: '🏦', label: 'Cuentas', value: mask(format(totalBalance)), color: totalBalance < 0 ? '#E5604C' : '#2D2D2D' },
+    { href: '/analisis', icon: '💸', label: 'Gastos', value: mask(format(monthExpenseTotal)), color: '#FF7F6B' },
+    { href: '/reglas', icon: '💰', label: 'Ingresos', value: mask(format(incomeSoFar)), color: '#5BA886' },
     { href: '/ahorro', icon: '🐷', label: 'Ahorro', value: savingsRate == null ? '—' : `${savingsRate}%`, color: '#B8860B' },
   ];
 
@@ -426,13 +455,23 @@ export default function HomeClient({
           <p className="text-sm" style={{ color: '#6B6459' }}>{greeting},</p>
           <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>{name} 👋</h1>
         </div>
-        <button
-          onClick={toggle}
-          className="text-sm font-bold px-3 py-1.5 rounded-full border"
-          style={{ borderColor: '#7EC8A4', color: '#7EC8A4' }}
-        >
-          {showUSD ? 'USD' : 'ARS'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={toggleHide}
+            aria-label={hideAmounts ? 'Mostrar importes' : 'Ocultar importes'}
+            className="flex items-center justify-center w-9 h-9 rounded-full border"
+            style={{ borderColor: '#7EC8A4', color: '#7EC8A4' }}
+          >
+            {hideAmounts ? <EyeOffIcon /> : <EyeIcon />}
+          </button>
+          <button
+            onClick={toggle}
+            className="text-sm font-bold px-3 py-1.5 rounded-full border"
+            style={{ borderColor: '#7EC8A4', color: '#7EC8A4' }}
+          >
+            {showUSD ? 'USD' : 'ARS'}
+          </button>
+        </div>
       </header>
 
       {/* Scope toggle */}
@@ -466,16 +505,20 @@ export default function HomeClient({
               className="text-4xl font-black leading-none mb-1"
               style={{ color: isPositive ? '#5BA886' : '#E5604C', fontVariantNumeric: 'tabular-nums' }}
             >
-              {!isPositive && '−'}{showUSD && arsPerUsd > 0
-                ? `US$${Math.round(Math.abs(projectedBalance) / arsPerUsd).toLocaleString('es-AR')}`
-                : formatARS(Math.abs(projectedBalance))}
+              {hideAmounts
+                ? '••••••'
+                : `${!isPositive ? '−' : ''}${showUSD && arsPerUsd > 0
+                    ? `US$${Math.round(Math.abs(projectedBalance) / arsPerUsd).toLocaleString('es-AR')}`
+                    : formatARS(Math.abs(projectedBalance))}`}
             </p>
             <p className="text-xs" style={{ color: isPositive ? '#5BA886' : '#E5604C', opacity: 0.75 }}>
-              {showUSD
-                ? (!isPositive ? '−' : '') + formatARS(Math.abs(projectedBalance))
-                : arsPerUsd > 0
-                  ? `≈ US$${Math.round(Math.abs(projectedBalance) / arsPerUsd).toLocaleString('es-AR')}`
-                  : ''}
+              {hideAmounts
+                ? ''
+                : showUSD
+                  ? (!isPositive ? '−' : '') + formatARS(Math.abs(projectedBalance))
+                  : arsPerUsd > 0
+                    ? `≈ US$${Math.round(Math.abs(projectedBalance) / arsPerUsd).toLocaleString('es-AR')}`
+                    : ''}
             </p>
           </div>
           <Sparkline values={dailyBalances} positive={isPositive} />
@@ -485,11 +528,11 @@ export default function HomeClient({
         <div className="flex gap-4 mt-3 pt-3" style={{ borderTop: `1px solid ${isPositive ? '#5BA88640' : '#E5604C40'}` }}>
           <div>
             <p className="text-xs" style={{ color: isPositive ? '#5BA886' : '#E5604C', opacity: 0.75 }}>Ingresos</p>
-            <p className="text-sm font-bold" style={{ color: isPositive ? '#5BA886' : '#E5604C' }}>{format(incomeSoFar)}</p>
+            <p className="text-sm font-bold" style={{ color: isPositive ? '#5BA886' : '#E5604C' }}>{mask(format(incomeSoFar))}</p>
           </div>
           <div>
             <p className="text-xs" style={{ color: isPositive ? '#5BA886' : '#E5604C', opacity: 0.75 }}>Gastos</p>
-            <p className="text-sm font-bold" style={{ color: isPositive ? '#5BA886' : '#E5604C' }}>{format(expensesSoFar)}</p>
+            <p className="text-sm font-bold" style={{ color: isPositive ? '#5BA886' : '#E5604C' }}>{mask(format(expensesSoFar))}</p>
           </div>
           <div>
             <p className="text-xs" style={{ color: isPositive ? '#5BA886' : '#E5604C', opacity: 0.75 }}>Días rest.</p>
@@ -523,7 +566,7 @@ export default function HomeClient({
       </div>
 
       {/* Income of the month + savings rate */}
-      <IncomeCard incomeSoFar={incomeSoFar} expensesSoFar={expensesSoFar} incomeRules={incomeRules} fmt={format} />
+      <IncomeCard incomeSoFar={incomeSoFar} expensesSoFar={expensesSoFar} incomeRules={incomeRules} fmt={(n) => mask(format(n))} />
 
       {/* Couple balance chip */}
       <CoupleBalanceChip
@@ -537,10 +580,10 @@ export default function HomeClient({
       <InsightTopCard householdId={profile.household_id} profileId={profile.id} />
 
       {/* Spent-vs-budget */}
-      <BudgetSummaryCard budgets={budgets} spentByCategory={spentByCategory} />
+      <BudgetSummaryCard budgets={budgets} spentByCategory={spentByCategory} hideAmounts={hideAmounts} />
 
       {/* Spending by category donut (scope-aware) */}
-      <CategoryDonutCard categories={categories} spentByCategory={scopedSpentByCategory} />
+      <CategoryDonutCard categories={categories} spentByCategory={scopedSpentByCategory} hideAmounts={hideAmounts} />
 
       <BottomNav onFab={(type) => { setFabType(type); setSheetOpen(true); }} />
 

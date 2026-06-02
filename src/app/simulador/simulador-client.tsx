@@ -64,7 +64,7 @@ export default function SimuladorClient({ profile }: { profile: Profile }) {
   const { data: accounts = [] } = useQuery({
     queryKey: ['accounts', profile.household_id],
     queryFn: async () => {
-      const { data } = await supabase.from('accounts').select('id, name, type').eq('household_id', profile.household_id).eq('archived', false).order('name');
+      const { data } = await supabase.from('accounts').select('id, name, type, owner_profile_id').eq('household_id', profile.household_id).eq('archived', false).order('name');
       return data ?? [];
     },
   });

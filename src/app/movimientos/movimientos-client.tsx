@@ -84,7 +84,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     queryFn: async () => {
       const { data } = await supabase
         .from('accounts')
-        .select('id, name, type')
+        .select('id, name, type, owner_profile_id')
         .eq('household_id', profile.household_id)
         .eq('archived', false)
         .order('name');

@@ -22,6 +22,9 @@ interface Account {
   id: string;
   name: string;
   type: string;
+  // Optional so pages that don't fetch ownership still compile; when it's
+  // missing we don't narrow the picker (see visibleAccounts below).
+  owner_profile_id?: string | null;
 }
 
 interface AddTransactionSheetProps {
@@ -92,7 +95,8 @@ export function AddTransactionSheet({
         setRaw('');
         setTxType(initialType);
         setCategoryId(null);
-        setAccountId(accounts[0]?.id ?? null);
+        // New movement starts as "Personal", so default to the first account I own.
+        setAccountId(accounts.find((a) => a.owner_profile_id === profileId)?.id ?? accounts[0]?.id ?? null);
         setScope('personal');
         setIsShared(false);
         setMerchant('');
@@ -138,6 +142,24 @@ export function AddTransactionSheet({
 
   const visibleCategories = categories.filter((c) => c.kind === txType);
 
+  // Account picker scope: a "Personal" (solo mío) movement only lists my own
+  // accounts; "Hogar" or "Compartido/Dividir" widens it to every account.
+  // Accounts with no ownership info (a page that didn't fetch it) are always
+  // shown — we only hide the partner's accounts when we actually know who owns
+  // what and the movement is strictly Personal.
+  const widenAccounts = scope === 'household' || isShared;
+  const visibleAccounts = widenAccounts
+    ? accounts
+    : accounts.filter((a) => a.owner_profile_id == null || a.owner_profile_id === profileId);
+
+  // If the selected account is no longer offered (e.g. switched back to Personal
+  // while a partner's account was picked), fall back to the first available one
+  // so we never silently save a hidden selection. Derived at render — no effect.
+  const effectiveAccountId =
+    accountId && visibleAccounts.some((a) => a.id === accountId)
+      ? accountId
+      : (visibleAccounts[0]?.id ?? null);
+
   // Cuotas: only for new expenses. The entered amount is the TOTAL purchase,
   // split into N monthly charges.
   const canInstallments = txType === 'expense' && !editTx;
@@ -156,7 +178,7 @@ export function AddTransactionSheet({
         currency: txCurrency,
         usd_rate_snapshot: arsPerUsd,
         category_id: categoryId,
-        account_id: accountId,
+        account_id: effectiveAccountId,
         merchant: merchant || null,
         occurred_on: date,
         scope,
@@ -364,15 +386,15 @@ export function AddTransactionSheet({
             </button>
 
             {/* Account */}
-            {accounts.length > 0 && (
+            {visibleAccounts.length > 0 && (
               <select
-                value={accountId ?? ''}
+                value={effectiveAccountId ?? ''}
                 onChange={(e) => setAccountId(e.target.value || null)}
                 className="px-3 py-2 rounded-xl text-xs font-bold border bg-white"
                 style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
               >
                 <option value="">Sin cuenta</option>
-                {accounts.map((a) => (
+                {visibleAccounts.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name}
                   </option>
