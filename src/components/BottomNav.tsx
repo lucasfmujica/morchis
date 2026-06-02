@@ -86,7 +86,7 @@ export function BottomNav({ onFab }: BottomNavProps) {
             +
           </button>
         </div>
-        {tab('/insights', 'Insights', '✨')}
+        {tab('/analisis', 'Análisis', '📊')}
         {tab('/mas', 'Más', '⚙️')}
       </nav>
     </>

@@ -1,0 +1,280 @@
+'use client';
+
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { createClient } from '@/lib/supabase';
+import { useFx } from '@/hooks/useFx';
+import { BottomNav } from '@/components/BottomNav';
+import { AddTransactionSheet } from '@/components/AddTransactionSheet';
+import { DonutChart } from '@/components/DonutChart';
+import { MonthlyBars, SingleBars, lastSixMonths } from '@/components/MonthlyBars';
+import { netWorthAt, type AccountRow, type AccountTx } from '@/lib/accounts';
+import { formatARS } from '@/lib/format';
+import Link from 'next/link';
+
+interface Profile {
+  id: string;
+  household_id: string;
+  nickname: string | null;
+  display_name: string | null;
+}
+
+const DONUT_PALETTE = ['#7EC8A4', '#FF7F6B', '#F5A623', '#6FA8DC', '#B084CC', '#E89AC7', '#5BA886', '#C4B9AE'];
+
+const SEVERITY = {
+  positive: { bg: '#E4F2EA', color: '#5BA886', icon: '✨' },
+  warning: { bg: '#FFE7E2', color: '#E5604C', icon: '⚠️' },
+  info: { bg: '#F0EDE8', color: '#8A8276', icon: '💡' },
+} as const;
+
+export default function AnalisisClient({ profile }: { profile: Profile }) {
+  const supabase = createClient();
+  const qc = useQueryClient();
+  const { arsPerUsd } = useFx();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
+  const [refreshing, setRefreshing] = useState(false);
+
+  const today = new Date();
+  const months = lastSixMonths(today);
+  const currentKey = months[months.length - 1].key;
+  const rangeStart = `${months[0].key}-01`;
+  const todayISO = today.toISOString().slice(0, 10);
+
+  const { data: categories = [] } = useQuery({
+    queryKey: ['categories', profile.household_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('categories')
+        .select('id, name, icon, color, kind')
+        .eq('household_id', profile.household_id)
+        .order('name');
+      return data ?? [];
+    },
+  });
+
+  const { data: txns = [] } = useQuery({
+    queryKey: ['transactions', profile.household_id, '6mo'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('transactions')
+        .select('amount, type, occurred_on, category_id')
+        .eq('household_id', profile.household_id)
+        .gte('occurred_on', rangeStart);
+      return data ?? [];
+    },
+  });
+
+  const { data: accounts = [] } = useQuery<AccountRow[]>({
+    queryKey: ['accounts-full', profile.household_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('accounts')
+        .select('id, type, currency, archived, initial_balance')
+        .eq('household_id', profile.household_id);
+      return (data ?? []) as AccountRow[];
+    },
+  });
+
+  const { data: accountTx = [] } = useQuery<AccountTx[]>({
+    queryKey: ['account-tx', profile.household_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('transactions')
+        .select('account_id, type, amount, occurred_on')
+        .eq('household_id', profile.household_id)
+        .not('account_id', 'is', null);
+      return (data ?? []) as AccountTx[];
+    },
+  });
+
+  const { data: insights = [] } = useQuery({
+    queryKey: ['insights', profile.household_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('insights')
+        .select('id, title, body, severity, created_at')
+        .eq('household_id', profile.household_id)
+        .order('created_at', { ascending: false })
+        .limit(4);
+      return data ?? [];
+    },
+  });
+
+  // Category breakdown — current month expenses
+  const catById = new Map(categories.map((c) => [c.id, c]));
+  const spentByCat = new Map<string, number>();
+  for (const t of txns) {
+    if (t.type !== 'expense' || !t.occurred_on.startsWith(currentKey) || !t.category_id) continue;
+    spentByCat.set(t.category_id, (spentByCat.get(t.category_id) ?? 0) + t.amount);
+  }
+  const catRows = [...spentByCat.entries()]
+    .map(([id, value]) => ({ id, cat: catById.get(id), value }))
+    .filter((r) => r.cat && r.value > 0)
+    .sort((a, b) => b.value - a.value);
+  const monthExpense = catRows.reduce((s, r) => s + r.value, 0);
+  const TOP = 6;
+  const topCats = catRows.slice(0, TOP);
+  const restTotal = catRows.slice(TOP).reduce((s, r) => s + r.value, 0);
+  const segments = topCats.map((r, i) => ({
+    label: r.cat!.name,
+    value: r.value,
+    color: r.cat!.color || DONUT_PALETTE[i % DONUT_PALETTE.length],
+  }));
+  if (restTotal > 0) segments.push({ label: 'Otras', value: restTotal, color: '#C4B9AE' });
+
+  // 6-month income vs expense
+  const trendRows = months.map((m) => {
+    let income = 0;
+    let expense = 0;
+    for (const t of txns) {
+      if (!t.occurred_on.startsWith(m.key)) continue;
+      if (t.type === 'income') income += t.amount;
+      else if (t.type === 'expense') expense += t.amount;
+    }
+    return { ...m, income, expense, rate: income > 0 ? (income - expense) / income : null };
+  });
+
+  // 6-month net worth
+  const nwRows = months.map((m) => {
+    const [y, mo] = m.key.split('-').map(Number);
+    const monthEnd = new Date(y, mo, 0).toISOString().slice(0, 10);
+    const asOf = monthEnd > todayISO ? todayISO : monthEnd;
+    return { key: m.key, label: m.label, value: netWorthAt(accounts, accountTx, asOf, arsPerUsd) };
+  });
+  const currentNetWorth = nwRows[nwRows.length - 1]?.value ?? 0;
+  const prevNetWorth = nwRows[nwRows.length - 2]?.value ?? 0;
+  const nwDelta = currentNetWorth - prevNetWorth;
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-insights`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'full' }),
+      });
+      await qc.invalidateQueries({ queryKey: ['insights', profile.household_id] });
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
+      <header className="px-5 pt-14 pb-4">
+        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Análisis 📊</h1>
+      </header>
+
+      <div className="px-4 flex flex-col gap-4">
+        {/* Net worth */}
+        <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#8A8276' }}>Patrimonio</p>
+          <div className="flex items-end justify-between mb-3">
+            <p className="text-3xl font-black leading-none" style={{ color: '#2D2D2D', fontVariantNumeric: 'tabular-nums' }}>
+              {formatARS(currentNetWorth)}
+            </p>
+            <span
+              className="text-xs font-bold px-2 py-1 rounded-full"
+              style={{ background: nwDelta >= 0 ? '#E4F2EA' : '#FFE7E2', color: nwDelta >= 0 ? '#5BA886' : '#E5604C' }}
+            >
+              {nwDelta >= 0 ? '▲' : '▼'} {formatARS(Math.abs(nwDelta))} vs mes ant.
+            </span>
+          </div>
+          <SingleBars rows={nwRows} color="#7EC8A4" />
+        </div>
+
+        {/* Spending by category */}
+        <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8A8276' }}>Gastos por categoría</p>
+            <span className="text-xs font-black" style={{ color: '#FF7F6B' }}>{formatARS(monthExpense)}</span>
+          </div>
+          {segments.length === 0 ? (
+            <p className="text-sm text-center py-6" style={{ color: '#8A8276' }}>Sin gastos este mes todavía.</p>
+          ) : (
+            <div className="flex items-center gap-4">
+              <div className="shrink-0">
+                <DonutChart segments={segments} centerTop="Mes" centerBottom={formatARS(monthExpense)} />
+              </div>
+              <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                {topCats.map((r, i) => (
+                  <Link key={r.id} href={`/categorias/${r.id}`} className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r.cat!.color || DONUT_PALETTE[i % DONUT_PALETTE.length] }} />
+                    <span className="text-xs flex-1 truncate" style={{ color: '#2D2D2D' }}>{r.cat!.icon} {r.cat!.name}</span>
+                    <span className="text-xs font-semibold" style={{ color: '#8A8276' }}>{Math.round((r.value / monthExpense) * 100)}%</span>
+                    <span className="text-[10px]" style={{ color: '#C4B9AE' }}>›</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 6-month trend */}
+        <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#8A8276' }}>Ingresos vs gastos · 6 meses</p>
+          <div className="flex items-center gap-4 mb-3 text-[11px]">
+            <span className="flex items-center gap-1.5" style={{ color: '#5BA886' }}>
+              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#7EC8A4' }} /> Ingresos
+            </span>
+            <span className="flex items-center gap-1.5" style={{ color: '#E5604C' }}>
+              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#FF7F6B' }} /> Gastos
+            </span>
+            <span className="ml-auto" style={{ color: '#8A8276' }}>% = ahorro</span>
+          </div>
+          <MonthlyBars rows={trendRows} />
+        </div>
+
+        {/* AI insights */}
+        <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8A8276' }}>Insights ✨</p>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="text-xs font-bold px-3 py-1.5 rounded-full"
+              style={{ background: refreshing ? '#ECE5DC' : '#7EC8A4', color: refreshing ? '#8A8276' : '#FFFFFF' }}
+            >
+              {refreshing ? 'Analizando…' : 'Actualizar'}
+            </button>
+          </div>
+          {insights.length === 0 ? (
+            <p className="text-sm text-center py-4" style={{ color: '#8A8276' }}>Tocá &quot;Actualizar&quot; para que la IA analice tus gastos.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {insights.map((ins) => {
+                const s = SEVERITY[(ins.severity as keyof typeof SEVERITY)] ?? SEVERITY.info;
+                return (
+                  <div key={ins.id} className="rounded-2xl p-3 flex items-start gap-2.5" style={{ background: s.bg }}>
+                    <span className="text-lg shrink-0">{s.icon}</span>
+                    <div className="min-w-0">
+                      <p className="font-black text-sm leading-tight" style={{ color: s.color }}>{ins.title}</p>
+                      <p className="text-xs mt-0.5 leading-snug" style={{ color: s.color, opacity: 0.85 }}>{ins.body}</p>
+                    </div>
+                  </div>
+                );
+              })}
+              <Link href="/insights" className="text-xs font-bold text-center pt-1" style={{ color: '#5BA886' }}>
+                Ver todos los insights →
+              </Link>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <BottomNav onFab={(type) => { setFabType(type); setSheetOpen(true); }} />
+      <AddTransactionSheet
+        open={sheetOpen}
+        initialType={fabType}
+        onClose={() => setSheetOpen(false)}
+        householdId={profile.household_id}
+        profileId={profile.id}
+        categories={categories}
+        accounts={[]}
+      />
+    </div>
+  );
+}

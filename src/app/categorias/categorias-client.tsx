@@ -7,6 +7,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { toast } from 'sonner';
 import { formatARS } from '@/lib/format';
+import Link from 'next/link';
 
 const ICONS = ['🛒', '🍕', '🚇', '💊', '🎭', '📚', '✈️', '🏠', '💼', '💵', '📱', '💻', '👗', '🏷️', '💰', '🎯', '🎮', '🐾', '🌿', '⚽'];
 
@@ -224,46 +225,55 @@ export default function CategoriasClient({ profile }: { profile: Profile }) {
               const pct = hasBudget ? spent / budget : 0;
               const barCol = pct >= 1 ? '#FF7F6B' : pct >= 0.8 ? '#F5A623' : '#7EC8A4';
               return (
-                <button
+                <div
                   key={c.id}
-                  onClick={() => openEdit(c)}
-                  className="w-full px-4 py-3.5 text-left"
+                  className="flex items-stretch"
                   style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl">{c.icon}</span>
-                    <p className="flex-1 text-sm font-semibold" style={{ color: '#2D2D2D' }}>{c.name}</p>
-                    <div className="text-right">
-                      <p
-                        className="text-sm font-black"
-                        style={{ color: spent === 0 ? '#8A8276' : c.kind === 'income' ? '#5BA886' : '#2D2D2D' }}
-                      >
-                        {spent > 0 ? formatARS(spent) : '—'}
-                      </p>
-                      {hasBudget && (
-                        <p className="text-[10px]" style={{ color: '#8A8276' }}>de {formatARS(budget)}</p>
-                      )}
-                    </div>
-                  </div>
-                  {hasBudget && (
-                    <div className="mt-2 ml-9">
-                      <div className="h-2 rounded-full overflow-hidden" style={{ background: '#ECE5DC' }}>
-                        <div
-                          className="h-full rounded-full transition-all duration-500"
-                          style={{ width: `${Math.min(pct * 100, 100)}%`, background: barCol }}
-                        />
-                      </div>
-                      <div className="flex justify-between mt-0.5">
-                        <span className="text-[10px] font-bold" style={{ color: barCol }}>
-                          {Math.round(pct * 100)}%
-                        </span>
-                        {pct >= 1 && (
-                          <span className="text-[10px] font-bold" style={{ color: '#FF7F6B' }}>Excedido</span>
+                  <Link href={`/categorias/${c.id}`} className="flex-1 min-w-0 px-4 py-3.5 text-left">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{c.icon}</span>
+                      <p className="flex-1 text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{c.name}</p>
+                      <div className="text-right">
+                        <p
+                          className="text-sm font-black"
+                          style={{ color: spent === 0 ? '#8A8276' : c.kind === 'income' ? '#5BA886' : '#2D2D2D' }}
+                        >
+                          {spent > 0 ? formatARS(spent) : '—'}
+                        </p>
+                        {hasBudget && (
+                          <p className="text-[10px]" style={{ color: '#8A8276' }}>de {formatARS(budget)}</p>
                         )}
                       </div>
                     </div>
-                  )}
-                </button>
+                    {hasBudget && (
+                      <div className="mt-2 ml-9">
+                        <div className="h-2 rounded-full overflow-hidden" style={{ background: '#ECE5DC' }}>
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{ width: `${Math.min(pct * 100, 100)}%`, background: barCol }}
+                          />
+                        </div>
+                        <div className="flex justify-between mt-0.5">
+                          <span className="text-[10px] font-bold" style={{ color: barCol }}>
+                            {Math.round(pct * 100)}%
+                          </span>
+                          {pct >= 1 && (
+                            <span className="text-[10px] font-bold" style={{ color: '#FF7F6B' }}>Excedido</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </Link>
+                  <button
+                    onClick={() => openEdit(c)}
+                    className="px-4 flex items-center text-base"
+                    style={{ color: '#8A8276' }}
+                    aria-label={`Editar ${c.name}`}
+                  >
+                    ✏️
+                  </button>
+                </div>
               );
             })}
           </div>

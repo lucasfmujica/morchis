@@ -11,6 +11,7 @@ import { CoupleBalanceChip } from '@/components/CoupleBalanceChip';
 import { InsightTopCard } from '@/components/InsightTopCard';
 import { DonutChart } from '@/components/DonutChart';
 import { computeProjection } from '@/lib/projection';
+import { netWorthAt, type AccountRow, type AccountTx } from '@/lib/accounts';
 import { formatARS } from '@/lib/format';
 
 interface Profile {
@@ -125,23 +126,28 @@ function CategoryDonutCard({
   const restTotal = rest.reduce((s, r) => s + r.value, 0);
 
   const segments = top.map((r, i) => ({
+    id: r.cat!.id,
     label: r.cat!.name,
     value: r.value,
     color: r.cat!.color || DONUT_PALETTE[i % DONUT_PALETTE.length],
   }));
-  if (restTotal > 0) segments.push({ label: 'Otras', value: restTotal, color: '#C4B9AE' });
+  const legend = [...segments] as { id?: string; label: string; value: number; color: string }[];
+  if (restTotal > 0) legend.push({ label: 'Otras', value: restTotal, color: '#C4B9AE' });
 
   return (
-    <div className="mx-4 rounded-3xl p-5 mb-4" style={{ background: '#FFFFFF' }}>
-      <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#8A8276' }}>
-        Gastos por categoría
-      </p>
+    <Link href="/analisis" className="mx-4 rounded-3xl p-5 mb-4 block" style={{ background: '#FFFFFF' }}>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8A8276' }}>
+          Gastos por categoría
+        </p>
+        <span className="text-xs" style={{ color: '#8A8276' }}>Ver análisis →</span>
+      </div>
       <div className="flex items-center gap-4">
         <div className="shrink-0">
-          <DonutChart segments={segments} centerTop="Total" centerBottom={formatARS(total)} />
+          <DonutChart segments={legend} centerTop="Total" centerBottom={formatARS(total)} />
         </div>
         <div className="flex-1 min-w-0 flex flex-col gap-2">
-          {segments.map((seg, i) => (
+          {legend.map((seg, i) => (
             <div key={i} className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: seg.color }} />
               <span className="text-xs flex-1 truncate" style={{ color: '#2D2D2D' }}>{seg.label}</span>
@@ -152,7 +158,7 @@ function CategoryDonutCard({
           ))}
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 
@@ -242,6 +248,30 @@ export default function HomeClient({
     queryFn: async () => {
       const { data } = await supabase.from('accounts').select('id, name, type').eq('household_id', profile.household_id).eq('archived', false).order('name');
       return data ?? [];
+    },
+  });
+
+  // Full accounts + their transactions to compute total balance (net worth).
+  const { data: accountsFull = [] } = useQuery<AccountRow[]>({
+    queryKey: ['accounts-full', profile.household_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('accounts')
+        .select('id, type, currency, archived, initial_balance')
+        .eq('household_id', profile.household_id);
+      return (data ?? []) as AccountRow[];
+    },
+  });
+
+  const { data: accountTx = [] } = useQuery<AccountTx[]>({
+    queryKey: ['account-tx', profile.household_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('transactions')
+        .select('account_id, type, amount, occurred_on')
+        .eq('household_id', profile.household_id)
+        .not('account_id', 'is', null);
+      return (data ?? []) as AccountTx[];
     },
   });
 
@@ -336,6 +366,19 @@ export default function HomeClient({
   const incomeRules = rules
     .filter((r) => r.direction === 'income' && (!scopeProfileId || r.profile_id === scopeProfileId))
     .map((r) => ({ label: (r.label as string) ?? 'Ingreso', amount: r.amount, cadence: (r.cadence as string) ?? 'monthly' }));
+
+  // Quick-access tile values
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const totalBalance = netWorthAt(accountsFull, accountTx, todayISO, arsPerUsd);
+  const monthExpenseTotal = Object.values(spentByCategory).reduce((s, v) => s + v, 0);
+  const savingsRate = incomeSoFar > 0 ? Math.round(((incomeSoFar - expensesSoFar) / incomeSoFar) * 100) : null;
+
+  const quickTiles = [
+    { href: '/cuentas', icon: '🏦', label: 'Cuentas', value: formatARS(totalBalance), color: totalBalance < 0 ? '#E5604C' : '#2D2D2D' },
+    { href: '/analisis', icon: '🍕', label: 'Gastos', value: formatARS(monthExpenseTotal), color: '#FF7F6B' },
+    { href: '/reglas', icon: '💰', label: 'Ingresos', value: formatARS(incomeSoFar), color: '#5BA886' },
+    { href: '/ahorro', icon: '🐷', label: 'Ahorro', value: savingsRate == null ? '—' : `${savingsRate}%`, color: '#B8860B' },
+  ];
 
   const greetingHour = new Date().getHours();
   const greeting = greetingHour < 12 ? 'Buenos días' : greetingHour < 19 ? 'Buenas tardes' : 'Buenas noches';
@@ -436,6 +479,24 @@ export default function HomeClient({
         )}
       </div>
 
+      {/* Quick-access tiles */}
+      <div className="mx-4 mb-4 grid grid-cols-4 gap-2">
+        {quickTiles.map((t) => (
+          <Link
+            key={t.href}
+            href={t.href}
+            className="rounded-2xl px-2 py-3 flex flex-col items-center gap-1 text-center"
+            style={{ background: '#FFFFFF' }}
+          >
+            <span className="text-2xl">{t.icon}</span>
+            <span className="text-[10px] font-semibold" style={{ color: '#8A8276' }}>{t.label}</span>
+            <span className="text-[11px] font-black leading-tight truncate w-full" style={{ color: t.color, fontVariantNumeric: 'tabular-nums' }}>
+              {t.value}
+            </span>
+          </Link>
+        ))}
+      </div>
+
       {/* Income of the month + savings rate */}
       <IncomeCard incomeSoFar={incomeSoFar} expensesSoFar={expensesSoFar} incomeRules={incomeRules} />
 
@@ -455,27 +516,6 @@ export default function HomeClient({
 
       {/* Spending by category donut */}
       <CategoryDonutCard categories={categories} spentByCategory={spentByCategory} />
-
-      {/* Quick links */}
-      <div className="mx-4 rounded-3xl overflow-hidden mb-4" style={{ background: '#FFFFFF' }}>
-        {[
-          { href: '/ahorro', icon: '🐷', label: 'Mi ahorro' },
-          { href: '/movimientos', icon: '📋', label: 'Ver movimientos' },
-          { href: '/insights', icon: '✨', label: 'Todos los insights' },
-          { href: '/presupuestos', icon: '📊', label: 'Presupuestos' },
-        ].map((item, i) => (
-          <a
-            key={item.href}
-            href={item.href}
-            className="flex items-center gap-3 px-5 py-4"
-            style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}
-          >
-            <span className="text-2xl">{item.icon}</span>
-            <p className="flex-1 font-semibold text-sm" style={{ color: '#2D2D2D' }}>{item.label}</p>
-            <span style={{ color: '#8A8276' }}>→</span>
-          </a>
-        ))}
-      </div>
 
       <BottomNav onFab={(type) => { setFabType(type); setSheetOpen(true); }} />
 

@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { DonutChart } from '@/components/DonutChart';
+import { MonthlyBars, lastSixMonths } from '@/components/MonthlyBars';
 import { formatARS } from '@/lib/format';
 import { toast } from 'sonner';
 import Link from 'next/link';
@@ -17,19 +18,6 @@ interface Profile {
   display_name: string | null;
 }
 
-const MONTH_LABELS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-
-// Last 6 month keys (oldest → current), e.g. { key: '2026-01', label: 'Ene' }
-function lastSixMonths(today: Date): { key: string; label: string }[] {
-  const out: { key: string; label: string }[] = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    out.push({ key, label: MONTH_LABELS[d.getMonth()] });
-  }
-  return out;
-}
-
 interface MonthRow {
   key: string;
   label: string;
@@ -37,46 +25,6 @@ interface MonthRow {
   expense: number;
   saved: number;
   rate: number | null;
-}
-
-// Div-based grouped bars (responsive, no SVG width math).
-function MonthlyBars({ rows }: { rows: MonthRow[] }) {
-  const max = Math.max(1, ...rows.map((r) => Math.max(r.income, r.expense)));
-  return (
-    <div className="flex items-end gap-2" style={{ height: 150 }}>
-      {rows.map((r) => (
-        <div key={r.key} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
-          <div className="flex items-end gap-1 w-full justify-center" style={{ height: 110 }}>
-            <div
-              className="rounded-t-md"
-              style={{
-                width: 12,
-                height: `${(r.income / max) * 100}%`,
-                minHeight: r.income > 0 ? 3 : 0,
-                background: '#7EC8A4',
-              }}
-            />
-            <div
-              className="rounded-t-md"
-              style={{
-                width: 12,
-                height: `${(r.expense / max) * 100}%`,
-                minHeight: r.expense > 0 ? 3 : 0,
-                background: '#FF7F6B',
-              }}
-            />
-          </div>
-          <span className="text-[10px] font-semibold" style={{ color: '#8A8276' }}>{r.label}</span>
-          <span
-            className="text-[10px] font-bold"
-            style={{ color: r.rate == null ? '#C4B9AE' : r.rate >= 0 ? '#5BA886' : '#E5604C' }}
-          >
-            {r.rate == null ? '—' : `${Math.round(r.rate * 100)}%`}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 export default function AhorroClient({ profile }: { profile: Profile }) {

@@ -90,7 +90,7 @@ export function InsightTopCard({ householdId, profileId }: { householdId: string
   return (
     <div className="mx-4 mb-4 rounded-3xl p-4" style={{ background: s.bg }}>
       <div className="flex items-start justify-between gap-2">
-        <Link href="/insights" onClick={markSeen} className="flex items-start gap-3 flex-1 min-w-0">
+        <Link href="/analisis" onClick={markSeen} className="flex items-start gap-3 flex-1 min-w-0">
           <span className="text-xl mt-0.5 shrink-0">{s.icon}</span>
           <div className="min-w-0">
             <p className="text-sm font-black leading-tight truncate" style={{ color: s.color }}>{insight.title}</p>
