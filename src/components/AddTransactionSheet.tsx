@@ -53,6 +53,9 @@ interface EditTx {
   is_shared: boolean;
   merchant: string | null;
   occurred_on: string;
+  // Whose movement it is. Optional because not every edit caller selects it;
+  // when missing we treat it as mine.
+  profile_id?: string | null;
 }
 
 export function AddTransactionSheet({
@@ -92,12 +95,23 @@ export function AddTransactionSheet({
   const effectivePartnerName =
     partnerName ?? resolvedPartner?.nickname ?? resolvedPartner?.display_name ?? 'Tu pareja';
 
+  // Decide who a movement belongs to when (re)opening the sheet. Household
+  // beats everything; otherwise a profile_id that isn't mine means it's the
+  // partner's; default to mine.
+  function ownerOf(tx: { scope: string; profile_id?: string | null }): 'me' | 'partner' | 'household' {
+    if (tx.scope === 'household') return 'household';
+    if (tx.profile_id && tx.profile_id !== profileId && tx.profile_id === effectivePartnerId) return 'partner';
+    return 'me';
+  }
+
   const [inputUSD, setInputUSD] = useState(false);
   const [raw, setRaw] = useState('');
   const [txType, setTxType] = useState<'expense' | 'income'>('expense');
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
-  const [scope, setScope] = useState<'personal' | 'household'>('personal');
+  // Who the movement belongs to: mine, my partner's (loaded on their behalf,
+  // with their accounts), or the shared household.
+  const [owner, setOwner] = useState<'me' | 'partner' | 'household'>('me');
   const [isShared, setIsShared] = useState(false);
   // Percentage of a shared expense that *I* cover. Partner owes the rest.
   const [myShare, setMyShare] = useState(50);
@@ -113,7 +127,7 @@ export function AddTransactionSheet({
         setTxType(editTx.type as 'expense' | 'income');
         setCategoryId(editTx.category_id);
         setAccountId(editTx.account_id);
-        setScope(editTx.scope as 'personal' | 'household');
+        setOwner(ownerOf(editTx));
         setIsShared(editTx.is_shared);
         setMerchant(editTx.merchant ?? '');
         setDate(editTx.occurred_on);
@@ -123,9 +137,9 @@ export function AddTransactionSheet({
         setRaw('');
         setTxType(initialType);
         setCategoryId(null);
-        // New movement starts as "Personal", so default to the first account I own.
+        // New movement starts as "Mío", so default to the first account I own.
         setAccountId(accounts.find((a) => a.owner_profile_id === profileId)?.id ?? accounts[0]?.id ?? null);
-        setScope('personal');
+        setOwner('me');
         setIsShared(false);
         setMerchant('');
         setDate(todayISO());
@@ -151,9 +165,12 @@ export function AddTransactionSheet({
       const arsTotal =
         editTx.currency === 'USD' ? usdToArs(editTx.amount, arsPerUsd) : editTx.amount;
       if (arsTotal <= 0) return;
-      // split.amount is what the partner owes me → my share is the remainder.
-      const partnerPct = Math.round((split.amount / arsTotal) * 100);
-      setMyShare(Math.min(100, Math.max(0, 100 - partnerPct)));
+      // split.amount is what the OWER owes the payer. If I paid, the ower is my
+      // partner so my share is the remainder; if my partner paid (the movement
+      // is theirs), the ower is me so the split is directly my share.
+      const owerPct = Math.round((split.amount / arsTotal) * 100);
+      const iPaid = ownerOf(editTx) !== 'partner';
+      setMyShare(Math.min(100, Math.max(0, iPaid ? 100 - owerPct : owerPct)));
     })();
     return () => {
       cancelled = true;
@@ -195,15 +212,22 @@ export function AddTransactionSheet({
 
   const visibleCategories = categories.filter((c) => c.kind === txType);
 
-  // Account picker scope: a "Personal" (solo mío) movement only lists my own
-  // accounts; "Hogar" or "Compartido/Dividir" widens it to every account.
-  // Accounts with no ownership info (a page that didn't fetch it) are always
-  // shown — we only hide the partner's accounts when we actually know who owns
-  // what and the movement is strictly Personal.
-  const widenAccounts = scope === 'household' || isShared;
-  const visibleAccounts = widenAccounts
-    ? accounts
-    : accounts.filter((a) => a.owner_profile_id == null || a.owner_profile_id === profileId);
+  // Derived from the owner control: a household movement is shared scope; mine
+  // and the partner's are both "personal" scope but differ in whose profile
+  // they belong to.
+  const scope: 'personal' | 'household' = owner === 'household' ? 'household' : 'personal';
+  const txProfileId = owner === 'partner' && effectivePartnerId ? effectivePartnerId : profileId;
+
+  // Account picker scope: a "Mío" movement lists my own accounts; the partner's
+  // movement lists theirs; "Hogar" or my own "Compartido/Dividir" widens it to
+  // every account. Accounts with no ownership info (a page that didn't fetch it)
+  // are always shown — we only hide accounts when we know who owns what.
+  const visibleAccounts =
+    owner === 'partner'
+      ? accounts.filter((a) => a.owner_profile_id == null || a.owner_profile_id === effectivePartnerId)
+      : owner === 'household' || isShared
+        ? accounts
+        : accounts.filter((a) => a.owner_profile_id == null || a.owner_profile_id === profileId);
 
   // If the selected account is no longer offered (e.g. switched back to Personal
   // while a partner's account was picked), fall back to the first available one
@@ -219,11 +243,19 @@ export function AddTransactionSheet({
   const useInstallments = canInstallments && installments > 1;
   const perInstallment = installments > 0 ? Math.floor(nativeAmount / installments) : nativeAmount;
 
-  // Shared split: I cover `myShare`% of the bill; my partner owes the rest.
-  // We can only divide when we actually know who the partner is.
+  // Shared split: I cover `myShare`% of the bill; the other person owes the
+  // rest. We can only divide when we actually know who the partner is.
   const canSplit = isShared && !!effectivePartnerId;
-  // How much the partner owes me, in ARS, for a given ARS amount.
-  const partnerOwesArs = (ars: number) => Math.round((ars * (100 - myShare)) / 100);
+  // The payer is whoever the movement belongs to (me, or my partner when it's
+  // loaded on their behalf); the ower is the other one.
+  const iAmPayer = owner !== 'partner';
+  const payerId = iAmPayer ? profileId : effectivePartnerId;
+  const owerId = iAmPayer ? effectivePartnerId : profileId;
+  // The ower's percentage of the bill. myShare is always *my* percentage, so
+  // the ower's cut is the complement when I paid, or my own cut when I owe.
+  const owerPct = iAmPayer ? 100 - myShare : myShare;
+  // How much the ower owes the payer, in ARS, for a given ARS amount.
+  const owedArs = (ars: number) => Math.round((ars * owerPct) / 100);
   // Live preview amounts in the entered currency.
   const partnerShareNative = Math.round((nativeAmount * (100 - myShare)) / 100);
   const myShareNative = nativeAmount - partnerShareNative;
@@ -235,7 +267,7 @@ export function AddTransactionSheet({
     try {
       const payload = {
         household_id: householdId,
-        profile_id: profileId,
+        profile_id: txProfileId,
         type: txType,
         amount: nativeAmount,
         currency: txCurrency,
@@ -260,12 +292,12 @@ export function AddTransactionSheet({
         // (Editing previously never touched splits, so toggling "Compartido"
         // on an existing movement silently did nothing.)
         await supabase.from('splits').delete().eq('transaction_id', editTx.id);
-        const owed = partnerOwesArs(arsAmount);
+        const owed = owedArs(arsAmount);
         if (canSplit && owed > 0) {
           await supabase.from('splits').insert({
             transaction_id: editTx.id,
-            payer_profile_id: profileId,
-            ower_profile_id: effectivePartnerId,
+            payer_profile_id: payerId!,
+            ower_profile_id: owerId!,
             amount: owed,
           });
         }
@@ -293,10 +325,10 @@ export function AddTransactionSheet({
           const splitRows = txs
             .map((t) => ({
               transaction_id: t.id,
-              payer_profile_id: profileId,
-              ower_profile_id: effectivePartnerId,
+              payer_profile_id: payerId!,
+              ower_profile_id: owerId!,
               // splits are tracked in ARS for the couple balance
-              amount: partnerOwesArs(txCurrency === 'USD' ? usdToArs(t.amount, arsPerUsd) : t.amount),
+              amount: owedArs(txCurrency === 'USD' ? usdToArs(t.amount, arsPerUsd) : t.amount),
             }))
             .filter((r) => r.amount > 0);
           if (splitRows.length > 0) await supabase.from('splits').insert(splitRows);
@@ -309,12 +341,12 @@ export function AddTransactionSheet({
           .single();
         if (error) throw error;
 
-        const owed = partnerOwesArs(arsAmount);
+        const owed = owedArs(arsAmount);
         if (canSplit && tx && owed > 0) {
           await supabase.from('splits').insert({
             transaction_id: tx.id,
-            payer_profile_id: profileId,
-            ower_profile_id: effectivePartnerId,
+            payer_profile_id: payerId!,
+            ower_profile_id: owerId!,
             amount: owed,
           });
         }
@@ -447,19 +479,28 @@ export function AddTransactionSheet({
           <div className="px-4 mt-3">
             <p className="text-xs font-bold mb-1.5" style={{ color: '#6B6459' }}>¿De quién es este movimiento?</p>
             <div className="flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#ECE5DC' }}>
-              {(['personal', 'household'] as const).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setScope(s)}
-                  className="flex-1 py-2 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1"
-                  style={{
-                    background: scope === s ? (s === 'household' ? '#7EC8A4' : '#FFFFFF') : 'transparent',
-                    color: scope === s ? (s === 'household' ? '#FFFFFF' : '#2D2D2D') : '#6B6459',
-                  }}
-                >
-                  {s === 'personal' ? '👤 Personal (solo mío)' : '🏠 Hogar (compartido)'}
-                </button>
-              ))}
+              {([
+                { key: 'me' as const, label: '👤 Mío' },
+                ...(effectivePartnerId
+                  ? [{ key: 'partner' as const, label: `👥 ${effectivePartnerName}` }]
+                  : []),
+                { key: 'household' as const, label: '🏠 Hogar' },
+              ]).map((o) => {
+                const active = owner === o.key;
+                return (
+                  <button
+                    key={o.key}
+                    onClick={() => setOwner(o.key)}
+                    className="flex-1 py-2 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1"
+                    style={{
+                      background: active ? (o.key === 'household' ? '#7EC8A4' : '#FFFFFF') : 'transparent',
+                      color: active ? (o.key === 'household' ? '#FFFFFF' : '#2D2D2D') : '#6B6459',
+                    }}
+                  >
+                    {o.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
