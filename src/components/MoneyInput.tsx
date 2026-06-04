@@ -1,8 +1,46 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import { roundMoney } from '@/lib/format';
+
 // Text input that shows the amount with es-AR thousand separators
-// (e.g. 4.500.000) while storing a plain integer. Avoids miscounting
-// zeros on the large ARS amounts common in Argentina.
+// (e.g. 4.500.000) while storing a number with up to 2 decimals. Avoids
+// miscounting zeros on the large ARS amounts common in Argentina, and lets
+// the user type cents (e.g. 193,35) for USD.
+//
+// Convention (es-AR, unambiguous): ',' is the decimal separator; '.' is always
+// a thousands separator and is stripped. This is what keeps "1234" -> "1.234"
+// from being misread as 1,23 on the next keystroke.
+
+// es-AR formatted string -> number with up to 2 decimals.
+function esARToNumber(formatted: string): number {
+  const norm = formatted.replace(/\./g, '').replace(',', '.');
+  const n = parseFloat(norm);
+  return Number.isFinite(n) ? roundMoney(n) : 0;
+}
+
+// Display an already-known numeric value for editing (no currency symbol).
+function formatValue(v: number): string {
+  if (!v) return '';
+  return v.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+// Re-group what the user is typing: thousands on the integer part, keep a
+// trailing decimal comma and up to 2 decimal digits so typing feels live.
+function formatTyping(raw: string): string {
+  const firstComma = raw.indexOf(',');
+  const intRaw = firstComma === -1 ? raw : raw.slice(0, firstComma);
+  const decRaw = firstComma === -1 ? '' : raw.slice(firstComma + 1);
+  const intDigits = intRaw.replace(/\D/g, '');
+  const decDigits = decRaw.replace(/\D/g, '').slice(0, 2);
+  const intFmt = intDigits
+    ? parseInt(intDigits, 10).toLocaleString('es-AR')
+    : firstComma === -1
+      ? ''
+      : '0';
+  return firstComma === -1 ? intFmt : `${intFmt},${decDigits}`;
+}
+
 export function MoneyInput({
   value,
   onChange,
@@ -18,19 +56,30 @@ export function MoneyInput({
   style?: React.CSSProperties;
   autoFocus?: boolean;
 }) {
-  const display = value > 0 ? value.toLocaleString('es-AR') : '';
+  const [text, setText] = useState(() => formatValue(value));
+
+  // Keep in sync when the value is changed from outside (reset after submit,
+  // loading an existing row to edit) without clobbering an in-progress decimal.
+  useEffect(() => {
+    if (esARToNumber(text) !== roundMoney(value)) {
+      setText(formatValue(value));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
   return (
     <input
       type="text"
-      inputMode="numeric"
-      value={display}
+      inputMode="decimal"
+      value={text}
       placeholder={placeholder}
       className={className}
       style={style}
       autoFocus={autoFocus}
       onChange={(e) => {
-        const digits = e.target.value.replace(/\D/g, '');
-        onChange(digits ? parseInt(digits, 10) : 0);
+        const formatted = formatTyping(e.target.value);
+        setText(formatted);
+        onChange(esARToNumber(formatted));
       }}
     />
   );

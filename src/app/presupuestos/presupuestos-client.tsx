@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
-import { formatARS, formatUSD } from '@/lib/format';
+import { formatARS, formatUSD, parseMoney } from '@/lib/format';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { EmptyState } from '@/components/EmptyState';
@@ -109,7 +109,7 @@ function BudgetSheet({
       category_id: categoryId,
       scope,
       profile_id: scope === 'personal' ? profileId : null,
-      amount: parseInt(amount.replace(/\D/g, ''), 10),
+      amount: parseMoney(amount),
       currency,
       period: 'monthly',
       active: true,
@@ -196,7 +196,7 @@ function BudgetSheet({
         {/* Amount */}
         <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Límite mensual ({currency})</p>
         <MoneyInput
-          value={amount ? parseInt(amount.replace(/\D/g, ''), 10) || 0 : 0}
+          value={parseMoney(amount)}
           onChange={(n) => setAmount(n ? String(n) : '')}
           placeholder={currency === 'USD' ? 'Ej: 440' : 'Ej: 50.000'}
           className="w-full rounded-2xl px-4 py-3 text-lg font-bold mb-5 outline-none border-2 transition-colors"

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { BottomNav } from '@/components/BottomNav';
 import { MoneyInput } from '@/components/MoneyInput';
-import { formatARS } from '@/lib/format';
+import { formatARS, parseMoney } from '@/lib/format';
 import { useFx } from '@/hooks/useFx';
 import { toast } from 'sonner';
 
@@ -81,7 +81,7 @@ function EditDraftModal({
       payload: {
         ...draft.payload,
         merchant,
-        amount: Math.round(Number(amount)) || draft.payload.amount,
+        amount: parseMoney(amount) || draft.payload.amount,
         date,
         category_id: categoryId || null,
       },
@@ -112,7 +112,7 @@ function EditDraftModal({
           <div>
             <p className="text-xs font-bold mb-1" style={{ color: '#6B6459' }}>Monto (ARS)</p>
             <MoneyInput
-              value={amount ? parseInt(amount.replace(/\D/g, ''), 10) || 0 : 0}
+              value={parseMoney(amount)}
               onChange={(n) => setAmount(n ? String(n) : '')}
               className="w-full px-4 py-3 rounded-2xl text-sm border outline-none"
               style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}

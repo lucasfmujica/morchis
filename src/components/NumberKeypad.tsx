@@ -10,7 +10,7 @@ const KEYS = [
   ['1', '2', '3'],
   ['4', '5', '6'],
   ['7', '8', '9'],
-  ['000', '0', '⌫'],
+  [',', '0', '⌫'],
 ];
 
 export function NumberKeypad({ onDigit, onBackspace, onConfirm }: NumberKeypadProps) {

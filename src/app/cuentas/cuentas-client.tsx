@@ -7,7 +7,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/EmptyState';
-import { formatARS, formatUSD } from '@/lib/format';
+import { formatARS, formatUSD, parseMoney } from '@/lib/format';
 import { todayISO } from '@/lib/date';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
@@ -145,12 +145,12 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
     if (!name.trim()) { toast.error('Ingresá un nombre.'); return; }
     setSaving(true);
     try {
-      const initialBalanceNum = parseInt(initialBalance.replace(/\D/g, ''), 10) || 0;
+      const initialBalanceNum = parseMoney(initialBalance);
       // Statement fields only apply to credit cards; clear them otherwise.
       const isCredit = type === 'credit';
       const cardFields = {
-        statement_ars: isCredit ? parseInt(statementArs.replace(/\D/g, ''), 10) || null : null,
-        statement_usd: isCredit ? parseInt(statementUsd.replace(/\D/g, ''), 10) || null : null,
+        statement_ars: isCredit ? parseMoney(statementArs) || null : null,
+        statement_usd: isCredit ? parseMoney(statementUsd) || null : null,
         closing_date: isCredit && closingDate ? closingDate : null,
         due_date: isCredit && dueDate ? dueDate : null,
       };
@@ -246,14 +246,14 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
                   <div className="flex gap-2">
                     <MoneyInput
                       placeholder="Total ARS"
-                      value={statementArs ? parseInt(statementArs.replace(/\D/g, ''), 10) || 0 : 0}
+                      value={parseMoney(statementArs)}
                       onChange={(n) => setStatementArs(n ? String(n) : '')}
                       className="flex-1 w-full px-4 py-3 rounded-2xl border text-sm outline-none"
                       style={{ borderColor: '#ECE5DC' }}
                     />
                     <MoneyInput
                       placeholder="Total USD"
-                      value={statementUsd ? parseInt(statementUsd.replace(/\D/g, ''), 10) || 0 : 0}
+                      value={parseMoney(statementUsd)}
                       onChange={(n) => setStatementUsd(n ? String(n) : '')}
                       className="flex-1 w-full px-4 py-3 rounded-2xl border text-sm outline-none"
                       style={{ borderColor: '#ECE5DC' }}
@@ -290,7 +290,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
               <div>
                 <MoneyInput
                   placeholder="Saldo inicial (opcional)"
-                  value={initialBalance ? parseInt(initialBalance.replace(/\D/g, ''), 10) || 0 : 0}
+                  value={parseMoney(initialBalance)}
                   onChange={(n) => setInitialBalance(n ? String(n) : '')}
                   className="w-full px-4 py-3 rounded-2xl border text-sm outline-none"
                   style={{ borderColor: '#ECE5DC' }}

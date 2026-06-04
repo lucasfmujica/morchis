@@ -6,7 +6,7 @@ import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { NumberKeypad } from '@/components/NumberKeypad';
 import { useFx } from '@/hooks/useFx';
 import { createClient } from '@/lib/supabase';
-import { formatARS, formatUSD, usdToArs } from '@/lib/format';
+import { formatARS, formatUSD, usdToArs, arsToUsd, parseMoney, roundMoney } from '@/lib/format';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { todayISO } from '@/lib/date';
 import { triggerBudgetAlerts } from '@/lib/notifyBudgets';
@@ -128,7 +128,7 @@ export function AddTransactionSheet({
   useEffect(() => {
     if (open) {
       if (editTx) {
-        setRaw(String(editTx.amount));
+        setRaw(String(editTx.amount).replace('.', ','));
         setTxType(editTx.type as 'expense' | 'income');
         setCategoryId(editTx.category_id);
         setAccountId(editTx.account_id);
@@ -196,8 +196,14 @@ export function AddTransactionSheet({
 
   function handleDigit(d: string) {
     setRaw((prev) => {
+      if (d === ',') {
+        if (prev.includes(',')) return prev; // only one decimal separator
+        return prev === '' ? '0,' : prev + ',';
+      }
+      // cap decimals at 2 places
+      if (prev.includes(',') && (prev.split(',')[1]?.length ?? 0) >= 2) return prev;
       const next = prev + d;
-      if (next.length > 12) return prev;
+      if (next.replace(/\D/g, '').length > 12) return prev;
       return next;
     });
   }
@@ -208,18 +214,16 @@ export function AddTransactionSheet({
 
   // The transaction is stored in its native currency (USD stays USD instead of
   // being force-converted to ARS), so USD accounts/income keep correct balances.
-  const nativeAmount = parseInt(raw || '0', 10);
+  const nativeAmount = parseMoney(raw);
   const txCurrency: 'ARS' | 'USD' = inputUSD ? 'USD' : 'ARS';
   // ARS equivalent, used only for the couple-split math and the ≈ preview.
   const arsAmount = inputUSD ? usdToArs(nativeAmount, arsPerUsd) : nativeAmount;
 
-  const displayAmount = inputUSD
-    ? formatUSD(parseInt(raw || '0', 10))
-    : formatARS(parseInt(raw || '0', 10));
+  const displayAmount = inputUSD ? formatUSD(nativeAmount) : formatARS(nativeAmount);
 
   const secondaryAmount = inputUSD
     ? `≈ ${formatARS(arsAmount)}`
-    : `≈ ${formatUSD(Math.round(arsAmount / arsPerUsd))}`;
+    : `≈ ${formatUSD(arsToUsd(arsAmount, arsPerUsd))}`;
 
   const visibleCategories = categories.filter((c) => c.kind === txType);
 
@@ -260,7 +264,11 @@ export function AddTransactionSheet({
   // split into N monthly charges.
   const canInstallments = txType === 'expense' && !editTx;
   const useInstallments = canInstallments && installments > 1;
-  const perInstallment = installments > 0 ? Math.floor(nativeAmount / installments) : nativeAmount;
+  // Work in integer cents so cuotas split cleanly; the last cuota absorbs the
+  // remainder so the cuotas always sum back to the exact total.
+  const totalCents = Math.round(nativeAmount * 100);
+  const baseCents = installments > 0 ? Math.floor(totalCents / installments) : totalCents;
+  const perInstallment = baseCents / 100;
 
   // Shared split: I cover `myShare`% of the bill; the other person owes the
   // rest. We can only divide when we actually know who the partner is.
@@ -269,10 +277,10 @@ export function AddTransactionSheet({
   // the ower's cut is the complement when I paid, or my own cut when I owe.
   const owerPct = iAmPayer ? 100 - myShare : myShare;
   // How much the ower owes the payer, in ARS, for a given ARS amount.
-  const owedArs = (ars: number) => Math.round((ars * owerPct) / 100);
+  const owedArs = (ars: number) => roundMoney((ars * owerPct) / 100);
   // Live preview amounts in the entered currency.
-  const partnerShareNative = Math.round((nativeAmount * (100 - myShare)) / 100);
-  const myShareNative = nativeAmount - partnerShareNative;
+  const partnerShareNative = roundMoney((nativeAmount * (100 - myShare)) / 100);
+  const myShareNative = roundMoney(nativeAmount - partnerShareNative);
   const fmtNative = (n: number) => (inputUSD ? formatUSD(n) : formatARS(n));
 
   async function handleSave() {
@@ -318,11 +326,13 @@ export function AddTransactionSheet({
       } else if (useInstallments) {
         // Split the total into N monthly charges (one transaction per cuota).
         const groupId = crypto.randomUUID();
-        const base = Math.floor(nativeAmount / installments);
         const rows = Array.from({ length: installments }, (_, k) => ({
           ...payload,
-          // last cuota absorbs the rounding remainder
-          amount: k === installments - 1 ? nativeAmount - base * (installments - 1) : base,
+          // last cuota absorbs the rounding remainder (math in cents)
+          amount:
+            k === installments - 1
+              ? roundMoney((totalCents - baseCents * (installments - 1)) / 100)
+              : perInstallment,
           occurred_on: addMonthsISO(date, k),
           installment_total: installments,
           installment_number: k + 1,

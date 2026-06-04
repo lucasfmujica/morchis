@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
-import { formatARS, formatUSD } from '@/lib/format';
+import { formatARS, formatUSD, parseMoney } from '@/lib/format';
 import { useFx } from '@/hooks/useFx';
 import { toLocalISO } from '@/lib/date';
 import { MoneyInput } from '@/components/MoneyInput';
@@ -251,7 +251,7 @@ function RuleForm({
   const [active, setActive] = useState(initial?.active ?? true);
 
   function handleSave() {
-    const amount = parseInt(amountStr, 10);
+    const amount = parseMoney(amountStr);
     if (!label.trim() || !amount || amount <= 0) {
       toast.error('Completá el nombre y el monto.');
       return;
@@ -316,7 +316,7 @@ function RuleForm({
       {/* Amount */}
       <MoneyInput
         placeholder={`Monto en ${currency}`}
-        value={amountStr ? parseInt(amountStr, 10) || 0 : 0}
+        value={parseMoney(amountStr)}
         onChange={(n) => setAmountStr(n ? String(n) : '')}
         className="w-full px-4 py-3 rounded-2xl text-sm border outline-none"
         style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
@@ -411,7 +411,7 @@ function RuleForm({
         </SecondaryButton>
         <PrimaryButton
           onClick={handleSave}
-          disabled={!label.trim() || !(parseInt(amountStr, 10) > 0)}
+          disabled={!label.trim() || !(parseMoney(amountStr) > 0)}
           className="flex-1 py-3 text-sm"
         >
           Guardar

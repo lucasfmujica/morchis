@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
-import { formatARS, formatUSD, usdToArs, arsToUsd } from '@/lib/format';
+import { formatARS, formatUSD, usdToArs, arsToUsd, parseMoney } from '@/lib/format';
 import { todayISO } from '@/lib/date';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
@@ -173,7 +173,7 @@ function AportarSheet({
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const amountNum = parseInt(amount.replace(/\D/g, ''), 10) || 0;
+  const amountNum = parseMoney(amount);
   const amountArs = inputCurrency === 'USD' ? usdToArs(amountNum, arsPerUsd) : amountNum;
 
   async function save() {
@@ -228,7 +228,7 @@ function AportarSheet({
 
         <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Monto</p>
         <MoneyInput
-          value={amount ? parseInt(amount.replace(/\D/g, ''), 10) || 0 : 0}
+          value={parseMoney(amount)}
           onChange={(n) => setAmount(n ? String(n) : '')}
           placeholder={inputCurrency === 'ARS' ? 'Ej: 50.000' : 'Ej: 100'}
           className="w-full rounded-2xl px-4 py-3 text-lg font-bold mb-2 outline-none border-2 transition-colors"

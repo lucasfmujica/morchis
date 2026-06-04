@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
-import { formatARS, formatUSD } from '@/lib/format';
+import { formatARS, formatUSD, parseMoney } from '@/lib/format';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { SecondaryButton } from '@/components/SecondaryButton';
@@ -60,7 +60,7 @@ function DebtForm({
   const [settled, setSettled] = useState(initial?.settled ?? false);
 
   function handleSave() {
-    const amount = parseInt(amountStr, 10);
+    const amount = parseMoney(amountStr);
     if (!counterparty.trim() || !amount || amount <= 0) {
       toast.error('Completá la persona y el monto.');
       return;
@@ -124,7 +124,7 @@ function DebtForm({
       {/* Amount */}
       <MoneyInput
         placeholder={`Monto en ${currency}`}
-        value={amountStr ? parseInt(amountStr, 10) || 0 : 0}
+        value={parseMoney(amountStr)}
         onChange={(n) => setAmountStr(n ? String(n) : '')}
         className="w-full px-4 py-3 rounded-2xl text-sm border outline-none"
         style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
@@ -160,7 +160,7 @@ function DebtForm({
         </SecondaryButton>
         <PrimaryButton
           onClick={handleSave}
-          disabled={!counterparty.trim() || !(parseInt(amountStr, 10) > 0)}
+          disabled={!counterparty.trim() || !(parseMoney(amountStr) > 0)}
           className="flex-1 py-3 text-sm"
         >
           Guardar

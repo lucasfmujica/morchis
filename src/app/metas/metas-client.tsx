@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
-import { formatARS, formatUSD, usdToArs } from '@/lib/format';
+import { formatARS, formatUSD, usdToArs, parseMoney } from '@/lib/format';
 import { monthKey } from '@/lib/date';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
@@ -116,7 +116,7 @@ function GoalSheet({
       name,
       icon,
       color,
-      target_amount: parseInt(targetAmount.replace(/\D/g, ''), 10),
+      target_amount: parseMoney(targetAmount),
       target_currency: targetCurrency,
       deadline,
       archived: false,
@@ -227,7 +227,7 @@ function GoalSheet({
           Monto objetivo ({targetCurrency})
         </p>
         <MoneyInput
-          value={targetAmount ? parseInt(targetAmount.replace(/\D/g, ''), 10) || 0 : 0}
+          value={parseMoney(targetAmount)}
           onChange={(n) => setTargetAmount(n ? String(n) : '')}
           placeholder={targetCurrency === 'ARS' ? 'Ej: 500.000' : 'Ej: 2.000'}
           className="w-full rounded-2xl px-4 py-3 text-lg font-bold mb-4 outline-none border-2 transition-colors"
