@@ -113,6 +113,11 @@ export function AddTransactionSheet({
   // with their accounts), or the shared household.
   const [owner, setOwner] = useState<'me' | 'partner' | 'household'>('me');
   const [isShared, setIsShared] = useState(false);
+  // Who actually fronted the money. Only meaningful for a "Hogar" movement:
+  // a "Mío"/partner movement is paid by that same person. Decoupling this from
+  // the owner is what lets a household expense be paid by either person (and
+  // stay visible to both) instead of always assuming the creator paid.
+  const [paidBy, setPaidBy] = useState<'me' | 'partner'>('me');
   // Percentage of a shared expense that *I* cover. Partner owes the rest.
   const [myShare, setMyShare] = useState(50);
   const [merchant, setMerchant] = useState('');
@@ -129,6 +134,9 @@ export function AddTransactionSheet({
         setAccountId(editTx.account_id);
         setOwner(ownerOf(editTx));
         setIsShared(editTx.is_shared);
+        // profile_id is the payer, so a movement whose profile isn't mine was
+        // paid by my partner.
+        setPaidBy(editTx.profile_id && editTx.profile_id !== profileId ? 'partner' : 'me');
         setMerchant(editTx.merchant ?? '');
         setDate(editTx.occurred_on);
         setInputUSD(editTx.currency === 'USD');
@@ -141,6 +149,7 @@ export function AddTransactionSheet({
         setAccountId(accounts.find((a) => a.owner_profile_id === profileId)?.id ?? accounts[0]?.id ?? null);
         setOwner('me');
         setIsShared(false);
+        setPaidBy('me');
         setMerchant('');
         setDate(todayISO());
         setInputUSD(false);
@@ -169,7 +178,9 @@ export function AddTransactionSheet({
       // partner so my share is the remainder; if my partner paid (the movement
       // is theirs), the ower is me so the split is directly my share.
       const owerPct = Math.round((split.amount / arsTotal) * 100);
-      const iPaid = ownerOf(editTx) !== 'partner';
+      // profile_id is the payer; if it's mine I paid, so my share is the
+      // remainder, otherwise the split amount is directly my (the ower's) share.
+      const iPaid = editTx.profile_id ? editTx.profile_id === profileId : ownerOf(editTx) !== 'partner';
       setMyShare(Math.min(100, Math.max(0, iPaid ? 100 - owerPct : owerPct)));
     })();
     return () => {
@@ -216,18 +227,26 @@ export function AddTransactionSheet({
   // and the partner's are both "personal" scope but differ in whose profile
   // they belong to.
   const scope: 'personal' | 'household' = owner === 'household' ? 'household' : 'personal';
-  const txProfileId = owner === 'partner' && effectivePartnerId ? effectivePartnerId : profileId;
 
-  // Account picker scope: a "Mío" movement lists my own accounts; the partner's
-  // movement lists theirs; "Hogar" or my own "Compartido/Dividir" widens it to
-  // every account. Accounts with no ownership info (a page that didn't fetch it)
-  // are always shown — we only hide accounts when we know who owns what.
-  const visibleAccounts =
-    owner === 'partner'
-      ? accounts.filter((a) => a.owner_profile_id == null || a.owner_profile_id === effectivePartnerId)
-      : owner === 'household' || isShared
-        ? accounts
-        : accounts.filter((a) => a.owner_profile_id == null || a.owner_profile_id === profileId);
+  // Who fronted the money. A "Mío" movement is paid by me; the partner's by
+  // them; a "Hogar" movement can be paid by either (the `paidBy` control). This
+  // is the single source of truth for the payer — used for the split direction,
+  // the transaction's profile_id and the account picker.
+  const iAmPayer = owner === 'household' ? paidBy === 'me' : owner !== 'partner';
+  const payerId = iAmPayer ? profileId : effectivePartnerId;
+  const owerId = iAmPayer ? effectivePartnerId : profileId;
+
+  // The transaction belongs to whoever paid it (their account took the hit).
+  // Visibility for a shared bill comes from `scope === 'household'`, not the
+  // profile, so a household expense stays visible to both no matter who paid.
+  const txProfileId = payerId ?? profileId;
+
+  // Account picker scope: list the payer's own accounts (plus any with no known
+  // owner). A "Mío" movement → my accounts; the partner's → theirs; "Hogar" →
+  // whoever paid, so you pick the card that was actually used.
+  const visibleAccounts = accounts.filter(
+    (a) => a.owner_profile_id == null || a.owner_profile_id === txProfileId,
+  );
 
   // If the selected account is no longer offered (e.g. switched back to Personal
   // while a partner's account was picked), fall back to the first available one
@@ -246,11 +265,6 @@ export function AddTransactionSheet({
   // Shared split: I cover `myShare`% of the bill; the other person owes the
   // rest. We can only divide when we actually know who the partner is.
   const canSplit = isShared && !!effectivePartnerId;
-  // The payer is whoever the movement belongs to (me, or my partner when it's
-  // loaded on their behalf); the ower is the other one.
-  const iAmPayer = owner !== 'partner';
-  const payerId = iAmPayer ? profileId : effectivePartnerId;
-  const owerId = iAmPayer ? effectivePartnerId : profileId;
   // The ower's percentage of the bill. myShare is always *my* percentage, so
   // the ower's cut is the complement when I paid, or my own cut when I owe.
   const owerPct = iAmPayer ? 100 - myShare : myShare;
@@ -503,6 +517,35 @@ export function AddTransactionSheet({
               })}
             </div>
           </div>
+
+          {/* Who paid — only for a "Hogar" movement, where either person could
+              have fronted the money. For "Mío"/partner it's implied. */}
+          {owner === 'household' && effectivePartnerId && (
+            <div className="px-4 mt-3">
+              <p className="text-xs font-bold mb-1.5" style={{ color: '#6B6459' }}>¿Quién pagó?</p>
+              <div className="flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#ECE5DC' }}>
+                {([
+                  { key: 'me' as const, label: '👤 Yo' },
+                  { key: 'partner' as const, label: `👥 ${effectivePartnerName}` },
+                ]).map((o) => {
+                  const active = paidBy === o.key;
+                  return (
+                    <button
+                      key={o.key}
+                      onClick={() => setPaidBy(o.key)}
+                      className="flex-1 py-2 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1"
+                      style={{
+                        background: active ? '#FFFFFF' : 'transparent',
+                        color: active ? '#2D2D2D' : '#6B6459',
+                      }}
+                    >
+                      {o.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Options row */}
           <div className="flex gap-2 px-4 mt-3 flex-wrap">
