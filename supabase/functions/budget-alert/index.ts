@@ -40,6 +40,7 @@ interface Budget {
   amount: number;
   currency: string | null;
   profile_id: string | null;
+  period?: string;
 }
 
 function toArs(amount: number, currency: string | null | undefined, rate: number): number {
@@ -106,7 +107,7 @@ Deno.serve(async (req) => {
     const monthEnd = `${period}-${String(lastDay).padStart(2, "0")}`;
 
     const [{ data: budgets }, { data: rows }, { data: fx }] = await Promise.all([
-      admin.from("budgets").select("id, category_id, scope, amount, currency, profile_id")
+      admin.from("budgets").select("id, category_id, scope, amount, currency, profile_id, period")
         .eq("household_id", householdId).eq("active", true),
       admin.from("transactions")
         .select("category_id, amount, currency, scope, profile_id, is_shared, splits(payer_profile_id, ower_profile_id, amount)")
@@ -132,6 +133,10 @@ Deno.serve(async (req) => {
 
     let sent = 0;
     for (const b of activeBudgets) {
+      // Weekly budgets are tracked in-app; their push alerts (with a weekly
+      // window + weekly dedupe) are a separate follow-up, so skip them here to
+      // avoid firing a false alert computed over the whole month.
+      if (b.period === "weekly") continue;
       const limit = toArs(b.amount, b.currency, rate);
       if (limit <= 0) continue;
       const spent = spentForBudget(b, expenseRows, rate);

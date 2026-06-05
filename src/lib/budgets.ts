@@ -25,6 +25,7 @@ export interface BudgetExpenseRow {
   scope: string;
   profile_id: string;
   is_shared: boolean;
+  occurred_on?: string;
   splits?: SplitRow[] | null;
 }
 
@@ -80,4 +81,4 @@ export function spentForBudget(
 
 /** SQL column list for fetching expense rows compatible with the helpers above. */
 export const BUDGET_EXPENSE_SELECT =
-  'category_id, amount, currency, scope, profile_id, is_shared, splits(payer_profile_id, ower_profile_id, amount)';
+  'category_id, amount, currency, scope, profile_id, is_shared, occurred_on, splits(payer_profile_id, ower_profile_id, amount)';

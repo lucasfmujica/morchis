@@ -267,7 +267,7 @@ export default function HomeClient({
   partnerName?: string;
 }) {
   const supabase = createClient();
-  const { format, toggle, showUSD, arsPerUsd } = useFx();
+  const { format, toggle, showUSD, arsPerUsd, rateStale } = useFx();
   const { hideAmounts, toggle: toggleHide } = usePrivacyStore();
   // Bank-style mask: when the ojito is on, every money value renders as dots.
   const mask = (s: string) => (hideAmounts ? '••••••' : s);
@@ -522,6 +522,16 @@ export default function HomeClient({
           </button>
         ))}
       </div>
+
+      {/* Stale FX warning — USD conversions are approximate until the rate refreshes */}
+      {rateStale && (
+        <div className="mx-4 mb-3 rounded-2xl px-4 py-2.5 flex items-center gap-2" style={{ background: '#FDF1D8' }}>
+          <span>⚠️</span>
+          <p className="text-[11px] font-semibold" style={{ color: '#B8860B' }}>
+            Cotización del dólar desactualizada — los montos en USD son aproximados.
+          </p>
+        </div>
+      )}
 
       {/* Hero projection card */}
       <div

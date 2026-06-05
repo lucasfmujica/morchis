@@ -54,22 +54,64 @@ export function MonthlyBars({ rows, showRate = true }: { rows: MonthBar[]; showR
   );
 }
 
-/** Single-series bars (e.g. one category's monthly spend). */
-export function SingleBars({ rows, color = '#FF7F6B' }: { rows: { key: string; label: string; value: number }[]; color?: string }) {
+/** Single-series bars (e.g. one category's monthly spend). When `onSelect` is
+ *  passed each bar becomes tappable (drill into that month) and `selectedKey`
+ *  is highlighted. */
+export function SingleBars({
+  rows,
+  color = '#FF7F6B',
+  onSelect,
+  selectedKey,
+}: {
+  rows: { key: string; label: string; value: number }[];
+  color?: string;
+  onSelect?: (key: string) => void;
+  selectedKey?: string;
+}) {
   const max = Math.max(1, ...rows.map((r) => r.value));
   return (
     <div className="flex items-end gap-2" style={{ height: 120 }}>
-      {rows.map((r) => (
-        <div key={r.key} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
-          <div className="w-full flex justify-center" style={{ height: 96 }}>
-            <div
-              className="rounded-t-md self-end"
-              style={{ width: 18, height: `${(r.value / max) * 100}%`, minHeight: r.value > 0 ? 3 : 0, background: color }}
-            />
+      {rows.map((r) => {
+        const selected = selectedKey === r.key;
+        const bar = (
+          <>
+            <div className="w-full flex justify-center" style={{ height: 96 }}>
+              <div
+                className="rounded-t-md self-end transition-opacity"
+                style={{
+                  width: 18,
+                  height: `${(r.value / max) * 100}%`,
+                  minHeight: r.value > 0 ? 3 : 0,
+                  background: color,
+                  opacity: !selectedKey || selected ? 1 : 0.45,
+                }}
+              />
+            </div>
+            <span
+              className="text-[10px] font-semibold"
+              style={{ color: selected ? color : '#6B6459' }}
+            >
+              {r.label}
+            </span>
+          </>
+        );
+        return onSelect ? (
+          <button
+            key={r.key}
+            type="button"
+            onClick={() => onSelect(r.key)}
+            aria-label={`Ver ${r.label}`}
+            aria-pressed={selected}
+            className="flex-1 flex flex-col items-center gap-1 h-full justify-end"
+          >
+            {bar}
+          </button>
+        ) : (
+          <div key={r.key} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+            {bar}
           </div>
-          <span className="text-[10px] font-semibold" style={{ color: '#6B6459' }}>{r.label}</span>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
