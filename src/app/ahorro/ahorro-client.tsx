@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
@@ -125,10 +125,14 @@ export default function AhorroClient({
     onError: () => toast.error('No se pudo guardar la meta.'),
   });
 
+  // Debounce the upsert so tapping +5 / −5 a few times in a row writes once, not
+  // once per tap. The UI updates instantly via pendingPct.
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   function changeTarget(delta: number) {
     const next = Math.max(0, Math.min(100, targetPct + delta));
     setPendingPct(next);
-    saveMutation.mutate(next);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => saveMutation.mutate(next), 600);
   }
 
   const sixMoSaved = rows.reduce((s, r) => s + r.saved, 0);

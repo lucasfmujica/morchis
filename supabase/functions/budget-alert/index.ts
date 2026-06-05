@@ -100,13 +100,17 @@ Deno.serve(async (req) => {
     const now = new Date();
     const period = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
     const monthStart = `${period}-01`;
+    // Cap at month end so a future-month installment cuota doesn't inflate spend
+    // and fire a false over-budget alert.
+    const lastDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
+    const monthEnd = `${period}-${String(lastDay).padStart(2, "0")}`;
 
     const [{ data: budgets }, { data: rows }, { data: fx }] = await Promise.all([
       admin.from("budgets").select("id, category_id, scope, amount, currency, profile_id")
         .eq("household_id", householdId).eq("active", true),
       admin.from("transactions")
         .select("category_id, amount, currency, scope, profile_id, is_shared, splits(payer_profile_id, ower_profile_id, amount)")
-        .eq("household_id", householdId).eq("type", "expense").gte("occurred_on", monthStart),
+        .eq("household_id", householdId).eq("type", "expense").gte("occurred_on", monthStart).lte("occurred_on", monthEnd),
       admin.from("fx_rates").select("ars_per_usd").eq("source", "blue").order("date", { ascending: false }).limit(1).maybeSingle(),
     ]);
 

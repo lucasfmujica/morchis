@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { formatARS, formatUSD, parseMoney } from '@/lib/format';
-import { monthKey } from '@/lib/date';
+import { monthKey, todayISO } from '@/lib/date';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { useInflation } from '@/hooks/useInflation';
@@ -462,7 +462,7 @@ export default function MetasClient({ profile }: { profile: Profile }) {
                     <p className="text-xs mt-0.5" style={{ color: '#6B6459' }}>
                       Vence {new Date(g.deadline).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </p>
-                    {!done && new Date(g.deadline) > new Date() && !contributedGoalIds.has(g.id) && (
+                    {!done && g.deadline >= todayISO() && !contributedGoalIds.has(g.id) && (
                       <p className="text-[11px] font-bold mt-1 inline-block px-2 py-0.5 rounded-full" style={{ background: '#FBF1D8', color: '#B8860B' }}>
                         💸 Aportá este mes
                       </p>

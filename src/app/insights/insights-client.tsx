@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
+import { toast } from 'sonner';
 
 interface Insight {
   id: string;
@@ -47,8 +48,11 @@ export default function InsightsClient({ householdId, profileId }: { householdId
     setRefreshing(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-      await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-insights`, {
+      if (!session) {
+        toast.error('Iniciá sesión de nuevo para actualizar.');
+        return;
+      }
+      const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-insights`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
@@ -56,6 +60,7 @@ export default function InsightsClient({ householdId, profileId }: { householdId
         },
         body: JSON.stringify({ mode: 'full' }),
       });
+      if (!res.ok) throw new Error(`generate-insights ${res.status}`);
       // Generate purchasing power insight in parallel (best-effort)
       fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/purchasing-power-insight`, {
         method: 'POST',
@@ -66,6 +71,10 @@ export default function InsightsClient({ householdId, profileId }: { householdId
       }).catch(() => {});
       await qc.invalidateQueries({ queryKey: ['insights', householdId] });
       await qc.invalidateQueries({ queryKey: ['top-insight', householdId] });
+      toast.success('Insights actualizados ✓');
+    } catch (e) {
+      console.error(e);
+      toast.error('No se pudieron actualizar los insights. Probá de nuevo.');
     } finally {
       setRefreshing(false);
     }

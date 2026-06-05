@@ -408,6 +408,7 @@ export default function HomeClient({
       next_run: r.next_run,
       active: r.active,
       profile_id: r.profile_id,
+      cadence: r.cadence as 'weekly' | 'biweekly' | 'monthly' | undefined,
     })),
     new Date(),
     scopeProfileId,

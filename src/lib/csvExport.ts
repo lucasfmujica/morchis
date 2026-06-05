@@ -2,6 +2,7 @@ type TxRow = {
   id: string;
   amount: number;
   type: string;
+  currency?: string | null;
   category_id: string | null;
   account_id: string | null;
   scope: string;
@@ -12,15 +13,24 @@ type TxRow = {
   categories: { name: string; icon: string } | null;
 };
 
+const TYPE_LABEL: Record<string, string> = {
+  expense: 'Gasto',
+  income: 'Ingreso',
+  transfer: 'Transferencia',
+};
+
 export function exportTransactionsToCSV(transactions: TxRow[], filename: string): void {
-  const header = ['Fecha', 'Tipo', 'Categoría', 'Comercio', 'Monto ARS', 'Alcance', 'Compartido'];
+  // Amount is exported in each row's own currency, with an explicit Moneda
+  // column, so a USD movement isn't mislabelled as pesos.
+  const header = ['Fecha', 'Tipo', 'Categoría', 'Comercio', 'Monto', 'Moneda', 'Alcance', 'Compartido'];
 
   const rows = transactions.map((tx) => [
     tx.occurred_on,
-    tx.type === 'expense' ? 'Gasto' : 'Ingreso',
+    TYPE_LABEL[tx.type] ?? tx.type,
     tx.categories?.name ?? '',
     tx.merchant ?? '',
     String(tx.amount),
+    tx.currency ?? 'ARS',
     tx.scope === 'household' ? 'Hogar' : 'Personal',
     tx.is_shared ? 'Sí' : 'No',
   ]);

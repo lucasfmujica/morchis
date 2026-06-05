@@ -257,7 +257,12 @@ function RuleForm({
       return;
     }
     const anchor = parseInt(anchorDay, 10) || 1;
-    const next_run = nextRunFromAnchor(cadence, anchor);
+    // Only recompute the next run when the schedule actually changed. Editing
+    // just the amount/label of an existing rule should keep its current cycle
+    // (otherwise the date jumped forward and the projection shifted).
+    const scheduleChanged = initial?.cadence !== cadence || initial?.anchor_day !== anchor;
+    const next_run =
+      initial?.next_run && !scheduleChanged ? initial.next_run : nextRunFromAnchor(cadence, anchor);
     onSave({ direction, label: label.trim(), amount, currency, cadence, anchor_day: anchor, next_run, scope, active, category_id: initial?.category_id ?? null });
   }
 

@@ -12,6 +12,7 @@ import { netWorthAt, type AccountRow, type AccountTx } from '@/lib/accounts';
 import { myShareArs, type SplitRow } from '@/lib/budgets';
 import { toLocalISO } from '@/lib/date';
 import { formatARS } from '@/lib/format';
+import { toast } from 'sonner';
 import Link from 'next/link';
 
 interface Profile {
@@ -185,9 +186,18 @@ export default function AnalisisClient({
   }));
   if (restTotal > 0) segments.push({ label: 'Otras', value: restTotal, color: '#C4B9AE' });
 
-  // Subscriptions radar — current-month spend in subscription-type categories
-  const SUB_NAMES = new Set(['streaming', 'servicios digitales', 'suscripciones']);
-  const subCatIds = new Set(categories.filter((c) => SUB_NAMES.has(c.name.trim().toLowerCase())).map((c) => c.id));
+  // Subscriptions radar — current-month spend in subscription-type categories.
+  // Match by keyword (substring) so variants like "Suscripción" or "Streaming &
+  // apps" still count, instead of requiring an exact category name.
+  const SUB_KEYWORDS = ['streaming', 'servicios digitales', 'suscrip', 'netflix', 'spotify', 'apps'];
+  const subCatIds = new Set(
+    categories
+      .filter((c) => {
+        const n = c.name.trim().toLowerCase();
+        return SUB_KEYWORDS.some((k) => n.includes(k));
+      })
+      .map((c) => c.id),
+  );
   const subRows = [...spentByCat.entries()]
     .filter(([id]) => subCatIds.has(id))
     .map(([id, value]) => ({ cat: catById.get(id), value }))
@@ -254,13 +264,21 @@ export default function AnalisisClient({
     setRefreshing(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-      await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-insights`, {
+      if (!session) {
+        toast.error('Iniciá sesión de nuevo para actualizar.');
+        return;
+      }
+      const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-insights`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'full' }),
       });
+      if (!res.ok) throw new Error(`generate-insights ${res.status}`);
       await qc.invalidateQueries({ queryKey: ['insights', profile.household_id] });
+      toast.success('Insights actualizados ✓');
+    } catch (e) {
+      console.error(e);
+      toast.error('No se pudieron actualizar los insights. Probá de nuevo.');
     } finally {
       setRefreshing(false);
     }
