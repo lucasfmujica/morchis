@@ -981,6 +981,7 @@ export type Database = {
           scope: string
           source: string
           statement_id: string | null
+          transfer_account_id: string | null
           type: string
           usd_rate_snapshot: number | null
         }
@@ -1003,6 +1004,7 @@ export type Database = {
           scope?: string
           source?: string
           statement_id?: string | null
+          transfer_account_id?: string | null
           type: string
           usd_rate_snapshot?: number | null
         }
@@ -1025,6 +1027,7 @@ export type Database = {
           scope?: string
           source?: string
           statement_id?: string | null
+          transfer_account_id?: string | null
           type?: string
           usd_rate_snapshot?: number | null
         }

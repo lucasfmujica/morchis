@@ -40,6 +40,7 @@ type Tx = {
   currency: string;
   category_id: string | null;
   account_id: string | null;
+  transfer_account_id: string | null;
   scope: string;
   is_shared: boolean;
   merchant: string | null;
@@ -97,7 +98,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('id, amount, type, currency, category_id, account_id, scope, is_shared, merchant, occurred_on, profile_id, installment_number, installment_total, categories:category_id(name, icon)')
+        .select('id, amount, type, currency, category_id, account_id, transfer_account_id, scope, is_shared, merchant, occurred_on, profile_id, installment_number, installment_total, categories:category_id(name, icon)')
         .eq('household_id', profile.household_id)
         .order('occurred_on', { ascending: false })
         .order('created_at', { ascending: false })
@@ -197,6 +198,8 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     const filename = `movimientos-${todayISO()}.csv`;
     exportTransactionsToCSV(filtered, filename);
   }
+
+  const acctName = (id: string | null) => accounts.find((a) => a.id === id)?.name ?? '—';
 
   return (
     <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
@@ -363,10 +366,12 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                     setSheetOpen(true);
                   }}
                 >
-                  <span className="text-2xl">{tx.categories?.icon ?? '🏷️'}</span>
+                  <span className="text-2xl">{tx.type === 'transfer' ? '🔄' : (tx.categories?.icon ?? '🏷️')}</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>
-                      {tx.merchant || tx.categories?.name || 'Sin categoría'}
+                      {tx.type === 'transfer'
+                        ? `${acctName(tx.account_id)} → ${acctName(tx.transfer_account_id)}`
+                        : tx.merchant || tx.categories?.name || 'Sin categoría'}
                     </p>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       {tx.categories?.name && tx.merchant && (
@@ -392,9 +397,9 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                   <div className="text-right flex-shrink-0">
                     <p
                       className="text-base font-black"
-                      style={{ color: tx.type === 'expense' ? '#FF7F6B' : '#7EC8A4' }}
+                      style={{ color: tx.type === 'expense' ? '#FF7F6B' : tx.type === 'transfer' ? '#5B8DEF' : '#7EC8A4' }}
                     >
-                      {tx.type === 'expense' ? '-' : '+'}{format(toArs(tx.amount, tx.currency))}
+                      {tx.type === 'expense' ? '-' : tx.type === 'transfer' ? '' : '+'}{format(toArs(tx.amount, tx.currency))}
                     </p>
                     <p className="text-xs" style={{ color: '#6B6459' }}>{secondary(toArs(tx.amount, tx.currency))}</p>
                   </div>

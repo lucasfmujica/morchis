@@ -92,7 +92,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('account_id, type, amount, occurred_on')
+        .select('account_id, transfer_account_id, type, amount, occurred_on')
         .eq('household_id', profile.household_id)
         .not('account_id', 'is', null);
       return data ?? [];
@@ -105,9 +105,18 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
   // Asset accounts: saldo = inicial + ingresos - gastos (hasta hoy).
   // Tarjetas: gastado en el mes actual.
   function assetBalance(accountId: string, initial: number) {
-    return accountTx
-      .filter((t) => t.account_id === accountId && t.occurred_on <= todayStr)
-      .reduce((s, t) => s + (t.type === 'income' ? t.amount : t.type === 'expense' ? -t.amount : 0), initial);
+    return accountTx.reduce((s, t) => {
+      if (t.occurred_on > todayStr) return s;
+      if (t.account_id === accountId) {
+        if (t.type === 'income') return s + t.amount;
+        if (t.type === 'expense') return s - t.amount;
+        if (t.type === 'transfer') return s - t.amount; // money leaves origin
+        return s;
+      }
+      // Destination side of a transfer: money arrives here.
+      if (t.type === 'transfer' && t.transfer_account_id === accountId) return s + t.amount;
+      return s;
+    }, initial);
   }
   function cardMonthSpend(accountId: string) {
     return accountTx

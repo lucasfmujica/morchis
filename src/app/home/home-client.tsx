@@ -309,7 +309,7 @@ export default function HomeClient({
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('account_id, type, amount, occurred_on')
+        .select('account_id, transfer_account_id, type, amount, occurred_on')
         .eq('household_id', profile.household_id)
         .not('account_id', 'is', null);
       return (data ?? []) as AccountTx[];

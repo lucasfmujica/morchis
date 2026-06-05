@@ -49,6 +49,7 @@ interface EditTx {
   currency: string;
   category_id: string | null;
   account_id: string | null;
+  transfer_account_id?: string | null;
   scope: string;
   is_shared: boolean;
   merchant: string | null;
@@ -91,6 +92,23 @@ export function AddTransactionSheet({
       return data;
     },
   });
+  // The `accounts` prop doesn't carry currency (most callers don't fetch it),
+  // but transfers need it to keep origin/destination in the same currency. Fetch
+  // a light metadata list here so every mount point supports transfers.
+  const { data: acctMeta = [] } = useQuery({
+    queryKey: ['sheet-accounts', householdId],
+    enabled: !!householdId && open,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('accounts')
+        .select('id, name, type, currency, owner_profile_id')
+        .eq('household_id', householdId)
+        .eq('archived', false)
+        .order('name');
+      return data ?? [];
+    },
+  });
+
   const effectivePartnerId = partnerProfileId ?? resolvedPartner?.id ?? null;
   const effectivePartnerName =
     partnerName ?? resolvedPartner?.nickname ?? resolvedPartner?.display_name ?? 'Tu pareja';
@@ -106,9 +124,11 @@ export function AddTransactionSheet({
 
   const [inputUSD, setInputUSD] = useState(false);
   const [raw, setRaw] = useState('');
-  const [txType, setTxType] = useState<'expense' | 'income'>('expense');
+  const [txType, setTxType] = useState<'expense' | 'income' | 'transfer'>('expense');
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
+  // Destination account for a transfer (money arrives here). Origin reuses accountId.
+  const [toAccountId, setToAccountId] = useState<string | null>(null);
   // Who the movement belongs to: mine, my partner's (loaded on their behalf,
   // with their accounts), or the shared household.
   const [owner, setOwner] = useState<'me' | 'partner' | 'household'>('me');
@@ -129,9 +149,10 @@ export function AddTransactionSheet({
     if (open) {
       if (editTx) {
         setRaw(String(editTx.amount).replace('.', ','));
-        setTxType(editTx.type as 'expense' | 'income');
+        setTxType(editTx.type as 'expense' | 'income' | 'transfer');
         setCategoryId(editTx.category_id);
         setAccountId(editTx.account_id);
+        setToAccountId(editTx.transfer_account_id ?? null);
         setOwner(ownerOf(editTx));
         setIsShared(editTx.is_shared);
         // profile_id is the payer, so a movement whose profile isn't mine was
@@ -147,6 +168,7 @@ export function AddTransactionSheet({
         setCategoryId(null);
         // New movement starts as "Mío", so default to the first account I own.
         setAccountId(accounts.find((a) => a.owner_profile_id === profileId)?.id ?? accounts[0]?.id ?? null);
+        setToAccountId(null);
         setOwner('me');
         setIsShared(false);
         setPaidBy('me');
@@ -212,20 +234,49 @@ export function AddTransactionSheet({
     setRaw((prev) => prev.slice(0, -1));
   }
 
+  const isTransfer = txType === 'transfer';
+
+  // Transfers move money between the user's own non-credit accounts. Origin
+  // reuses `accountId`; destination is `toAccountId`. We keep both legs in the
+  // same currency so the stored amount applies cleanly to each balance.
+  const transferAccounts = acctMeta.filter(
+    (a) => a.type !== 'credit' && (a.owner_profile_id == null || a.owner_profile_id === profileId),
+  );
+  const effectiveFromId =
+    accountId && transferAccounts.some((a) => a.id === accountId)
+      ? accountId
+      : (transferAccounts[0]?.id ?? null);
+  const transferCurrency = (transferAccounts.find((a) => a.id === effectiveFromId)?.currency ??
+    'ARS') as 'ARS' | 'USD';
+  const destAccounts = transferAccounts.filter(
+    (a) => a.id !== effectiveFromId && a.currency === transferCurrency,
+  );
+  const effectiveToId =
+    toAccountId && destAccounts.some((a) => a.id === toAccountId)
+      ? toAccountId
+      : (destAccounts[0]?.id ?? null);
+
   // The transaction is stored in its native currency (USD stays USD instead of
   // being force-converted to ARS), so USD accounts/income keep correct balances.
+  // A transfer's currency is fixed by its origin account.
   const nativeAmount = parseMoney(raw);
-  const txCurrency: 'ARS' | 'USD' = inputUSD ? 'USD' : 'ARS';
+  const txCurrency: 'ARS' | 'USD' = isTransfer ? transferCurrency : inputUSD ? 'USD' : 'ARS';
   // ARS equivalent, used only for the couple-split math and the ≈ preview.
-  const arsAmount = inputUSD ? usdToArs(nativeAmount, arsPerUsd) : nativeAmount;
+  const arsAmount = txCurrency === 'USD' ? usdToArs(nativeAmount, arsPerUsd) : nativeAmount;
 
   // Show exactly what was typed on the keypad (comma visible the instant it's
   // pressed, trailing zeros preserved) instead of re-deriving from the float.
   const displayAmount = formatTypedAmount(raw, txCurrency);
 
-  const secondaryAmount = inputUSD
-    ? `≈ ${formatARS(arsAmount)}`
-    : `≈ ${formatUSD(arsToUsd(arsAmount, arsPerUsd))}`;
+  const secondaryAmount =
+    txCurrency === 'USD'
+      ? `≈ ${formatARS(arsAmount)}`
+      : `≈ ${formatUSD(arsToUsd(arsAmount, arsPerUsd))}`;
+
+  // Neutral blue accent for transfers; red for expense, green for income.
+  const accentColor = isTransfer ? '#5B8DEF' : txType === 'expense' ? '#FF7F6B' : '#7EC8A4';
+  const transferInvalid =
+    isTransfer && (!effectiveFromId || !effectiveToId || effectiveFromId === effectiveToId);
 
   const visibleCategories = categories.filter((c) => c.kind === txType);
 
@@ -286,9 +337,48 @@ export function AddTransactionSheet({
   const fmtNative = (n: number) => (inputUSD ? formatUSD(n) : formatARS(n));
 
   async function handleSave() {
-    if (nativeAmount === 0) return;
+    if (nativeAmount === 0 || transferInvalid) return;
     setSaving(true);
     try {
+      if (isTransfer) {
+        // A transfer is ONE row: money leaves account_id (origin) and arrives at
+        // transfer_account_id (destination). It carries no category/split and is
+        // ignored by income/expense analytics; only balances react to it.
+        const transferPayload = {
+          household_id: householdId,
+          profile_id: profileId,
+          type: 'transfer' as const,
+          amount: nativeAmount,
+          currency: txCurrency,
+          usd_rate_snapshot: arsPerUsd,
+          category_id: null,
+          account_id: effectiveFromId,
+          transfer_account_id: effectiveToId,
+          merchant: merchant || null,
+          occurred_on: date,
+          scope: 'personal' as const,
+          is_shared: false,
+          source: 'manual' as const,
+        };
+        if (editTx) {
+          const { error } = await supabase.from('transactions').update(transferPayload).eq('id', editTx.id);
+          if (error) throw error;
+          // If this row used to be a shared expense, drop any stale split.
+          await supabase.from('splits').delete().eq('transaction_id', editTx.id);
+        } else {
+          const { error } = await supabase.from('transactions').insert(transferPayload);
+          if (error) throw error;
+        }
+
+        await qc.invalidateQueries({ queryKey: ['transactions'] });
+        await qc.invalidateQueries({ queryKey: ['account-tx'] });
+        await qc.invalidateQueries({ queryKey: ['summary'] });
+        await qc.invalidateQueries({ queryKey: ['projection'] });
+        toast.success(editTx ? 'Transferencia actualizada ✓' : 'Transferencia guardada ✓');
+        onClose();
+        return;
+      }
+
       const payload = {
         household_id: householdId,
         profile_id: txProfileId,
@@ -421,16 +511,25 @@ export function AddTransactionSheet({
           {/* Amount display */}
           <div className="text-center px-6 pb-2">
             <div className="flex items-center justify-center gap-3 mb-1">
-              <button
-                onClick={() => setInputUSD((v) => !v)}
-                className="text-xs font-bold px-3 py-1 rounded-full border"
-                style={{
-                  borderColor: inputUSD ? '#FF7F6B' : '#7EC8A4',
-                  color: inputUSD ? '#FF7F6B' : '#7EC8A4',
-                }}
-              >
-                {inputUSD ? 'USD' : 'ARS'}
-              </button>
+              {isTransfer ? (
+                <span
+                  className="text-xs font-bold px-3 py-1 rounded-full border"
+                  style={{ borderColor: '#5B8DEF', color: '#5B8DEF' }}
+                >
+                  {txCurrency}
+                </span>
+              ) : (
+                <button
+                  onClick={() => setInputUSD((v) => !v)}
+                  className="text-xs font-bold px-3 py-1 rounded-full border"
+                  style={{
+                    borderColor: inputUSD ? '#FF7F6B' : '#7EC8A4',
+                    color: inputUSD ? '#FF7F6B' : '#7EC8A4',
+                  }}
+                >
+                  {inputUSD ? 'USD' : 'ARS'}
+                </button>
+              )}
               {!editTx && (
                 <button
                   onClick={() => {
@@ -446,7 +545,7 @@ export function AddTransactionSheet({
             </div>
             <p
               className="text-5xl font-black tracking-tight"
-              style={{ color: txType === 'expense' ? '#FF7F6B' : '#7EC8A4', fontVariantNumeric: 'tabular-nums' }}
+              style={{ color: accentColor, fontVariantNumeric: 'tabular-nums' }}
             >
               {displayAmount}
             </p>
@@ -455,28 +554,33 @@ export function AddTransactionSheet({
             </p>
           </div>
 
-          {/* Income / Expense toggle */}
+          {/* Gasto / Ingreso / Transferencia toggle */}
           <div className="flex mx-6 mb-3 rounded-2xl overflow-hidden" style={{ background: '#ECE5DC' }}>
-            {(['expense', 'income'] as const).map((t) => (
+            {([
+              { t: 'expense' as const, label: 'Gasto', color: '#FF7F6B' },
+              { t: 'income' as const, label: 'Ingreso', color: '#7EC8A4' },
+              { t: 'transfer' as const, label: 'Transferencia', color: '#5B8DEF' },
+            ]).map(({ t, label, color }) => (
               <button
                 key={t}
                 onClick={() => {
                   setTxType(t);
                   setCategoryId(null);
                 }}
-                className="flex-1 py-2.5 text-sm font-bold transition-colors"
+                className="flex-1 py-2.5 text-[13px] font-bold transition-colors"
                 style={{
-                  background: txType === t ? (t === 'expense' ? '#FF7F6B' : '#7EC8A4') : 'transparent',
+                  background: txType === t ? color : 'transparent',
                   color: txType === t ? '#FFFFFF' : '#6B6459',
                   borderRadius: '14px',
                 }}
               >
-                {t === 'expense' ? 'Gasto' : 'Ingreso'}
+                {label}
               </button>
             ))}
           </div>
 
           {/* Category chips */}
+          {!isTransfer && (
           <div className="px-4 mb-3">
             <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
               {visibleCategories.map((c) => (
@@ -496,12 +600,64 @@ export function AddTransactionSheet({
               ))}
             </div>
           </div>
+          )}
 
           {/* Keypad */}
           <NumberKeypad onDigit={handleDigit} onBackspace={handleBackspace} />
 
+          {/* Transfer: origin → destination accounts (same currency). */}
+          {isTransfer && (
+            <div className="px-4 mt-3">
+              {transferAccounts.length < 2 ? (
+                <p className="text-[11px]" style={{ color: '#B8860B' }}>
+                  ⚠️ Necesitás al menos dos cuentas tuyas (no tarjetas) de la misma moneda para transferir.
+                </p>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <p className="text-[11px] font-bold mb-1" style={{ color: '#6B6459' }}>Desde</p>
+                    <select
+                      value={effectiveFromId ?? ''}
+                      onChange={(e) => setAccountId(e.target.value || null)}
+                      className="w-full px-3 py-2.5 rounded-xl text-xs font-bold border bg-white"
+                      style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+                    >
+                      {transferAccounts.map((a) => (
+                        <option key={a.id} value={a.id}>{a.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <span className="text-xl mt-4" style={{ color: '#5B8DEF' }}>→</span>
+                  <div className="flex-1">
+                    <p className="text-[11px] font-bold mb-1" style={{ color: '#6B6459' }}>Hacia</p>
+                    <select
+                      value={effectiveToId ?? ''}
+                      onChange={(e) => setToAccountId(e.target.value || null)}
+                      className="w-full px-3 py-2.5 rounded-xl text-xs font-bold border bg-white"
+                      style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+                    >
+                      {destAccounts.length === 0 && <option value="">Sin destino</option>}
+                      {destAccounts.map((a) => (
+                        <option key={a.id} value={a.id}>{a.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+              {/* Date */}
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="mt-3 px-3 py-2 rounded-xl text-xs font-bold border bg-white"
+                style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+              />
+            </div>
+          )}
+
           {/* Scope — explicit segmented control so it's clear whether the
               movement is personal (solo mío) or del hogar (compartido). */}
+          {!isTransfer && (
           <div className="px-4 mt-3">
             <p className="text-xs font-bold mb-1.5" style={{ color: '#6B6459' }}>¿De quién es este movimiento?</p>
             <div className="flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#ECE5DC' }}>
@@ -529,6 +685,7 @@ export function AddTransactionSheet({
               })}
             </div>
           </div>
+          )}
 
           {/* Who paid — only for a "Hogar" movement, where either person could
               have fronted the money. For "Mío"/partner it's implied. */}
@@ -560,6 +717,7 @@ export function AddTransactionSheet({
           )}
 
           {/* Options row */}
+          {!isTransfer && (
           <div className="flex gap-2 px-4 mt-3 flex-wrap">
             {/* Shared */}
             <button
@@ -600,9 +758,10 @@ export function AddTransactionSheet({
               style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
             />
           </div>
+          )}
 
           {/* Split percentage — only when "Compartido" is on */}
-          {isShared && (
+          {!isTransfer && isShared && (
             <div className="px-4 mt-3">
               {effectivePartnerId ? (
                 <div className="rounded-2xl p-3 border" style={{ background: '#FFFFFF', borderColor: '#ECE5DC' }}>
@@ -704,7 +863,7 @@ export function AddTransactionSheet({
           <div className="px-4 pb-6 mt-4" style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}>
             <PrimaryButton
               onClick={handleSave}
-              disabled={nativeAmount === 0}
+              disabled={nativeAmount === 0 || transferInvalid}
               loading={saving}
               className="w-full py-4 text-lg"
             >
