@@ -100,6 +100,7 @@ export default function SimuladorClient({ profile }: { profile: Profile }) {
   }
 
   function pct(r: number) {
+    if (!Number.isFinite(r)) return '—';
     return `${r >= 0 ? '+' : ''}${Math.round(r * 100)}%`;
   }
 
@@ -281,7 +282,7 @@ export default function SimuladorClient({ profile }: { profile: Profile }) {
                     <div className="rounded-full overflow-hidden h-2" style={{ background: BORDER }}>
                       <div
                         className="h-2 rounded-full"
-                        style={{ width: `${Math.min(100, (b.after_purchase / b.budget) * 100)}%`, background: CORAL }}
+                        style={{ width: `${b.budget > 0 ? Math.min(100, (b.after_purchase / b.budget) * 100) : 100}%`, background: CORAL }}
                       />
                     </div>
                     <p className="text-xs mt-1" style={{ color: CORAL }}>

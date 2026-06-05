@@ -324,20 +324,23 @@ export default function HomeClient({
     queryFn: async () => {
       const now = new Date();
       const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
       const { data } = await supabase
         .from('transactions')
         .select('amount, type, occurred_on, profile_id, category_id, currency')
         .eq('household_id', profile.household_id)
-        .gte('occurred_on', `${month}-01`);
+        .gte('occurred_on', `${month}-01`)
+        // Cap at month end so a future-month installment cuota doesn't leak into
+        // this month's "Gastos" tile, donut and projection.
+        .lte('occurred_on', `${month}-${String(lastDay).padStart(2, '0')}`);
       return data ?? [];
     },
   });
 
   // Load budgets for current month summary
-  const monthStart = (() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-  })();
+  const now0 = new Date();
+  const monthStart = `${now0.getFullYear()}-${String(now0.getMonth() + 1).padStart(2, '0')}-01`;
+  const monthEnd = `${now0.getFullYear()}-${String(now0.getMonth() + 1).padStart(2, '0')}-${String(new Date(now0.getFullYear(), now0.getMonth() + 1, 0).getDate()).padStart(2, '0')}`;
 
   const { data: budgets = [] } = useQuery({
     queryKey: ['budgets', profile.household_id],
@@ -361,7 +364,8 @@ export default function HomeClient({
         .select(BUDGET_EXPENSE_SELECT)
         .eq('household_id', profile.household_id)
         .eq('type', 'expense')
-        .gte('occurred_on', monthStart);
+        .gte('occurred_on', monthStart)
+        .lte('occurred_on', monthEnd);
       return (data ?? []) as BudgetExpenseRow[];
     },
   });
@@ -471,7 +475,7 @@ export default function HomeClient({
   const scopeTabs = [
     { key: 'me' as const, label: 'Mío' },
     { key: 'all' as const, label: 'Nuestro' },
-    ...(partnerProfileId ? [{ key: 'partner' as const, label: partnerName || 'Sofi' }] : []),
+    ...(partnerProfileId ? [{ key: 'partner' as const, label: partnerName || 'Pareja' }] : []),
   ];
 
   return (

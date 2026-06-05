@@ -9,6 +9,7 @@ import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { DonutChart } from '@/components/DonutChart';
 import { MonthlyBars, SingleBars, lastSixMonths } from '@/components/MonthlyBars';
 import { netWorthAt, type AccountRow, type AccountTx } from '@/lib/accounts';
+import { myShareArs, type SplitRow } from '@/lib/budgets';
 import { toLocalISO } from '@/lib/date';
 import { formatARS } from '@/lib/format';
 import Link from 'next/link';
@@ -50,7 +51,7 @@ export default function AnalisisClient({
   const scopeTabs = [
     { key: 'me' as const, label: 'Mío' },
     { key: 'all' as const, label: 'Nuestro' },
-    ...(partnerProfileId ? [{ key: 'partner' as const, label: partnerName || 'Sofi' }] : []),
+    ...(partnerProfileId ? [{ key: 'partner' as const, label: partnerName || 'Pareja' }] : []),
   ];
 
   const today = new Date();
@@ -76,7 +77,7 @@ export default function AnalisisClient({
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('amount, type, occurred_on, category_id, profile_id, currency')
+        .select('amount, type, occurred_on, category_id, profile_id, currency, is_shared, scope, splits(payer_profile_id, ower_profile_id, amount)')
         .eq('household_id', profile.household_id)
         .gte('occurred_on', rangeStart);
       return data ?? [];
@@ -110,7 +111,7 @@ export default function AnalisisClient({
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('account_id, type, amount, occurred_on')
+        .select('account_id, transfer_account_id, type, amount, occurred_on')
         .eq('household_id', profile.household_id)
         .not('account_id', 'is', null);
       return (data ?? []) as AccountTx[];
@@ -134,16 +135,40 @@ export default function AnalisisClient({
   const toArs = (amount: number, currency?: string | null) =>
     currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount;
 
-  // Respect the Mío/Nuestro/pareja scope.
-  const scopedTxns = scopeProfileId ? txns.filter((t) => t.profile_id === scopeProfileId) : txns;
+  type Txn = {
+    amount: number;
+    type: string;
+    occurred_on: string;
+    category_id: string | null;
+    profile_id: string;
+    currency: string;
+    is_shared: boolean;
+    scope: string;
+    splits: SplitRow[] | null;
+  };
+  const allTxns = txns as Txn[];
+
+  // How much of an expense counts for a given person, in ARS. A shared expense
+  // is split (each only carries their part, whoever paid); a solo expense counts
+  // only for its owner. This mirrors the budgets math so Análisis, Presupuestos
+  // and the couple balance all agree on "who spent what".
+  const expenseShareArs = (t: Txn, pid: string | undefined): number => {
+    if (!pid) return toArs(t.amount, t.currency); // "Nuestro" → combined household
+    if (!t.is_shared) return t.profile_id === pid ? toArs(t.amount, t.currency) : 0;
+    return myShareArs(t, pid, arsPerUsd);
+  };
+
+  // Only count rows up to today, so a future-dated installment doesn't inflate
+  // the current month.
   const scopedAccounts = scopeProfileId ? accounts.filter((a) => a.owner_profile_id === scopeProfileId) : accounts;
 
-  // Category breakdown — current month expenses
+  // Category breakdown — current month expenses, attributed by share.
   const catById = new Map(categories.map((c) => [c.id, c]));
   const spentByCat = new Map<string, number>();
-  for (const t of scopedTxns) {
-    if (t.type !== 'expense' || !t.occurred_on.startsWith(currentKey) || !t.category_id) continue;
-    spentByCat.set(t.category_id, (spentByCat.get(t.category_id) ?? 0) + toArs(t.amount, t.currency));
+  for (const t of allTxns) {
+    if (t.type !== 'expense' || !t.occurred_on.startsWith(currentKey) || t.occurred_on > todayStr || !t.category_id) continue;
+    const share = expenseShareArs(t, scopeProfileId);
+    if (share > 0) spentByCat.set(t.category_id, (spentByCat.get(t.category_id) ?? 0) + share);
   }
   const catRows = [...spentByCat.entries()]
     .map(([id, value]) => ({ id, cat: catById.get(id), value }))
@@ -170,11 +195,17 @@ export default function AnalisisClient({
     .sort((a, b) => b.value - a.value);
   const subsTotal = subRows.reduce((s, r) => s + r.value, 0);
 
-  // Per-person comparison — current-month expenses by profile
+  // Per-person comparison — each person's current-month *share* (so a shared
+  // bill is split, not credited entirely to whoever fronted it). Always across
+  // both members, independent of the scope toggle.
   const spentByPerson = new Map<string, number>();
-  for (const t of scopedTxns) {
-    if (t.type !== 'expense' || !t.occurred_on.startsWith(currentKey) || !t.profile_id) continue;
-    spentByPerson.set(t.profile_id, (spentByPerson.get(t.profile_id) ?? 0) + toArs(t.amount, t.currency));
+  for (const m of members) {
+    let total = 0;
+    for (const t of allTxns) {
+      if (t.type !== 'expense' || !t.occurred_on.startsWith(currentKey) || t.occurred_on > todayStr) continue;
+      total += expenseShareArs(t, m.id);
+    }
+    if (total > 0) spentByPerson.set(m.id, total);
   }
   const memberName = (id: string) => {
     const m = members.find((x) => x.id === id);
@@ -186,14 +217,18 @@ export default function AnalisisClient({
     .sort((a, b) => b.value - a.value);
   const personMax = Math.max(1, ...personRows.map((r) => r.value));
 
-  // 6-month income vs expense
+  // 6-month income vs expense. Expenses use each person's share for the scoped
+  // view; income isn't shared, so it's attributed to its owner.
   const trendRows = months.map((m) => {
     let income = 0;
     let expense = 0;
-    for (const t of scopedTxns) {
+    for (const t of allTxns) {
       if (!t.occurred_on.startsWith(m.key)) continue;
-      if (t.type === 'income') income += toArs(t.amount, t.currency);
-      else if (t.type === 'expense') expense += toArs(t.amount, t.currency);
+      if (t.type === 'income') {
+        if (!scopeProfileId || t.profile_id === scopeProfileId) income += toArs(t.amount, t.currency);
+      } else if (t.type === 'expense') {
+        expense += expenseShareArs(t, scopeProfileId);
+      }
     }
     return { ...m, income, expense, rate: income > 0 ? (income - expense) / income : null };
   });

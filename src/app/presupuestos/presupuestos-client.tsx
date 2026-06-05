@@ -232,6 +232,9 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
 
   const now = new Date();
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  // End of the current month, so a future-dated row (e.g. an installment booked
+  // for a later month) doesn't inflate this month's budget spend / alerts.
+  const monthEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, '0')}`;
 
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: ['categories', profile.household_id],
@@ -282,7 +285,8 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
         .select(BUDGET_EXPENSE_SELECT)
         .eq('household_id', profile.household_id)
         .eq('type', 'expense')
-        .gte('occurred_on', monthStart);
+        .gte('occurred_on', monthStart)
+        .lte('occurred_on', monthEnd);
       return (data ?? []) as BudgetExpenseRow[];
     },
   });

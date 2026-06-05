@@ -518,7 +518,9 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
         <div className="flex-1 min-w-0">
           <p className="font-bold text-sm truncate" style={{ color: '#2D2D2D' }}>{rule.label}</p>
           <p className="text-xs" style={{ color: '#6B6459' }}>
-            {CADENCE_LABEL[rule.cadence]} · día {rule.anchor_day}
+            {rule.cadence === 'weekly'
+              ? `${CADENCE_LABEL[rule.cadence]} · ${WEEKDAYS[rule.anchor_day ?? 0]}`
+              : `${CADENCE_LABEL[rule.cadence]} · día ${rule.anchor_day}`}
             {rule.next_run ? ` · próx. ${rule.next_run}` : ''}
             {!rule.active ? ' · inactiva' : ''}
           </p>

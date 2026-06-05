@@ -68,17 +68,21 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
     },
   });
 
-  // Active budget for this category
+  // Active budget for this category, normalized to ARS (USD budgets converted at
+  // the blue rate) so it lines up with the ARS-normalized monthly spend below.
   const { data: budget = 0 } = useQuery<number>({
-    queryKey: ['category-budget', category.id],
+    queryKey: ['category-budget', category.id, arsPerUsd],
     queryFn: async () => {
       const { data } = await supabase
         .from('budgets')
-        .select('amount')
+        .select('amount, currency')
         .eq('household_id', profile.household_id)
         .eq('category_id', category.id)
         .eq('active', true);
-      return (data ?? []).reduce((s, b) => s + b.amount, 0);
+      return (data ?? []).reduce(
+        (s, b) => s + (b.currency === 'USD' && arsPerUsd > 0 ? Math.round(b.amount * arsPerUsd) : b.amount),
+        0,
+      );
     },
   });
 

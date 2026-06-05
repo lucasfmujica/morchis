@@ -6,11 +6,10 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
-import { formatARS, formatUSD, usdToArs, parseMoney } from '@/lib/format';
+import { formatARS, formatUSD, parseMoney } from '@/lib/format';
 import { monthKey } from '@/lib/date';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
-import { useFx } from '@/hooks/useFx';
 import { useInflation } from '@/hooks/useInflation';
 import { EmptyState } from '@/components/EmptyState';
 
@@ -265,27 +264,22 @@ function monthsUntil(deadline: string): number {
 
 function onTrackTag(
   goal: Goal,
-  arsPerUsd: number,
   inflatedTarget: (amount: number, months: number) => number,
 ): { label: string; ok: boolean } {
   const now = new Date();
   const created = new Date(goal.created_at ?? now);
   const deadline = new Date(goal.deadline);
 
-  let targetArs =
-    goal.target_currency === 'USD'
-      ? usdToArs(goal.target_amount, arsPerUsd)
-      : goal.target_amount;
-
-  // Adjust ARS target by expected inflation when deadline is > 3 months away
+  // current_amount and target_amount are both stored in the goal's own currency,
+  // so the progress ratio needs no FX conversion. Only an ARS target gets an
+  // inflation bump when the deadline is far out.
+  let effectiveTarget = goal.target_amount;
   if (goal.target_currency === 'ARS') {
     const remaining = monthsUntil(goal.deadline);
-    if (remaining > 3) {
-      targetArs = inflatedTarget(goal.target_amount, remaining);
-    }
+    if (remaining > 3) effectiveTarget = inflatedTarget(goal.target_amount, remaining);
   }
 
-  const pct = targetArs > 0 ? goal.current_amount / targetArs : 0;
+  const pct = effectiveTarget > 0 ? goal.current_amount / effectiveTarget : 0;
   const totalDays = Math.max(1, (deadline.getTime() - created.getTime()) / 86400000);
   const elapsed = Math.max(0, (now.getTime() - created.getTime()) / 86400000);
   const expectedPct = elapsed / totalDays;
@@ -297,7 +291,6 @@ export default function MetasClient({ profile }: { profile: Profile }) {
   const supabase = createClient();
   const qc = useQueryClient();
   const router = useRouter();
-  const { arsPerUsd, format } = useFx();
   const { inflatedTarget, latestMonthlyPct, latestMonth } = useInflation();
   const [fabOpen, setFabOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
@@ -403,15 +396,15 @@ export default function MetasClient({ profile }: { profile: Profile }) {
           />
         ) : (
           filtered.map((g) => {
-            const targetArs =
-              g.target_currency === 'USD' ? usdToArs(g.target_amount, arsPerUsd) : g.target_amount;
-            const pct = targetArs > 0 ? Math.min(g.current_amount / targetArs, 1) : 0;
-            const tag = onTrackTag(g, arsPerUsd, inflatedTarget);
+            // Progress is computed in the goal's own currency (no FX), so a USD
+            // goal's percentage doesn't swing with the daily blue rate.
+            const fmtGoal = (n: number) => (g.target_currency === 'USD' ? formatUSD(n) : formatARS(n));
+            const pct = g.target_amount > 0 ? Math.min(g.current_amount / g.target_amount, 1) : 0;
+            const tag = onTrackTag(g, inflatedTarget);
             const done = pct >= 1;
 
-            const targetDisplay =
-              g.target_currency === 'USD' ? formatUSD(g.target_amount) : formatARS(g.target_amount);
-            const currentDisplay = format(g.current_amount);
+            const targetDisplay = fmtGoal(g.target_amount);
+            const currentDisplay = fmtGoal(g.current_amount);
 
             // Inflation-adjusted target for ARS goals with deadline > 3 months
             const remaining = monthsUntil(g.deadline);

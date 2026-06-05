@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
@@ -10,7 +10,6 @@ import { EmptyState } from '@/components/EmptyState';
 import { exportTransactionsToCSV } from '@/lib/csvExport';
 import { formatARS } from '@/lib/format';
 import { todayISO } from '@/lib/date';
-import { toast } from 'sonner';
 import {
   BarChart,
   Bar,
@@ -58,7 +57,6 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   // format()/secondary() then render it in the active display currency.
   const toArs = (amount: number, currency: string) =>
     currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount;
-  const qc = useQueryClient();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   const [editTx, setEditTx] = useState<Tx | null>(null);
@@ -114,11 +112,13 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     [transactions, profile.id],
   );
 
-  const filtered = useMemo(() => {
+  // Structural filters (scope / shared / search) but NOT the single-category
+  // drilldown. The month summary and the per-category breakdown build on this so
+  // they react to the scope you picked while still showing every category.
+  const scopeFiltered = useMemo(() => {
     return visibleTransactions.filter((tx) => {
       if (filterScope !== 'all' && tx.scope !== filterScope) return false;
       if (filterShared !== null && tx.is_shared !== filterShared) return false;
-      if (filterCategory !== 'all' && tx.category_id !== filterCategory) return false;
       if (search) {
         const q = search.toLowerCase();
         const m = tx.merchant?.toLowerCase() ?? '';
@@ -127,7 +127,15 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       }
       return true;
     });
-  }, [visibleTransactions, filterScope, filterShared, filterCategory, search]);
+  }, [visibleTransactions, filterScope, filterShared, search]);
+
+  const filtered = useMemo(
+    () =>
+      filterCategory === 'all'
+        ? scopeFiltered
+        : scopeFiltered.filter((tx) => tx.category_id === filterCategory),
+    [scopeFiltered, filterCategory],
+  );
 
   const grouped = useMemo(() => {
     const map = new Map<string, Tx[]>();
@@ -150,11 +158,11 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   const monthSummary = useMemo(() => {
     const now = new Date();
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const current = visibleTransactions.filter((tx) => tx.occurred_on.startsWith(month));
+    const current = filtered.filter((tx) => tx.occurred_on.startsWith(month));
     const expenses = current.filter((tx) => tx.type === 'expense').reduce((s, tx) => s + toArs(tx.amount, tx.currency), 0);
     const income = current.filter((tx) => tx.type === 'income').reduce((s, tx) => s + toArs(tx.amount, tx.currency), 0);
     return { expenses, income };
-  }, [visibleTransactions]);
+  }, [filtered]);
 
   // Chart data: top 5 categories current vs previous month
   const chartData = useMemo(() => {
@@ -166,7 +174,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     const curMap = new Map<string, number>();
     const prevMap = new Map<string, number>();
 
-    for (const tx of visibleTransactions) {
+    for (const tx of scopeFiltered) {
       if (tx.type !== 'expense') continue;
       const id = tx.category_id ?? '__none__';
       if (tx.occurred_on.startsWith(curMonth)) {
@@ -185,14 +193,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       'Este mes': cur,
       'Mes anterior': prevMap.get(id) ?? 0,
     }));
-  }, [visibleTransactions, categories]);
-
-  async function handleDelete(id: string) {
-    const { error } = await supabase.from('transactions').delete().eq('id', id);
-    if (error) { toast.error('No se pudo eliminar.'); return; }
-    await qc.invalidateQueries({ queryKey: ['transactions'] });
-    toast.success('Eliminado');
-  }
+  }, [scopeFiltered, categories]);
 
   function handleExport() {
     const filename = `movimientos-${todayISO()}.csv`;
@@ -412,7 +413,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
 
       {/* By-category summary */}
       <CategorySummary
-        transactions={visibleTransactions
+        transactions={scopeFiltered
           .filter((tx) => {
             const now = new Date();
             const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;

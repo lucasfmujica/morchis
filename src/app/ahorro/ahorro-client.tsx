@@ -71,7 +71,7 @@ export default function AhorroClient({
   const scopeTabs = [
     { key: 'me' as const, label: 'Mío' },
     { key: 'all' as const, label: 'Nuestro' },
-    ...(partnerProfileId ? [{ key: 'partner' as const, label: partnerName || 'Sofi' }] : []),
+    ...(partnerProfileId ? [{ key: 'partner' as const, label: partnerName || 'Pareja' }] : []),
   ];
 
   const { data: goalRows = [] } = useQuery({
