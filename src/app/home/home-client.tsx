@@ -52,28 +52,30 @@ function EyeOffIcon() {
 }
 
 function BudgetSummaryCard({
-  budgets,
-  spentByCategory,
+  items,
   hideAmounts,
 }: {
-  budgets: { id: string; category_id: string; scope: string; amount: number }[];
-  spentByCategory: Record<string, number>;
+  // Each entry is one relevant budget already reduced to ARS, with spend
+  // counted as the viewer's real share (see spentForBudget). Summing limits and
+  // spends here is correct because each budget contributes its own pair — no
+  // raw-amount mixing, no currency mixing, no per-category double counting.
+  items: { spent: number; limit: number }[];
   hideAmounts: boolean;
 }) {
   const m = (s: string) => (hideAmounts ? '••••••' : s);
-  if (budgets.length === 0) {
+  if (items.length === 0) {
     return (
       <Link href="/presupuestos" className="mx-4 rounded-3xl p-5 mb-4 flex items-center justify-between" style={{ background: '#FFFFFF' }}>
         <div>
-          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6B6459' }}>Presupuesto del hogar</p>
+          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6B6459' }}>Tus presupuestos</p>
           <p className="text-sm" style={{ color: '#6B6459' }}>Tocá para crear presupuestos →</p>
         </div>
       </Link>
     );
   }
 
-  const totalBudget = budgets.reduce((s, b) => s + b.amount, 0);
-  const totalSpent = budgets.reduce((s, b) => s + (spentByCategory[b.category_id] ?? 0), 0);
+  const totalBudget = items.reduce((s, b) => s + b.limit, 0);
+  const totalSpent = items.reduce((s, b) => s + b.spent, 0);
   const pct = totalBudget > 0 ? totalSpent / totalBudget : 0;
   const over = totalSpent > totalBudget;
   const barColor = pct >= 1 ? '#FF7F6B' : pct >= 0.8 ? '#F5A623' : '#7EC8A4';
@@ -81,7 +83,7 @@ function BudgetSummaryCard({
   return (
     <Link href="/presupuestos" className="mx-4 rounded-3xl p-5 mb-4 block" style={{ background: '#FFFFFF' }}>
       <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Presupuesto del hogar</p>
+        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Tus presupuestos</p>
         {over && (
           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#FFE7E2', color: '#FF7F6B' }}>
             Excedido
@@ -364,25 +366,6 @@ export default function HomeClient({
     },
   });
 
-  const { data: spentByCategory = {} } = useQuery<Record<string, number>>({
-    queryKey: ['spent-by-category', profile.household_id, monthStart, arsPerUsd],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('transactions')
-        .select('category_id, amount, currency')
-        .eq('household_id', profile.household_id)
-        .eq('type', 'expense')
-        .gte('occurred_on', monthStart);
-      const map: Record<string, number> = {};
-      for (const t of data ?? []) {
-        if (!t.category_id) continue;
-        const amt = t.currency === 'USD' && arsPerUsd > 0 ? Math.round(t.amount * arsPerUsd) : t.amount;
-        map[t.category_id] = (map[t.category_id] ?? 0) + amt;
-      }
-      return map;
-    },
-  });
-
   // Load active recurring rules
   const { data: rules = [] } = useQuery({
     queryKey: ['recurring_rules', profile.household_id],
@@ -455,7 +438,9 @@ export default function HomeClient({
   // Per-budget spend with shared expenses counted as each person's real share.
   // Only my budgets matter on my home: household ones + my own personal ones.
   const catById = Object.fromEntries(categories.map((c) => [c.id, c]));
-  const budgetAlerts = budgets
+  // My relevant budgets: household-scoped ones + my own personal ones (never the
+  // partner's personal budgets). Each reduced to ARS with share-aware spend.
+  const relevantBudgets = budgets
     .filter((b) => b.scope === 'household' || b.profile_id === profile.id)
     .map((b) => {
       const spent = spentForBudget(b, budgetRows, profile.id, arsPerUsd);
@@ -469,9 +454,9 @@ export default function HomeClient({
         limit,
         pct: limit > 0 ? spent / limit : 0,
       };
-    })
-    .filter((a) => a.pct >= 0.8)
-    .sort((a, b) => b.pct - a.pct);
+    });
+  // Only categories near or over their limit, worst first.
+  const budgetAlerts = relevantBudgets.filter((a) => a.pct >= 0.8).sort((a, b) => b.pct - a.pct);
 
   const quickTiles = [
     { href: '/cuentas', icon: '🏦', label: 'Cuentas', value: mask(format(totalBalance)), color: totalBalance < 0 ? '#E5604C' : '#2D2D2D' },
@@ -622,7 +607,7 @@ export default function HomeClient({
       <InsightTopCard householdId={profile.household_id} profileId={profile.id} />
 
       {/* Spent-vs-budget */}
-      <BudgetSummaryCard budgets={budgets} spentByCategory={spentByCategory} hideAmounts={hideAmounts} />
+      <BudgetSummaryCard items={relevantBudgets} hideAmounts={hideAmounts} />
 
       {/* Per-category budget alerts (only categories near or over the limit) */}
       {budgetAlerts.length > 0 && (
