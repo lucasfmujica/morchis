@@ -60,7 +60,7 @@ export default function InsightsClient({ householdId, profileId }: { householdId
         },
         body: JSON.stringify({ mode: 'full' }),
       });
-      if (!res.ok) throw new Error(`generate-insights ${res.status}`);
+      const data = await res.json().catch(() => null);
       // Generate purchasing power insight in parallel (best-effort)
       fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/purchasing-power-insight`, {
         method: 'POST',
@@ -71,7 +71,15 @@ export default function InsightsClient({ householdId, profileId }: { householdId
       }).catch(() => {});
       await qc.invalidateQueries({ queryKey: ['insights', householdId] });
       await qc.invalidateQueries({ queryKey: ['top-insight', householdId] });
-      toast.success('Insights actualizados ✓');
+      if (!res.ok || !data?.ok) {
+        toast.error(
+          data && data.generated === 0
+            ? 'No se generaron insights (faltan datos del mes o el análisis falló). Probá más tarde.'
+            : 'No se pudieron actualizar los insights. Probá de nuevo.',
+        );
+        return;
+      }
+      toast.success(`${data.generated} insight${data.generated === 1 ? '' : 's'} actualizado${data.generated === 1 ? '' : 's'} ✓`);
     } catch (e) {
       console.error(e);
       toast.error('No se pudieron actualizar los insights. Probá de nuevo.');

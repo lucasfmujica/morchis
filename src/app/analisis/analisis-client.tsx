@@ -273,9 +273,17 @@ export default function AnalisisClient({
         headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'full' }),
       });
-      if (!res.ok) throw new Error(`generate-insights ${res.status}`);
+      const data = await res.json().catch(() => null);
       await qc.invalidateQueries({ queryKey: ['insights', profile.household_id] });
-      toast.success('Insights actualizados ✓');
+      if (!res.ok || !data?.ok) {
+        toast.error(
+          data && data.generated === 0
+            ? 'No se generaron insights (faltan datos del mes o el análisis falló). Probá más tarde.'
+            : 'No se pudieron actualizar los insights. Probá de nuevo.',
+        );
+        return;
+      }
+      toast.success(`${data.generated} insight${data.generated === 1 ? '' : 's'} actualizado${data.generated === 1 ? '' : 's'} ✓`);
     } catch (e) {
       console.error(e);
       toast.error('No se pudieron actualizar los insights. Probá de nuevo.');
