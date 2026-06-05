@@ -9,7 +9,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { EmptyState } from '@/components/EmptyState';
 import { exportTransactionsToCSV } from '@/lib/csvExport';
 import { formatARS } from '@/lib/format';
-import { todayISO } from '@/lib/date';
+import { todayISO, weekRange, shortDM } from '@/lib/date';
 import {
   BarChart,
   Bar,
@@ -64,7 +64,22 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   const [filterScope, setFilterScope] = useState<'all' | 'personal' | 'household'>('personal');
   const [filterShared, setFilterShared] = useState<boolean | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>('all');
+  // Date range: defaults from the ?range= query param (e.g. Home's "Gastos de
+  // la semana" links here with range=week).
+  const [filterRange, setFilterRange] = useState<'all' | 'week' | 'month'>(() => {
+    if (typeof window === 'undefined') return 'all';
+    const r = new URLSearchParams(window.location.search).get('range');
+    return r === 'week' || r === 'month' ? r : 'all';
+  });
   const [showChart, setShowChart] = useState(false);
+
+  const week = weekRange(new Date());
+  const monthPrefix = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+  function inRange(occurredOn: string): boolean {
+    if (filterRange === 'week') return occurredOn >= week.start && occurredOn <= week.end;
+    if (filterRange === 'month') return occurredOn.startsWith(monthPrefix);
+    return true;
+  }
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],
@@ -119,6 +134,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     return visibleTransactions.filter((tx) => {
       if (filterScope !== 'all' && tx.scope !== filterScope) return false;
       if (filterShared !== null && tx.is_shared !== filterShared) return false;
+      if (!inRange(tx.occurred_on)) return false;
       if (search) {
         const q = search.toLowerCase();
         const m = tx.merchant?.toLowerCase() ?? '';
@@ -127,7 +143,8 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       }
       return true;
     });
-  }, [visibleTransactions, filterScope, filterShared, search]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleTransactions, filterScope, filterShared, filterRange, search]);
 
   const filtered = useMemo(
     () =>
@@ -208,7 +225,9 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       <header className="px-5 pt-14 pb-4 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Movimientos</h1>
-          <p className="text-xs mt-0.5" style={{ color: '#6B6459' }}>Este mes</p>
+          <p className="text-xs mt-0.5" style={{ color: '#6B6459' }}>
+            {filterRange === 'week' ? `Semana · Lun ${shortDM(week.start)} – Dom ${shortDM(week.end)}` : filterRange === 'month' ? 'Este mes' : 'Histórico'}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -316,6 +335,21 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
           >
             🤝 Compartidos
           </button>
+          {/* Date range */}
+          {(['all', 'week', 'month'] as const).map((r) => (
+            <button
+              key={r}
+              onClick={() => setFilterRange(r)}
+              className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border"
+              style={{
+                background: filterRange === r ? '#5BA886' : '#FFFFFF',
+                borderColor: filterRange === r ? '#5BA886' : '#ECE5DC',
+                color: filterRange === r ? '#FFFFFF' : '#6B6459',
+              }}
+            >
+              {r === 'all' ? 'Histórico' : r === 'week' ? '📆 Semana' : 'Mes'}
+            </button>
+          ))}
         </div>
 
         {/* Category filter */}

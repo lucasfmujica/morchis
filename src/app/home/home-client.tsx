@@ -19,7 +19,7 @@ import { InsightTopCard } from '@/components/InsightTopCard';
 import { DonutChart } from '@/components/DonutChart';
 import { computeProjection } from '@/lib/projection';
 import { netWorthAt, type AccountRow, type AccountTx } from '@/lib/accounts';
-import { todayISO } from '@/lib/date';
+import { todayISO, weekRange, shortDM } from '@/lib/date';
 import { formatARS } from '@/lib/format';
 
 interface Profile {
@@ -434,6 +434,11 @@ export default function HomeClient({
     (t) => t.type === 'expense' && (!scopeProfileId || t.profile_id === scopeProfileId),
   );
   const monthExpenseTotal = scopedExpenses.reduce((s, t) => s + t.amount, 0);
+  // This week's spend (Mon–Sun) for the active scope.
+  const week = weekRange(new Date());
+  const weekExpenseTotal = scopedExpenses
+    .filter((t) => t.occurred_on >= week.start && t.occurred_on <= week.end)
+    .reduce((s, t) => s + t.amount, 0);
   const scopedSpentByCategory = scopedExpenses.reduce<Record<string, number>>((map, t) => {
     if (t.category_id) map[t.category_id] = (map[t.category_id] ?? 0) + t.amount;
     return map;
@@ -606,6 +611,23 @@ export default function HomeClient({
           </Link>
         ))}
       </div>
+
+      {/* This week's spend (Mon–Sun) — tap to see the week's movements */}
+      <Link
+        href="/movimientos?range=week"
+        className="mx-4 mb-4 flex items-center gap-3 px-5 py-4 rounded-3xl"
+        style={{ background: '#FFFFFF' }}
+      >
+        <span className="text-2xl">📆</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Gastos de la semana</p>
+          <p className="text-[11px]" style={{ color: '#6B6459' }}>Lun {shortDM(week.start)} – Dom {shortDM(week.end)}</p>
+        </div>
+        <p className="text-xl font-black flex-shrink-0" style={{ color: '#FF7F6B', fontVariantNumeric: 'tabular-nums' }}>
+          {mask(format(weekExpenseTotal))}
+        </p>
+        <span className="text-xs flex-shrink-0" style={{ color: '#C4B9AE' }}>›</span>
+      </Link>
 
       {/* Income of the month + savings rate */}
       <IncomeCard incomeSoFar={incomeSoFar} expensesSoFar={expensesSoFar} incomeRules={incomeRules} fmt={(n) => mask(format(n))} />
