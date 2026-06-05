@@ -6,7 +6,7 @@ import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { NumberKeypad } from '@/components/NumberKeypad';
 import { useFx } from '@/hooks/useFx';
 import { createClient } from '@/lib/supabase';
-import { formatARS, formatUSD, usdToArs, arsToUsd, parseMoney, roundMoney } from '@/lib/format';
+import { formatARS, formatUSD, usdToArs, arsToUsd, parseMoney, roundMoney, formatTypedAmount } from '@/lib/format';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { todayISO } from '@/lib/date';
 import { triggerBudgetAlerts } from '@/lib/notifyBudgets';
@@ -219,7 +219,9 @@ export function AddTransactionSheet({
   // ARS equivalent, used only for the couple-split math and the ≈ preview.
   const arsAmount = inputUSD ? usdToArs(nativeAmount, arsPerUsd) : nativeAmount;
 
-  const displayAmount = inputUSD ? formatUSD(nativeAmount) : formatARS(nativeAmount);
+  // Show exactly what was typed on the keypad (comma visible the instant it's
+  // pressed, trailing zeros preserved) instead of re-deriving from the float.
+  const displayAmount = formatTypedAmount(raw, txCurrency);
 
   const secondaryAmount = inputUSD
     ? `≈ ${formatARS(arsAmount)}`

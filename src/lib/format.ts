@@ -20,6 +20,28 @@ export function formatUSD(amount: number): string {
   }).format(amount);
 }
 
+/**
+ * Format the raw string being typed on the keypad (e.g. "1234,8") into a
+ * currency display WITHOUT round-tripping through a float. This keeps the
+ * decimal comma visible the moment it's pressed and preserves trailing zeros
+ * (so "0,80" shows as "$ 0,80", not "$ 0,8"). The integer part is grouped via
+ * Intl so the currency symbol/spacing matches formatARS/formatUSD exactly.
+ */
+export function formatTypedAmount(raw: string, currency: 'ARS' | 'USD'): string {
+  const commaAt = raw.indexOf(',');
+  const intDigits = (commaAt === -1 ? raw : raw.slice(0, commaAt)).replace(/\D/g, '');
+  const intValue = intDigits ? parseInt(intDigits, 10) : 0;
+  const intDisplay = new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(intValue);
+  if (commaAt === -1) return intDisplay;
+  const decDigits = raw.slice(commaAt + 1).replace(/\D/g, '').slice(0, 2);
+  return `${intDisplay},${decDigits}`;
+}
+
 export function arsToUsd(ars: number, rateArsPerUsd: number): number {
   return roundMoney(ars / rateArsPerUsd);
 }
