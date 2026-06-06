@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
@@ -317,6 +317,131 @@ function TransactionsSheet({ view, onClose }: { view: DetailView; onClose: () =>
   );
 }
 
+interface BudgetSuggestion { category_id: string; name: string; suggested: number; rationale: string }
+
+// AI-suggested budgets sheet. The edge function computes the amounts from real
+// history (all math in TS); here we just list them and create the chosen ones.
+function SuggestBudgetsSheet({
+  scope, householdId, profileId, categories, onClose,
+}: {
+  scope: 'personal' | 'household';
+  householdId: string;
+  profileId: string;
+  categories: Category[];
+  onClose: () => void;
+}) {
+  const supabase = createClient();
+  const qc = useQueryClient();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [items, setItems] = useState<BudgetSuggestion[]>([]);
+  const [creating, setCreating] = useState<string | null>(null);
+  const catMap = Object.fromEntries(categories.map((c) => [c.id, c]));
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) { if (alive) setError(true); return; }
+        const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/suggest-budgets`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scope }),
+        });
+        const data = await res.json().catch(() => null);
+        if (!alive) return;
+        if (!res.ok || !data?.ok) { setError(true); return; }
+        setItems((data.suggestions ?? []) as BudgetSuggestion[]);
+      } catch {
+        if (alive) setError(true);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [scope]);
+
+  async function create(s: BudgetSuggestion) {
+    setCreating(s.category_id);
+    await supabase.from('budgets').insert({
+      household_id: householdId,
+      category_id: s.category_id,
+      scope,
+      profile_id: scope === 'personal' ? profileId : null,
+      amount: s.suggested,
+      currency: 'ARS',
+      period: 'monthly',
+      active: true,
+    });
+    await qc.invalidateQueries({ queryKey: ['budgets'] });
+    setItems((prev) => prev.filter((x) => x.category_id !== s.category_id));
+    setCreating(null);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
+      <div
+        className="w-full rounded-t-3xl p-6 max-h-[85vh] overflow-y-auto"
+        style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
+        <h2 className="text-lg font-black mb-1" style={{ color: '#2D2D2D' }}>Presupuestos sugeridos ✨</h2>
+        <p className="text-sm mb-5" style={{ color: '#6B6459' }}>
+          Basados en tu gasto real en {scope === 'personal' ? 'tus categorías personales' : 'el hogar'}. Tocá “Crear” para activar uno.
+        </p>
+
+        {loading && (
+          <div className="rounded-2xl p-5 text-center text-sm" style={{ background: '#F9F5F0', color: '#6B6459' }}>
+            Analizando tus gastos…
+          </div>
+        )}
+        {!loading && error && (
+          <div className="rounded-2xl p-5 text-center text-sm" style={{ background: '#FFE7E2', color: '#E5604C' }}>
+            No pude calcular sugerencias ahora. Probá de nuevo.
+          </div>
+        )}
+        {!loading && !error && items.length === 0 && (
+          <div className="rounded-2xl p-5 text-center text-sm" style={{ background: '#F9F5F0', color: '#6B6459' }}>
+            Ya tenés presupuesto en tus categorías con más gasto. ¡Buen trabajo! 🎉
+          </div>
+        )}
+
+        <div className="flex flex-col gap-3">
+          {items.map((s) => {
+            const cat = catMap[s.category_id];
+            return (
+              <div key={s.category_id} className="rounded-2xl p-4" style={{ background: '#F9F5F0' }}>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-xl">{cat?.icon ?? '📦'}</span>
+                    <div className="min-w-0">
+                      <p className="font-black text-sm truncate" style={{ color: '#2D2D2D' }}>{s.name}</p>
+                      <p className="text-base font-black" style={{ color: '#5BA886' }}>{formatARS(s.suggested)}<span className="text-xs font-semibold" style={{ color: '#6B6459' }}> /mes</span></p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => create(s)}
+                    disabled={creating === s.category_id}
+                    className="text-sm font-bold px-4 py-2 rounded-full text-white shrink-0"
+                    style={{ background: creating === s.category_id ? '#C4B9AE' : '#7EC8A4' }}
+                  >
+                    {creating === s.category_id ? '…' : 'Crear'}
+                  </button>
+                </div>
+                {s.rationale && (
+                  <p className="text-xs mt-2 leading-snug" style={{ color: '#6B6459' }}>{s.rationale}</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PresupuestosClient({ profile }: { profile: Profile }) {
   const supabase = createClient();
   const qc = useQueryClient();
@@ -326,6 +451,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   const [editing, setEditing] = useState<Budget | null>(null);
   const [budgetSheetOpen, setBudgetSheetOpen] = useState(false);
+  const [suggestOpen, setSuggestOpen] = useState(false);
   // Drill-down sheet: the transactions behind a budget's or the week's total.
   const [detail, setDetail] = useState<DetailView | null>(null);
 
@@ -493,13 +619,22 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
     <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
       <header className="flex items-center justify-between px-5 pt-14 pb-4">
         <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Presupuestos</h1>
-        <button
-          onClick={openNew}
-          className="w-9 h-9 rounded-full text-xl text-white flex items-center justify-center"
-          style={{ background: '#7EC8A4' }}
-        >
-          +
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setSuggestOpen(true)}
+            className="text-sm font-bold px-3 h-9 rounded-full flex items-center gap-1"
+            style={{ background: '#E4F2EA', color: '#5BA886' }}
+          >
+            ✨ Sugerir
+          </button>
+          <button
+            onClick={openNew}
+            className="w-9 h-9 rounded-full text-xl text-white flex items-center justify-center"
+            style={{ background: '#7EC8A4' }}
+          >
+            +
+          </button>
+        </div>
       </header>
 
       {/* Tabs */}
@@ -633,6 +768,16 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
       />
 
       {detail && <TransactionsSheet view={detail} onClose={() => setDetail(null)} />}
+
+      {suggestOpen && (
+        <SuggestBudgetsSheet
+          scope={tab}
+          householdId={profile.household_id}
+          profileId={profile.id}
+          categories={categories}
+          onClose={() => setSuggestOpen(false)}
+        />
+      )}
 
       {budgetSheetOpen && (
         <BudgetSheet
