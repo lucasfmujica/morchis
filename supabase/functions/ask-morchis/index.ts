@@ -173,6 +173,49 @@ async function getRecurring(ctx: Ctx) {
   return { rules: rows, fixed_expense_monthly_ars: Math.round(expTotal) };
 }
 
+interface ItemParent { occurred_on: string; currency: string; usd_rate_snapshot: number | null; scope: string; is_shared: boolean; profile_id: string; amount: number; splits: Split[] | null }
+// Fraction of a transaction attributable to a lens (0..1), for splitting line items.
+function lensFraction(p: ItemParent, lensTarget: string, blue: number): number {
+  const total = toArs(p.amount, p.currency, p.usd_rate_snapshot, blue);
+  if (lensTarget === 'everyone') return 1;
+  if (lensTarget === 'household') return p.scope === 'household' ? 1 : 0;
+  let base: number;
+  if (!p.is_shared) base = p.profile_id === lensTarget ? total : 0;
+  else {
+    const sp = p.splits ?? [];
+    const iOwe = sp.filter(s => s.ower_profile_id === lensTarget).reduce((a, s) => a + s.amount, 0);
+    if (iOwe > 0) base = iOwe;
+    else { const owedToMe = sp.filter(s => s.payer_profile_id === lensTarget).reduce((a, s) => a + s.amount, 0); base = owedToMe > 0 ? Math.max(0, total - owedToMe) : (p.profile_id === lensTarget ? total : 0); }
+  }
+  return total > 0 ? base / total : 0;
+}
+
+// Analyse the line ITEMS inside scanned receipts (transaction_items): what was
+// actually bought, grouped by type or product name. Amounts are in the parent
+// transaction's currency → normalised to ARS, and split by lens proportionally.
+interface ItemAggInput { lens?: string; group?: string; group_by?: string; date_from?: string; date_to?: string; limit?: number }
+async function aggregateItems(ctx: Ctx, input: ItemAggInput) {
+  const lensParam = input.lens ?? 'everyone';
+  const lensTarget = lensParam === 'mine' ? ctx.askerId : lensParam === 'partner' ? (ctx.partnerId ?? '__none__') : lensParam;
+  if (lensTarget === '__none__') return { note: 'No encontré a esa persona.', total_ars: 0, groups: [] };
+  let q = ctx.admin.from('transaction_items')
+    .select('item_group,name,line_total,transactions!inner(occurred_on,currency,usd_rate_snapshot,scope,is_shared,profile_id,amount,type,splits(payer_profile_id,ower_profile_id,amount))')
+    .eq('household_id', ctx.hid).eq('transactions.type', 'expense');
+  if (input.date_from) q = q.gte('transactions.occurred_on', input.date_from);
+  if (input.date_to) q = q.lte('transactions.occurred_on', input.date_to);
+  const { data } = await q;
+  type Row = { item_group: string; name: string; line_total: number; transactions: ItemParent };
+  let rows = (data ?? []) as unknown as Row[];
+  if (input.group) rows = rows.filter(r => norm(r.item_group ?? '').includes(norm(input.group!)));
+  const withArs = rows.map(r => ({ r, ars: toArs(r.line_total, r.transactions.currency, r.transactions.usd_rate_snapshot, ctx.blue) * lensFraction(r.transactions, lensTarget, ctx.blue) })).filter(x => x.ars > 0);
+  const total = withArs.reduce((s, x) => s + x.ars, 0);
+  const gb = input.group_by === 'name' ? 'name' : 'item_group';
+  const map: Record<string, { total: number; count: number }> = {};
+  for (const { r, ars } of withArs) { const k = gb === 'name' ? r.name : (r.item_group || 'otros'); if (!map[k]) map[k] = { total: 0, count: 0 }; map[k].total += ars; map[k].count++; }
+  const groups = Object.entries(map).map(([key, v]) => ({ key, total_ars: Math.round(v.total), count: v.count })).sort((a, b) => b.total_ars - a.total_ars).slice(0, input.limit || 12);
+  return { total_ars: Math.round(total), items_count: withArs.length, group_by: gb, groups, note: withArs.length === 0 ? 'No hay ítems de ticket para esos filtros (los ítems se cargan al escanear un ticket).' : undefined };
+}
+
 const TOOLS = [
   {
     name: 'aggregate_transactions',
@@ -197,6 +240,22 @@ const TOOLS = [
   { name: 'get_goals', description: 'Metas de ahorro con progreso, scope y dueño.', input_schema: { type: 'object', properties: {}, required: [] } },
   { name: 'get_debts', description: 'Deudas sin saldar (a quién le deben o quién les debe).', input_schema: { type: 'object', properties: {}, required: [] } },
   { name: 'get_recurring', description: 'Gastos fijos y suscripciones activas (con scope y dueño, equivalente mensual en ARS) e ingresos recurrentes.', input_schema: { type: 'object', properties: {}, required: [] } },
+  {
+    name: 'aggregate_items',
+    description: 'Analiza los ÍTEMS dentro de los tickets escaneados (qué se compró), agrupados por tipo (comida, bebidas, snacks, limpieza, cuidado personal, hogar, mascotas, otros) o por nombre de producto. Usala para "¿en qué se va el súper?", "¿cuánto gastamos en snacks/bebidas?", "¿qué compramos más?". Respeta el lens igual que aggregate_transactions.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        lens: { type: 'string', enum: ['mine', 'partner', 'household', 'everyone'], description: 'punto de vista (igual que en aggregate_transactions)' },
+        group: { type: 'string', description: 'filtrar por un tipo de ítem (ej. snacks, bebidas, limpieza)' },
+        group_by: { type: 'string', enum: ['item_group', 'name'], description: 'agrupar por tipo de ítem (default) o por nombre de producto' },
+        date_from: { type: 'string', description: 'desde inclusive YYYY-MM-DD' },
+        date_to: { type: 'string', description: 'hasta inclusive YYYY-MM-DD' },
+        limit: { type: 'number', description: 'máximo de grupos (default 12)' },
+      },
+      required: [],
+    },
+  },
 ];
 
 async function runTool(name: string, input: Record<string, unknown>, ctx: Ctx): Promise<unknown> {
@@ -207,6 +266,7 @@ async function runTool(name: string, input: Record<string, unknown>, ctx: Ctx): 
     case 'get_goals': return await getGoals(ctx);
     case 'get_debts': return await getDebts(ctx);
     case 'get_recurring': return await getRecurring(ctx);
+    case 'aggregate_items': return await aggregateItems(ctx, input as ItemAggInput);
     default: return { error: 'herramienta desconocida' };
   }
 }
