@@ -29,7 +29,10 @@ interface Debt {
   currency: 'ARS' | 'USD';
   note: string | null;
   settled: boolean;
+  transaction_id: string | null;
 }
+
+interface LinkableExpense { id: string; label: string; occurred_on: string; }
 
 function fmtMoney(amount: number, currency: string): string {
   return currency === 'USD' ? formatUSD(amount) : formatARS(amount);
@@ -45,10 +48,12 @@ function totalsByCurrency(debts: Debt[], direction: 'owe' | 'owed') {
 
 function DebtForm({
   initial,
+  expenses,
   onSave,
   onCancel,
 }: {
   initial?: Partial<Debt>;
+  expenses: LinkableExpense[];
   onSave: (data: Omit<Debt, 'id'>) => void;
   onCancel: () => void;
 }) {
@@ -58,6 +63,7 @@ function DebtForm({
   const [currency, setCurrency] = useState<'ARS' | 'USD'>(initial?.currency ?? 'USD');
   const [note, setNote] = useState(initial?.note ?? '');
   const [settled, setSettled] = useState(initial?.settled ?? false);
+  const [transactionId, setTransactionId] = useState<string>(initial?.transaction_id ?? '');
 
   function handleSave() {
     const amount = parseMoney(amountStr);
@@ -65,7 +71,7 @@ function DebtForm({
       toast.error('Completá la persona y el monto.');
       return;
     }
-    onSave({ direction, counterparty: counterparty.trim(), amount, currency, note: note.trim() || null, settled });
+    onSave({ direction, counterparty: counterparty.trim(), amount, currency, note: note.trim() || null, settled, transaction_id: transactionId || null });
   }
 
   return (
@@ -139,6 +145,32 @@ function DebtForm({
         className="w-full px-4 py-3 rounded-2xl text-sm border outline-none"
         style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
       />
+
+      {/* Link to an expense — only when someone repays you, so analytics can
+          net what they return out of that gasto's real cost. */}
+      {direction === 'owed' && expenses.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold mb-2" style={{ color: '#6B6459' }}>
+            ¿Es la devolución de un gasto tuyo? (opcional)
+          </p>
+          <select
+            value={transactionId}
+            onChange={(e) => setTransactionId(e.target.value)}
+            className="w-full px-4 py-3 rounded-2xl text-sm border outline-none"
+            style={{ borderColor: transactionId ? '#7EC8A4' : '#ECE5DC', color: '#2D2D2D', background: '#FFFFFF' }}
+          >
+            <option value="">Sin vincular</option>
+            {expenses.map((e) => (
+              <option key={e.id} value={e.id}>{e.label}</option>
+            ))}
+          </select>
+          {transactionId && (
+            <p className="text-[11px] mt-1.5" style={{ color: '#5BA886' }}>
+              ✓ El análisis va a descontar este monto de ese gasto.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Settled toggle */}
       <button
@@ -235,12 +267,35 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('debts')
-        .select('id, counterparty, direction, amount, currency, note, settled')
+        .select('id, counterparty, direction, amount, currency, note, settled, transaction_id')
         .eq('household_id', profile.household_id)
         .order('settled')
         .order('created_at', { ascending: false });
       if (error) throw error;
       return (data ?? []) as Debt[];
+    },
+  });
+
+  // Recent expenses a "me deben" debt can be linked to (so analytics net the
+  // repayment out of that gasto's real cost).
+  const { data: linkableExpenses = [] } = useQuery<LinkableExpense[]>({
+    queryKey: ['linkable-expenses', profile.household_id],
+    queryFn: async () => {
+      const since = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+      const { data } = await supabase
+        .from('transactions')
+        .select('id, merchant, amount, currency, occurred_on, categories(name)')
+        .eq('household_id', profile.household_id)
+        .eq('type', 'expense')
+        .gte('occurred_on', since)
+        .order('occurred_on', { ascending: false })
+        .limit(60);
+      return ((data ?? []) as { id: string; merchant: string | null; amount: number; currency: string; occurred_on: string; categories: { name: string } | null }[])
+        .map((t) => ({
+          id: t.id,
+          occurred_on: t.occurred_on,
+          label: `${t.occurred_on.slice(5)} · ${t.merchant || t.categories?.name || 'Gasto'} · ${t.currency === 'USD' ? formatUSD(t.amount) : formatARS(t.amount)}`,
+        }));
     },
   });
 
@@ -303,7 +358,7 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
             {debt.direction === 'owe' ? `Le debo a ${debt.counterparty}` : `${debt.counterparty} me debe`}
           </p>
           <p className="text-xs" style={{ color: '#6B6459' }}>
-            {debt.settled ? 'Saldada' : 'Pendiente'}{debt.note ? ` · ${debt.note}` : ''}
+            {debt.settled ? 'Saldada' : 'Pendiente'}{debt.note ? ` · ${debt.note}` : ''}{debt.transaction_id ? ' · 🔗 gasto' : ''}
           </p>
         </div>
         <p
@@ -352,6 +407,7 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
 
         {showForm && !editDebt && (
           <DebtForm
+            expenses={linkableExpenses}
             onSave={(data) => createMutation.mutate(data)}
             onCancel={() => setShowForm(false)}
           />
@@ -360,6 +416,7 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
         {editDebt && (
           <DebtForm
             initial={editDebt}
+            expenses={linkableExpenses}
             onSave={(data) => updateMutation.mutate({ id: editDebt.id, data })}
             onCancel={() => setEditDebt(null)}
           />
