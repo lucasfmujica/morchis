@@ -67,7 +67,9 @@ function spentForBudget(b: Budget, rows: ExpenseRow[], rate: number): number {
         return t.scope === "household" ? sum + toArs(t.amount, t.currency, rate) : sum;
       }
       if (t.is_shared) return sum + myShareArs(t, owner, rate);
-      return t.scope === "personal" && t.profile_id === owner ? sum + toArs(t.amount, t.currency, rate) : sum;
+      // Non-shared: the owner's spend when they fronted it — a solo expense or a
+      // household one they paid without dividing (mirrors the in-app helper).
+      return t.profile_id === owner ? sum + toArs(t.amount, t.currency, rate) : sum;
     }, 0);
 }
 

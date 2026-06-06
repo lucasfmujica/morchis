@@ -54,8 +54,10 @@ export function myShareArs(t: BudgetExpenseRow, profileId: string, arsPerUsd: nu
 
 /**
  * Spend (ARS) counted against a budget for the current month's expense rows.
- * - Personal budget → the owner's share of every expense in the category
- *   (their solo expenses in full + their part of shared ones, whoever paid).
+ * - Personal budget → the owner's own spend in the category: their solo
+ *   expenses in full, their share of shared ones (whoever paid), and any
+ *   household expense they personally fronted — the full amount when it wasn't
+ *   divided, their part when it was.
  * - Household budget → the full amount of household-scoped expenses (the
  *   couple's combined spend in that category).
  */
@@ -73,7 +75,9 @@ export function spentForBudget(
         return t.scope === 'household' ? sum + toArs(t.amount, t.currency, arsPerUsd) : sum;
       }
       if (t.is_shared) return sum + myShareArs(t, owner, arsPerUsd);
-      return t.scope === 'personal' && t.profile_id === owner
+      // Non-shared: it's the owner's spend when they fronted it — whether a solo
+      // personal expense or a household one they paid without dividing.
+      return t.profile_id === owner
         ? sum + toArs(t.amount, t.currency, arsPerUsd)
         : sum;
     }, 0);

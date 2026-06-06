@@ -345,7 +345,9 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
       return r.scope === 'household' ? sum + toArsLib(r.amount, r.currency, arsPerUsd) : sum;
     }
     if (r.is_shared) return sum + myShareArs(r, profile.id, arsPerUsd);
-    return r.scope === 'personal' && r.profile_id === profile.id
+    // Non-shared: my spend when I fronted it — a solo expense or a household one
+    // I paid without dividing (mirrors spentForBudget).
+    return r.profile_id === profile.id
       ? sum + toArsLib(r.amount, r.currency, arsPerUsd)
       : sum;
   }, 0);
