@@ -109,25 +109,35 @@ const BudgetSummaryCard = memo(function BudgetSummaryCard({
 // Inline SVG sparkline — no external dep needed
 const Sparkline = memo(function Sparkline({ values, positive }: { values: number[]; positive: boolean }) {
   if (values.length < 2) return null;
-  const w = 120;
-  const h = 32;
+  const w = 100;
+  const h = 36;
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min || 1;
+  // Inset so the 2px stroke never clips at the top/bottom edges.
+  const pad = 3;
   const pts = values
     .map((v, i) => {
       const x = (i / (values.length - 1)) * w;
-      const y = h - ((v - min) / range) * h;
+      const y = pad + (1 - (v - min) / range) * (h - pad * 2);
       return `${x},${y}`;
     })
     .join(' ');
+  // Full-width, fixed-height: stretch horizontally but keep the stroke crisp via
+  // vectorEffect so it doesn't get scaled into an uneven thickness.
   return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ overflow: 'visible' }}>
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      height={h}
+      preserveAspectRatio="none"
+      className="w-full block"
+    >
       <polyline
         points={pts}
         fill="none"
         stroke={positive ? '#7EC8A4' : '#FF7F6B'}
         strokeWidth="2"
+        vectorEffect="non-scaling-stroke"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -448,8 +458,24 @@ export default function HomeClient({
     [txArs, rulesArs, scopeProfileId],
   );
 
-  const { projectedBalance, incomeSoFar, expensesSoFar, dailyBalances } = projection;
+  const {
+    projectedBalance,
+    incomeSoFar,
+    expensesSoFar,
+    dailyBalances,
+    currentBalance,
+    remainingIncome,
+    remainingFixedExpenses,
+    projectedVariableSpend,
+    daysRemaining,
+    daysElapsed,
+  } = projection;
   const isPositive = projectedBalance >= 0;
+  const accent = isPositive ? '#5BA886' : '#E5604C';
+  // Everything still to leave the account this month: fixed (rules) + the
+  // variable spend extrapolated from the month's pace so far.
+  const remainingSpend = remainingFixedExpenses + projectedVariableSpend;
+  const dailyRate = daysElapsed > 0 ? Math.round(expensesSoFar / daysElapsed) : 0;
 
   const incomeRules = useMemo(
     () =>
@@ -467,6 +493,7 @@ export default function HomeClient({
       : accountsFull;
     return netWorthAt(scoped, accountTx, todayISO(), arsPerUsd);
   }, [accountsFull, accountTx, scopeProfileId, arsPerUsd]);
+  const balColor = totalBalance >= 0 ? '#5BA886' : '#E5604C';
 
   // Scope-aware expense aggregations (respect the Nuestro/Mío/Pareja toggle) for
   // the donut, the "Gastos" tile and the week card — computed once per change.
@@ -585,58 +612,108 @@ export default function HomeClient({
         </div>
       )}
 
-      {/* Hero projection card */}
-      <div
-        className="mx-4 rounded-3xl p-5 shadow-sm mb-4 animate-in fade-in duration-500"
-        style={{ background: isPositive ? '#E4F2EA' : '#FFE7E2' }}
+      {/* Hero: real money available right now — the concrete number, shown first.
+          The forward-looking estimate lives in the projection card below. */}
+      <Link
+        href="/cuentas"
+        className="mx-4 rounded-3xl p-5 shadow-sm mb-4 block animate-in fade-in duration-500"
+        style={{ background: totalBalance >= 0 ? '#E4F2EA' : '#FFE7E2' }}
       >
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: isPositive ? '#5BA886' : '#E5604C' }}>
-              Proyección fin de mes
-            </p>
-            <p
-              className="text-4xl font-black leading-none mb-1"
-              style={{ color: isPositive ? '#5BA886' : '#E5604C', fontVariantNumeric: 'tabular-nums' }}
-            >
-              {hideAmounts
-                ? '••••••'
-                : `${!isPositive ? '−' : ''}${showUSD && arsPerUsd > 0
-                    ? `US$${Math.round(Math.abs(projectedBalance) / arsPerUsd).toLocaleString('es-AR')}`
-                    : formatARS(Math.abs(projectedBalance))}`}
-            </p>
-            <p className="text-xs" style={{ color: isPositive ? '#5BA886' : '#E5604C', opacity: 0.75 }}>
-              {hideAmounts
-                ? ''
-                : showUSD
-                  ? (!isPositive ? '−' : '') + formatARS(Math.abs(projectedBalance))
-                  : arsPerUsd > 0
-                    ? `≈ US$${Math.round(Math.abs(projectedBalance) / arsPerUsd).toLocaleString('es-AR')}`
-                    : ''}
-            </p>
-          </div>
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: balColor }}>
+            Disponible hoy
+          </p>
+          <span className="text-xs font-semibold" style={{ color: balColor, opacity: 0.75 }}>Cuentas ›</span>
+        </div>
+        <p
+          className="text-[clamp(2rem,10vw,2.75rem)] font-black leading-none mb-1"
+          style={{ color: balColor, fontVariantNumeric: 'tabular-nums' }}
+        >
+          {hideAmounts
+            ? '••••••'
+            : `${totalBalance < 0 ? '−' : ''}${showUSD && arsPerUsd > 0
+                ? `US$${Math.round(Math.abs(totalBalance) / arsPerUsd).toLocaleString('es-AR')}`
+                : formatARS(Math.abs(totalBalance))}`}
+        </p>
+        <p className="text-xs" style={{ color: balColor, opacity: 0.75 }}>
+          {hideAmounts
+            ? ''
+            : showUSD
+              ? (totalBalance < 0 ? '−' : '') + formatARS(Math.abs(totalBalance))
+              : arsPerUsd > 0
+                ? `≈ US$${Math.round(Math.abs(totalBalance) / arsPerUsd).toLocaleString('es-AR')}`
+                : ''}
+        </p>
+      </Link>
+
+      {/* Projection card — secondary: a forward-looking estimate, on a plain
+          card so it reads as support to the real balance above. */}
+      <div className="mx-4 rounded-3xl p-5 mb-4 animate-in fade-in duration-500" style={{ background: '#FFFFFF' }}>
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>
+            Si seguís así, fin de mes
+          </p>
+          <span
+            className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+            style={{ background: isPositive ? '#5BA88622' : '#E5604C22', color: accent }}
+          >
+            estimado
+          </span>
+        </div>
+
+        {/* Projected balance — full width so a long amount can't overflow into the chart */}
+        <p
+          className="text-[clamp(1.5rem,8vw,2rem)] font-black leading-none mb-1"
+          style={{ color: accent, fontVariantNumeric: 'tabular-nums' }}
+        >
+          {hideAmounts
+            ? '••••••'
+            : `${!isPositive ? '−' : ''}${showUSD && arsPerUsd > 0
+                ? `US$${Math.round(Math.abs(projectedBalance) / arsPerUsd).toLocaleString('es-AR')}`
+                : formatARS(Math.abs(projectedBalance))}`}
+        </p>
+        <p className="text-xs" style={{ color: accent, opacity: 0.75 }}>
+          {hideAmounts
+            ? ''
+            : showUSD
+              ? (!isPositive ? '−' : '') + formatARS(Math.abs(projectedBalance))
+              : arsPerUsd > 0
+                ? `≈ US$${Math.round(Math.abs(projectedBalance) / arsPerUsd).toLocaleString('es-AR')}`
+                : ''}
+        </p>
+
+        {/* Full-width trend of the projected daily balance */}
+        <div className="mt-3">
           <Sparkline values={dailyBalances} positive={isPositive} />
         </div>
 
-        {/* Detail row */}
-        <div className="flex gap-4 mt-3 pt-3" style={{ borderTop: `1px solid ${isPositive ? '#5BA88640' : '#E5604C40'}` }}>
+        {/* How we got there — these three add up to the projection above:
+            saldo hoy + por entrar − por gastar */}
+        <div className="grid grid-cols-3 gap-2 mt-3 pt-3" style={{ borderTop: `1px solid ${accent}33` }}>
           <div>
-            <p className="text-xs" style={{ color: isPositive ? '#5BA886' : '#E5604C', opacity: 0.75 }}>Ingresos</p>
-            <p className="text-sm font-bold" style={{ color: isPositive ? '#5BA886' : '#E5604C' }}>{mask(format(incomeSoFar))}</p>
+            <p className="text-[11px]" style={{ color: accent, opacity: 0.75 }}>Saldo hoy</p>
+            <p className="text-sm font-bold" style={{ color: accent }}>{mask(format(currentBalance))}</p>
           </div>
           <div>
-            <p className="text-xs" style={{ color: isPositive ? '#5BA886' : '#E5604C', opacity: 0.75 }}>Gastos</p>
-            <p className="text-sm font-bold" style={{ color: isPositive ? '#5BA886' : '#E5604C' }}>{mask(format(expensesSoFar))}</p>
+            <p className="text-[11px]" style={{ color: accent, opacity: 0.75 }}>+ Por entrar</p>
+            <p className="text-sm font-bold" style={{ color: accent }}>{mask(format(remainingIncome))}</p>
           </div>
           <div>
-            <p className="text-xs" style={{ color: isPositive ? '#5BA886' : '#E5604C', opacity: 0.75 }}>Días rest.</p>
-            <p className="text-sm font-bold" style={{ color: isPositive ? '#5BA886' : '#E5604C' }}>{projection.daysRemaining}</p>
+            <p className="text-[11px]" style={{ color: accent, opacity: 0.75 }}>− Por gastar</p>
+            <p className="text-sm font-bold" style={{ color: accent }}>{mask(format(remainingSpend))}</p>
           </div>
         </div>
 
-        {incomeSoFar === 0 && expensesSoFar === 0 && (
-          <p className="text-xs mt-3" style={{ color: isPositive ? '#5BA886' : '#E5604C' }}>
+        {/* Plain-language explanation of where the estimate comes from */}
+        {incomeSoFar === 0 && expensesSoFar === 0 ? (
+          <p className="text-[11px] mt-3" style={{ color: accent }}>
             Todavía no hay movimientos este mes. Tocá + para registrar un ingreso o gasto.
+          </p>
+        ) : (
+          <p className="text-[11px] mt-3 leading-relaxed" style={{ color: accent, opacity: 0.75 }}>
+            Saldo de hoy más lo que falta entrar, menos lo que falta gastar. El gasto
+            variable se proyecta a tu ritmo (~{mask(format(dailyRate))}/día) por los{' '}
+            {daysRemaining} días que quedan{remainingFixedExpenses > 0 ? ', sumando tus gastos fijos pendientes' : ''}.
           </p>
         )}
       </div>
