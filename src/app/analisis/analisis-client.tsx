@@ -370,7 +370,9 @@ export default function AnalisisClient({
         {/* Spending by category */}
         <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
           <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Gastos por categoría</p>
+            <Link href="/analisis/categorias" className="text-xs font-bold uppercase tracking-wide flex items-center gap-1" style={{ color: '#6B6459' }}>
+              Gastos por categoría <span style={{ color: '#5BA886' }}>›</span>
+            </Link>
             <span className="text-xs font-black" style={{ color: '#FF7F6B' }}>{formatARS(monthExpense)}</span>
           </div>
           {segments.length === 0 ? (
@@ -391,6 +393,11 @@ export default function AnalisisClient({
                 ))}
               </div>
             </div>
+          )}
+          {segments.length > 0 && (
+            <Link href="/analisis/categorias" className="block text-xs font-bold text-center pt-3" style={{ color: '#5BA886' }}>
+              Ver todas las categorías →
+            </Link>
           )}
         </div>
 
@@ -469,13 +476,14 @@ export default function AnalisisClient({
               {insights.map((ins) => {
                 const s = SEVERITY[(ins.severity as keyof typeof SEVERITY)] ?? SEVERITY.info;
                 return (
-                  <div key={ins.id} className="rounded-2xl p-3 flex items-start gap-2.5" style={{ background: s.bg }}>
+                  <Link key={ins.id} href={`/insights/${ins.id}`} className="rounded-2xl p-3 flex items-start gap-2.5" style={{ background: s.bg }}>
                     <span className="text-lg shrink-0">{s.icon}</span>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="font-black text-sm leading-tight" style={{ color: s.color }}>{ins.title}</p>
                       <p className="text-xs mt-0.5 leading-snug" style={{ color: s.color, opacity: 0.85 }}>{ins.body}</p>
                     </div>
-                  </div>
+                    <span className="text-[10px] self-center" style={{ color: s.color }}>›</span>
+                  </Link>
                 );
               })}
               <Link href="/insights" className="text-xs font-bold text-center pt-1" style={{ color: '#5BA886' }}>
