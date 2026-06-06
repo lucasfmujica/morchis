@@ -224,6 +224,7 @@ export type Database = {
           note: string | null
           profile_id: string
           settled: boolean
+          transaction_id: string | null
         }
         Insert: {
           amount: number
@@ -236,6 +237,7 @@ export type Database = {
           note?: string | null
           profile_id: string
           settled?: boolean
+          transaction_id?: string | null
         }
         Update: {
           amount?: number
@@ -248,6 +250,7 @@ export type Database = {
           note?: string | null
           profile_id?: string
           settled?: boolean
+          transaction_id?: string | null
         }
         Relationships: [
           {
@@ -516,6 +519,7 @@ export type Database = {
           kind: string | null
           metric: Json | null
           period: string | null
+          profile_id: string | null
           seen: boolean
           severity: string
           title: string
@@ -528,6 +532,7 @@ export type Database = {
           kind?: string | null
           metric?: Json | null
           period?: string | null
+          profile_id?: string | null
           seen?: boolean
           severity?: string
           title: string
@@ -540,6 +545,7 @@ export type Database = {
           kind?: string | null
           metric?: Json | null
           period?: string | null
+          profile_id?: string | null
           seen?: boolean
           severity?: string
           title?: string

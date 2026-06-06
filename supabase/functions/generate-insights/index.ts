@@ -57,17 +57,19 @@ function jwtPayload(token:string):Record<string,unknown>|null{
 interface Profile{id:string;nickname:string|null;display_name:string|null;}
 interface InsightCard{title:string;body:string;severity:string;kind:string;}
 interface PushSub{endpoint:string;p256dh:string;auth_key:string;profile_id:string;}
-// A "fact" is a fully-computed signal. All money math lives here in TS; the LLM
-// only picks the important facts and phrases them — it never does arithmetic.
 interface Fact{kind:string;severity:'info'|'positive'|'warning';weight:number;text:string;}
+interface Split{payer_profile_id:string;ower_profile_id:string;amount:number;}
+interface Exp{id:string;category_id:string|null;categories:{name:string}|null;profile_id:string;scope:string;is_shared:boolean;amount:number;currency:string;usd_rate_snapshot:number|null;merchant:string|null;occurred_on:string;splits:Split[]|null;}
+interface Debt{transaction_id:string|null;direction:string;amount:number;currency:string;}
+// id null = household ("Nuestro"); otherwise a person ("Mío" for that person).
+interface Aud{id:string|null;name:string;}
 
-/* ── money helpers (everything normalised to ARS) ────────────────────────── */
 const fmt=(n:number):string=>'$'+Math.round(n).toLocaleString('es-AR');
 function iso(y:number,m:number,d:number){return new Date(y,m,d).toISOString().slice(0,10);}
 function monthsBetween(a:Date,b:Date){return (b.getFullYear()-a.getFullYear())*12+(b.getMonth()-a.getMonth());}
 const MONTHLY:Record<string,number>={weekly:4.345,biweekly:2.17,monthly:1};
+const toArs=(a:number,cur:string,snap:number|null,blue:number)=>cur==='USD'?a*(Number(snap)||blue):a;
 
-/* ── pull the first JSON array out of the model reply, tolerating fences ──── */
 function parseCards(raw:string):InsightCard[]{
   let s=raw.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/i,'').trim();
   const a=s.indexOf('['), b=s.lastIndexOf(']');
@@ -80,180 +82,211 @@ function parseCards(raw:string):InsightCard[]{
     .slice(0,6);
 }
 
-/* ── gather every signal in TypeScript and turn it into computed facts ────── */
-interface ExpRow{category_id:string|null;categories:{name:string}|null;profile_id:string;scope:string;amount:number;currency:string;usd_rate_snapshot:number|null;merchant:string|null;occurred_on:string;}
-interface HistRow{category_id:string|null;amount:number;currency:string;usd_rate_snapshot:number|null;}
-interface RecRow{label:string;amount:number;currency:string;cadence:string;categories:{name:string}|null;}
-interface BudRow{amount:number;currency:string;categories:{name:string}|null;}
-interface GoalRow{name:string;target_amount:number;current_amount:number;target_currency:string;deadline:string|null;}
+interface Data{
+  curr:Exp[]; hist:Exp[]; income:{amount:number;currency:string;usd_rate_snapshot:number|null}[];
+  rec:{label:string;amount:number;currency:string;cadence:string;scope:string;profile_id:string;categories:{name:string}|null}[];
+  buds:{amount:number;currency:string;scope:string;profile_id:string|null;categories:{name:string}|null}[];
+  goals:{name:string;target_amount:number;current_amount:number;target_currency:string;deadline:string|null;scope:string;profile_id:string|null}[];
+  debtByTx:Record<string,Debt[]>; targetPct:number; blue:number; profiles:Profile[];
+}
 
-async function buildFacts(admin:SupabaseClient,hid:string):Promise<{facts:Fact[];hasData:boolean;income:number;expense:number}>{
+async function fetchAll(admin:SupabaseClient,hid:string):Promise<Data>{
   const now=new Date();
-  const y=now.getFullYear(), m=now.getMonth();
-  const m0=iso(y,m,1), m1=iso(y,m+1,1), m3=iso(y,m-3,1);
-  const dim=new Date(y,m+1,0).getDate();
-  const day=now.getDate();
-
-  const [curR,histR,incR,recR,budR,goalR,savR,fxR]=await Promise.all([
-    admin.from('transactions').select('category_id,categories(name),profile_id,scope,amount,currency,usd_rate_snapshot,merchant,occurred_on').eq('household_id',hid).eq('type','expense').gte('occurred_on',m0).lt('occurred_on',m1),
-    admin.from('transactions').select('category_id,amount,currency,usd_rate_snapshot').eq('household_id',hid).eq('type','expense').gte('occurred_on',m3).lt('occurred_on',m0),
+  const y=now.getFullYear(),m=now.getMonth();
+  const m0=iso(y,m,1),m1=iso(y,m+1,1),m3=iso(y,m-3,1);
+  const expSel='id,category_id,categories(name),profile_id,scope,is_shared,amount,currency,usd_rate_snapshot,merchant,occurred_on,splits(payer_profile_id,ower_profile_id,amount)';
+  const [cr,hr,ir,recR,budR,goalR,savR,prR,debtR,fxR]=await Promise.all([
+    admin.from('transactions').select(expSel).eq('household_id',hid).eq('type','expense').gte('occurred_on',m0).lt('occurred_on',m1),
+    admin.from('transactions').select(expSel).eq('household_id',hid).eq('type','expense').gte('occurred_on',m3).lt('occurred_on',m0),
     admin.from('transactions').select('amount,currency,usd_rate_snapshot').eq('household_id',hid).eq('type','income').gte('occurred_on',m0).lt('occurred_on',m1),
-    admin.from('recurring_rules').select('label,amount,currency,cadence,categories(name)').eq('household_id',hid).eq('active',true).eq('direction','expense'),
-    admin.from('budgets').select('amount,currency,categories(name)').eq('household_id',hid).eq('active',true),
-    admin.from('goals').select('name,target_amount,current_amount,target_currency,deadline').eq('household_id',hid).eq('archived',false),
+    admin.from('recurring_rules').select('label,amount,currency,cadence,scope,profile_id,categories(name)').eq('household_id',hid).eq('active',true).eq('direction','expense'),
+    admin.from('budgets').select('amount,currency,scope,profile_id,categories(name)').eq('household_id',hid).eq('active',true),
+    admin.from('goals').select('name,target_amount,current_amount,target_currency,deadline,scope,profile_id').eq('household_id',hid).eq('archived',false),
     admin.from('savings_goals').select('target_pct').order('month',{ascending:false}).limit(1).maybeSingle(),
+    admin.from('profiles').select('id,nickname,display_name').eq('household_id',hid),
+    admin.from('debts').select('transaction_id,direction,amount,currency').eq('household_id',hid).eq('settled',false).not('transaction_id','is',null),
     admin.from('fx_rates').select('ars_per_usd').eq('source','blue').order('date',{ascending:false}).limit(1).maybeSingle(),
   ]);
-  const blue=Number(fxR.data?.ars_per_usd??1200);
-  const ars=(a:number,cur:string,snap:number|null)=>cur==='USD'?a*(Number(snap)||blue):a;
+  const debtByTx:Record<string,Debt[]>={};
+  for(const d of (debtR.data??[]) as Debt[]){if(!d.transaction_id)continue;(debtByTx[d.transaction_id]??=[]).push(d);}
+  return {
+    curr:(cr.data??[]) as Exp[], hist:(hr.data??[]) as Exp[], income:(ir.data??[]) as Data['income'],
+    rec:(recR.data??[]) as Data['rec'], buds:(budR.data??[]) as Data['buds'], goals:(goalR.data??[]) as Data['goals'],
+    debtByTx, targetPct:Number(savR.data?.target_pct??20), blue:Number(fxR.data?.ars_per_usd??1200),
+    profiles:(prR.data??[]) as Profile[],
+  };
+}
 
-  const cur=(curR.data??[]) as ExpRow[];
-  const hist=(histR.data??[]) as HistRow[];
-  const inc=(incR.data??[]) as {amount:number;currency:string;usd_rate_snapshot:number|null}[];
-  const rec=(recR.data??[]) as RecRow[];
-  const buds=(budR.data??[]) as BudRow[];
-  const goals=(goalR.data??[]) as GoalRow[];
-  const targetPct=Number(savR.data?.target_pct??20);
+// External 'owed' debts (a friend repays) linked to a transaction, in ARS.
+function owedBackArs(txId:string,debtByTx:Record<string,Debt[]>,blue:number):number{
+  return (debtByTx[txId]??[]).filter(d=>d.direction==='owed').reduce((s,d)=>s+toArs(d.amount,d.currency,null,blue),0);
+}
 
-  const expense=cur.reduce((s,t)=>s+ars(t.amount,t.currency,t.usd_rate_snapshot),0);
-  const income=inc.reduce((s,t)=>s+ars(t.amount,t.currency,t.usd_rate_snapshot),0);
-  const net=income-expense;
-  const hasData=cur.length>0||income>0;
+// How much of an expense counts for an audience, in ARS:
+//  - household (audId null): only household-scope expenses, full amount.
+//  - a person (audId): their personal expenses + their split share of shared ones.
+// In both cases, money a friend repays (linked 'owed' debt) is netted out of the
+// payer's / household's real cost.
+function shareFor(t:Exp,audId:string|null,blue:number,debtByTx:Record<string,Debt[]>):number{
+  const total=toArs(t.amount,t.currency,t.usd_rate_snapshot,blue);
+  let base:number;
+  if(audId===null){
+    if(t.scope!=='household')return 0;
+    base=total;
+  }else{
+    if(!t.is_shared){ base=t.profile_id===audId?total:0; }
+    else{
+      const sp=t.splits??[];
+      const iOwe=sp.filter(s=>s.ower_profile_id===audId).reduce((a,s)=>a+s.amount,0);
+      if(iOwe>0) base=iOwe;
+      else{ const owedToMe=sp.filter(s=>s.payer_profile_id===audId).reduce((a,s)=>a+s.amount,0);
+        base=owedToMe>0?Math.max(0,total-owedToMe):(t.profile_id===audId?total:0); }
+    }
+  }
+  if(base<=0)return 0;
+  const owns=audId===null?(t.scope==='household'):(t.profile_id===audId);
+  return owns?Math.max(0,base-owedBackArs(t.id,debtByTx,blue)):base;
+}
+
+function buildFacts(aud:Aud,d:Data):{facts:Fact[];expense:number}{
+  const now=new Date();
+  const dim=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
+  const day=now.getDate();
+  const isHH=aud.id===null;
   const facts:Fact[]=[];
 
-  // current + trailing-3m totals per category
-  const catCur:Record<string,{name:string;total:number;n:number;small:number}>={};
-  for(const t of cur){
-    const k=t.category_id??'none';
-    const name=t.categories?.name??'Sin categoría';
-    const a=ars(t.amount,t.currency,t.usd_rate_snapshot);
-    if(!catCur[k])catCur[k]={name,total:0,n:0,small:0};
-    catCur[k].total+=a; catCur[k].n++; if(a<12000)catCur[k].small++;
-  }
+  // category current + 3-month history for this audience
+  const catCur:Record<string,{total:number;n:number;small:number}>={};
+  for(const t of d.curr){const v=shareFor(t,aud.id,d.blue,d.debtByTx);if(v<=0)continue;const n=t.categories?.name??'Sin categoría';(catCur[n]??={total:0,n:0,small:0});catCur[n].total+=v;catCur[n].n++;if(v<12000)catCur[n].small++;}
   const catHist:Record<string,number>={};
-  for(const t of hist){const k=t.category_id??'none';catHist[k]=(catHist[k]??0)+ars(t.amount,t.currency,t.usd_rate_snapshot);}
+  for(const t of d.hist){const v=shareFor(t,aud.id,d.blue,d.debtByTx);if(v<=0)continue;const n=t.categories?.name??'Sin categoría';catHist[n]=(catHist[n]??0)+v;}
+  const expense=Object.values(catCur).reduce((s,v)=>s+v.total,0);
 
-  // 1. savings rate
-  if(income>0){
-    const rate=Math.round(net/income*100);
-    if(rate>=targetPct) facts.push({kind:'saving',severity:'positive',weight:6,text:`Tasa de ahorro este mes: ${rate}% (ahorrás ${fmt(net)} de ${fmt(income)} de ingresos). Meta del hogar: ${targetPct}%. Van por encima.`});
-    else facts.push({kind:'saving',severity:'warning',weight:9,text:`Tasa de ahorro este mes: ${rate}% (ahorrás ${fmt(net)} de ${fmt(income)} de ingresos), por debajo de la meta de ${targetPct}%. Falta recortar ${fmt(income*targetPct/100-net)} para llegar.`});
+  // 1. savings rate (household only — couple-level income vs ALL spending).
+  // Uses total expenses (personal + shared, minus money friends repay), not the
+  // household-scope-only `expense` used for the shared category breakdown.
+  if(isHH){
+    const income=d.income.reduce((s,t)=>s+toArs(t.amount,t.currency,t.usd_rate_snapshot,d.blue),0);
+    const totalExp=d.curr.reduce((s,t)=>s+Math.max(0,toArs(t.amount,t.currency,t.usd_rate_snapshot,d.blue)-owedBackArs(t.id,d.debtByTx,d.blue)),0);
+    const net=income-totalExp;
+    if(income>0){
+      const rate=Math.round(net/income*100);
+      if(rate>=d.targetPct) facts.push({kind:'saving',severity:'positive',weight:6,text:`Tasa de ahorro del hogar: ${rate}% (ahorran ${fmt(net)} de ${fmt(income)} de ingresos). Meta: ${d.targetPct}%. Van por encima.`});
+      else facts.push({kind:'saving',severity:'warning',weight:9,text:`Tasa de ahorro del hogar: ${rate}% (ahorran ${fmt(net)} de ${fmt(income)}), por debajo de la meta de ${d.targetPct}%. Falta recortar ${fmt(income*d.targetPct/100-net)}.`});
+    }
+  }else{
+    // money a friend will repay this person (already netted out of the figures)
+    let owed=0;
+    for(const t of d.curr){ if(t.profile_id===aud.id) owed+=owedBackArs(t.id,d.debtByTx,d.blue); }
+    if(owed>=3000) facts.push({kind:'debt',severity:'info',weight:5,text:`Te van a devolver ${fmt(owed)} de tus gastos (ya descontado de estos números).`});
   }
 
   // 2. category spikes vs 3-month average
-  for(const [k,v] of Object.entries(catCur)){
-    const avg=(catHist[k]??0)/3;
-    if(avg>0){
-      const pct=Math.round((v.total-avg)/avg*100);
-      if(pct>=25&&(v.total-avg)>=20000) facts.push({kind:'spike',severity:'warning',weight:8,text:`${v.name}: ${fmt(v.total)} este mes vs ${fmt(avg)} de promedio (${pct>0?'+':''}${pct}%). Es ${fmt(v.total-avg)} más de lo habitual.`});
-    } else if(v.total>=40000){
-      facts.push({kind:'spike',severity:'info',weight:5,text:`${v.name}: ${fmt(v.total)} este mes, categoría nueva (sin historial para comparar).`});
-    }
+  for(const [name,v] of Object.entries(catCur)){
+    const avg=(catHist[name]??0)/3;
+    if(avg>0){const pct=Math.round((v.total-avg)/avg*100);
+      if(pct>=25&&(v.total-avg)>=20000) facts.push({kind:'spike',severity:'warning',weight:8,text:`${name}: ${fmt(v.total)} este mes vs ${fmt(avg)} de promedio (${pct>0?'+':''}${pct}%). ${fmt(v.total-avg)} más de lo habitual.`});
+    }else if(v.total>=40000){ facts.push({kind:'spike',severity:'info',weight:5,text:`${name}: ${fmt(v.total)} este mes, categoría nueva (sin historial).`}); }
   }
-
-  // 3. ant-spending (many small purchases in one category)
-  for(const v of Object.values(catCur)){
-    if(v.small>=6&&v.total>=30000) facts.push({kind:'anthill',severity:'info',weight:7,text:`Gastos hormiga: ${v.small} compras chicas en ${v.name} suman ${fmt(v.total)} este mes.`});
-  }
-
-  // 4. possible duplicate charges (same merchant + amount + day, ≥2)
+  // 3. ant-spending
+  for(const [name,v] of Object.entries(catCur)){ if(v.small>=6&&v.total>=30000) facts.push({kind:'anthill',severity:'info',weight:7,text:`Gastos hormiga: ${v.small} compras chicas en ${name} suman ${fmt(v.total)} este mes.`}); }
+  // 4. possible duplicates (only this audience's own transactions)
   const dup:Record<string,{n:number;name:string;amt:number;day:string}>={};
-  for(const t of cur){
-    if(!t.merchant)continue;
-    const a=Math.round(ars(t.amount,t.currency,t.usd_rate_snapshot));
-    const key=`${t.merchant.toLowerCase()}_${a}_${t.occurred_on}`;
-    if(!dup[key])dup[key]={n:0,name:t.merchant,amt:a,day:t.occurred_on};
-    dup[key].n++;
-  }
-  for(const d of Object.values(dup)) if(d.n>=2&&d.amt>=3000) facts.push({kind:'duplicate',severity:'warning',weight:8,text:`Posible cargo duplicado: "${d.name}" por ${fmt(d.amt)} aparece ${d.n} veces el ${d.day}. Revisalo.`});
+  for(const t of d.curr){ if(!t.merchant)continue; if(shareFor(t,aud.id,d.blue,d.debtByTx)<=0)continue;
+    const a=Math.round(toArs(t.amount,t.currency,t.usd_rate_snapshot,d.blue)); const k=`${t.merchant.toLowerCase()}_${a}_${t.occurred_on}`;
+    (dup[k]??={n:0,name:t.merchant,amt:a,day:t.occurred_on}).n++; }
+  for(const dd of Object.values(dup)) if(dd.n>=2&&dd.amt>=3000) facts.push({kind:'duplicate',severity:'warning',weight:8,text:`Posible cargo duplicado: "${dd.name}" por ${fmt(dd.amt)} aparece ${dd.n} veces el ${dd.day}. Revisalo.`});
 
-  // 5. fixed subscriptions (recurring expenses) + creep detection
-  if(rec.length){
-    const monthly=rec.map(r=>({name:r.categories?.name??r.label,label:r.label,m:ars(r.amount,r.currency,null)*(MONTHLY[r.cadence]??1)}));
+  // 5. subscriptions / fixed costs relevant to the audience
+  const recAud=d.rec.filter(r=>isHH?r.scope==='household':(r.scope==='personal'&&r.profile_id===aud.id));
+  if(recAud.length){
+    const monthly=recAud.map(r=>({name:r.categories?.name??r.label,label:r.label,m:toArs(r.amount,r.currency,null,d.blue)*(MONTHLY[r.cadence]??1)}));
     const subsTotal=monthly.reduce((s,r)=>s+r.m,0);
     const pctOfExp=expense>0?Math.round(subsTotal/expense*100):0;
     const top=[...monthly].sort((a,b)=>b.m-a.m).slice(0,3).map(r=>`${r.label} ${fmt(r.m)}`).join(', ');
-    facts.push({kind:'subscription',severity:'info',weight:6,text:`Suscripciones/gastos fijos: ${fmt(subsTotal)}/mes en ${rec.length} servicios (${top}${monthly.length>3?'…':''})${pctOfExp?`, ${pctOfExp}% de tus gastos`:''}.`});
-    const byCat:Record<string,number>={};
-    for(const r of monthly)byCat[r.name]=(byCat[r.name]??0)+1;
-    for(const [name,n] of Object.entries(byCat)) if(n>=2) facts.push({kind:'subscription',severity:'warning',weight:8,text:`Tenés ${n} suscripciones en ${name}. Cancelando una recortás el gasto fijo mensual.`});
+    facts.push({kind:'subscription',severity:'info',weight:6,text:`Gastos fijos: ${fmt(subsTotal)}/mes en ${recAud.length} (${top}${monthly.length>3?'…':''})${pctOfExp?`, ${pctOfExp}% de los gastos`:''}.`});
+    const byCat:Record<string,number>={}; for(const r of monthly)byCat[r.name]=(byCat[r.name]??0)+1;
+    for(const [name,n] of Object.entries(byCat)) if(n>=2) facts.push({kind:'subscription',severity:'warning',weight:8,text:`${n} suscripciones en ${name}. Cancelando una recortás el gasto fijo.`});
   }
 
-  // 6. budgets — near limit or projected to overflow
-  for(const b of buds){
-    const name=b.categories?.name; if(!name)continue;
-    const budArs=ars(b.amount,b.currency,null);
-    const spent=Object.values(catCur).find(c=>c.name===name)?.total??0;
-    if(budArs<=0)continue;
-    const pct=Math.round(spent/budArs*100);
-    const projected=day>0?spent/day*dim:spent;
-    if(pct>=85) facts.push({kind:'budget',severity:pct>=100?'warning':'info',weight:pct>=100?9:7,text:`Presupuesto ${name}: ${fmt(spent)} de ${fmt(budArs)} (${pct}%)${pct<100?`, quedan ${dim-day} días`:' — superado'}.`});
-    else if(projected>budArs*1.1) facts.push({kind:'budget',severity:'info',weight:6,text:`Presupuesto ${name}: vas ${fmt(spent)} de ${fmt(budArs)}; a este ritmo proyectás ${fmt(projected)} para fin de mes.`});
-  }
+  // 6. budgets relevant to the audience
+  const budAud=d.buds.filter(b=>isHH?b.scope==='household':(b.scope==='personal'&&b.profile_id===aud.id));
+  for(const b of budAud){ const name=b.categories?.name; if(!name)continue; const lim=toArs(b.amount,b.currency,null,d.blue); if(lim<=0)continue;
+    const spent=catCur[name]?.total??0; const pct=Math.round(spent/lim*100); const projected=day>0?spent/day*dim:spent;
+    if(pct>=85) facts.push({kind:'budget',severity:pct>=100?'warning':'info',weight:pct>=100?9:7,text:`Presupuesto ${name}: ${fmt(spent)} de ${fmt(lim)} (${pct}%)${pct<100?`, quedan ${dim-day} días`:' — superado'}.`});
+    else if(projected>lim*1.1) facts.push({kind:'budget',severity:'info',weight:6,text:`Presupuesto ${name}: vas ${fmt(spent)} de ${fmt(lim)}; a este ritmo proyectás ${fmt(projected)}.`}); }
 
-  // 7. goal pace vs deadline
-  for(const g of goals){
-    if(!g.deadline)continue;
-    const remaining=Math.max(0,(g.target_currency==='USD'?(g.target_amount-g.current_amount)*blue:(g.target_amount-g.current_amount)));
-    if(remaining<=0)continue;
-    const months=Math.max(1,monthsBetween(now,new Date(g.deadline)));
-    const required=remaining/months;
-    if(net>0&&required>net) facts.push({kind:'goal',severity:'warning',weight:7,text:`Meta "${g.name}": necesitás ${fmt(required)}/mes para llegar al ${g.deadline} (faltan ${fmt(remaining)}); tu ahorro de este mes fue ${fmt(net)}.`});
-    else facts.push({kind:'goal',severity:'info',weight:4,text:`Meta "${g.name}": faltan ${fmt(remaining)}, apartando ${fmt(required)}/mes llegás al ${g.deadline}.`});
-  }
+  // 7. goals relevant to the audience
+  const goalAud=d.goals.filter(g=>isHH?g.scope==='household':(g.scope==='personal'&&g.profile_id===aud.id));
+  for(const g of goalAud){ if(!g.deadline)continue;
+    const remaining=Math.max(0,(g.target_currency==='USD'?(g.target_amount-g.current_amount)*d.blue:(g.target_amount-g.current_amount)));
+    if(remaining<=0)continue; const months=Math.max(1,monthsBetween(now,new Date(g.deadline))); const required=remaining/months;
+    facts.push({kind:'goal',severity:'info',weight:4,text:`Meta "${g.name}": faltan ${fmt(remaining)}, apartando ${fmt(required)}/mes llegás al ${g.deadline}.`}); }
 
-  // 8. top category summary (always useful as a fallback card)
-  const top=Object.values(catCur).sort((a,b)=>b.total-a.total)[0];
-  if(top) facts.push({kind:'summary',severity:'info',weight:3,text:`Mayor gasto del mes: ${top.name} con ${fmt(top.total)} en ${top.n} movimientos.`});
+  // 8. top category summary
+  const top=Object.entries(catCur).sort((a,b)=>b[1].total-a[1].total)[0];
+  if(top) facts.push({kind:'summary',severity:'info',weight:3,text:`Mayor gasto: ${top[0]} con ${fmt(top[1].total)} en ${top[1].n} movimientos.`});
 
   facts.sort((a,b)=>b.weight-a.weight);
-  return {facts:facts.slice(0,12),hasData,income,expense};
+  return {facts:facts.slice(0,12),expense};
 }
 
-function buildPrompt(facts:Fact[],mode:string):string{
+function buildPrompt(aud:Aud,facts:Fact[],mode:string):string{
   const n=mode==='lite'?'2-3':'3-6';
+  const who=aud.id===null
+    ? 'Estos son los gastos COMPARTIDOS / del hogar de la pareja (no incluyen gastos personales de cada uno).'
+    : `Estos son los gastos de ${aud.name} (su parte personal: lo suyo + su mitad de lo compartido, ya descontando lo que le devuelven amigos).`;
   const lines=facts.map((f,i)=>`${i+1}. [${f.severity}] ${f.text}`);
-  return `Hechos ya calculados (los números son EXACTOS, usalos tal cual, no recalcules ni inventes):\n${lines.join('\n')}\n\nElegí los ${n} hechos más importantes y accionables y convertilos en cards.`;
+  return `${who}\nHechos ya calculados (números EXACTOS, usalos tal cual, no recalcules):\n${lines.join('\n')}\n\nElegí los ${n} más importantes y accionables y convertilos en cards.`;
 }
 
-const SYSTEM = 'Sos el coach financiero de Morchis, una app para una pareja argentina (Lucas y Sofi). Hablás en español rioplatense, cercano y motivador, sin ser invasivo. Te paso HECHOS ya calculados sobre sus finanzas del mes. Tu trabajo: elegir los más importantes y convertirlos en cards breves y ACCIONABLES — cada una sugiere UNA cosa concreta para gastar menos, ahorrar más o evitar un problema. Reglas: (1) Usá SOLO números que aparezcan en los hechos, nunca inventes ni recalcules montos. (2) Priorizá ahorro y alertas por encima de lo descriptivo. (3) Respondé SOLO con un array JSON sin markdown. Cada item: {"title":string(≤7 palabras),"body":string(1-2 oraciones que incluyan el número del hecho + una acción concreta, ≤30 palabras),"severity":"info"|"positive"|"warning","kind":"saving"|"spike"|"anthill"|"duplicate"|"subscription"|"budget"|"goal"|"summary"}.';
+const SYSTEM='Sos el coach financiero de Morchis, una app para una pareja argentina (Lucas y Sofi). Hablás en español rioplatense, cercano y motivador. Te paso HECHOS ya calculados (los montos son exactos). Elegí los más importantes y convertilos en cards breves y ACCIONABLES — cada una sugiere UNA cosa concreta para gastar menos, ahorrar más o evitar un problema. Reglas: (1) Usá SOLO números que aparezcan en los hechos, nunca inventes ni recalcules. (2) Priorizá ahorro y alertas por encima de lo descriptivo. (3) Respondé SOLO con un array JSON sin markdown. Cada item: {"title":string(≤7 palabras),"body":string(1-2 oraciones con el número del hecho + una acción concreta, ≤30 palabras),"severity":"info"|"positive"|"warning","kind":"saving"|"spike"|"anthill"|"duplicate"|"subscription"|"budget"|"goal"|"debt"|"summary"}.';
 
-async function processHousehold(admin:SupabaseClient,hid:string,mode:string,apiKey:string,vPub:string,vPriv:string):Promise<number>{
-  const [{facts,hasData},pr]=await Promise.all([
-    buildFacts(admin,hid),
-    admin.from('profiles').select('id,nickname,display_name').eq('household_id',hid),
-  ]);
-  const profiles=(pr.data??[]) as Profile[];
-  if(!hasData||!facts.length){console.log('No data',hid);return 0;}
-
-  const anthropic=new Anthropic({apiKey});
+async function generateFor(anthropic:Anthropic,admin:SupabaseClient,hid:string,aud:Aud,d:Data,mode:string,period:string,vPub:string,vPriv:string):Promise<number>{
+  const {facts}=buildFacts(aud,d);
+  if(!facts.length)return 0;
   const resp=await anthropic.messages.create({
     model:'claude-sonnet-4-6',
     max_tokens:1200,
     system:[{type:'text',text:SYSTEM,cache_control:{type:'ephemeral'}}],
-    messages:[{role:'user',content:buildPrompt(facts,mode)}],
+    messages:[{role:'user',content:buildPrompt(aud,facts,mode)}],
   });
   const raw=resp.content[0].type==='text'?resp.content[0].text.trim():'';
   const cards=parseCards(raw);
-  if(!cards.length){console.error('No valid cards from model',raw);return 0;}
-
-  const now=new Date();
-  const period=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  // Insert the fresh batch FIRST, then clear the previous one — so a failed
-  // refresh never wipes the existing insights and leaves the screen empty.
-  const{data:ins,error:insErr}=await admin.from('insights').insert(cards.map(c=>({household_id:hid,period,kind:c.kind,title:c.title,body:c.body,severity:['info','positive','warning'].includes(c.severity)?c.severity:'info',seen:false}))).select('id,severity,title,body');
-  if(insErr||!ins){console.error('Insert error',insErr);return 0;}
+  if(!cards.length){console.error('No valid cards',aud.name,raw);return 0;}
+  // Insert fresh batch for this audience, then clear the previous one (scoped to
+  // this period + audience, so each tab's insights are replaced independently).
+  const{data:ins,error:insErr}=await admin.from('insights').insert(cards.map(c=>({household_id:hid,profile_id:aud.id,period,kind:c.kind,title:c.title,body:c.body,severity:['info','positive','warning'].includes(c.severity)?c.severity:'info',seen:false}))).select('id,severity,title,body');
+  if(insErr||!ins){console.error('Insert error',aud.name,insErr);return 0;}
   const newIds=(ins as {id:string}[]).map(i=>i.id);
-  if(newIds.length)await admin.from('insights').delete().eq('household_id',hid).eq('period',period).not('id','in',`(${newIds.join(',')})`);
-
-  if(vPub&&vPriv&&ins){
+  let del=admin.from('insights').delete().eq('household_id',hid).eq('period',period).not('id','in',`(${newIds.join(',')})`);
+  del=aud.id===null?del.is('profile_id',null):del.eq('profile_id',aud.id);
+  await del;
+  // Push the top alert to the relevant people (household → both; person → them).
+  if(vPub&&vPriv){
     const noti=(ins as {severity:string;title:string;body:string}[]).filter(i=>i.severity==='warning'||i.severity==='positive');
     if(noti.length){
-      const{data:subs}=await admin.from('push_subscriptions').select('endpoint,p256dh,auth_key,profile_id').in('profile_id',profiles.map(p=>p.id));
+      const targetIds=aud.id===null?d.profiles.map(p=>p.id):[aud.id];
+      const{data:subs}=await admin.from('push_subscriptions').select('endpoint,p256dh,auth_key,profile_id').in('profile_id',targetIds);
       if(subs?.length){const top=noti[0];for(const sub of subs as PushSub[])try{await sendWebPush(sub,{title:top.title,body:top.body,url:'/home'},vPub,vPriv);}catch(e){console.error('Push err',e);}}
     }
   }
   return cards.length;
+}
+
+async function processHousehold(admin:SupabaseClient,hid:string,mode:string,apiKey:string,vPub:string,vPriv:string):Promise<number>{
+  const d=await fetchAll(admin,hid);
+  if(d.curr.length===0&&d.income.length===0){console.log('No data',hid);return 0;}
+  const auds:Aud[]=[{id:null,name:'Hogar'},...d.profiles.map(p=>({id:p.id,name:p.nickname??p.display_name??'Usuario'}))];
+  const now=new Date();
+  const period=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const anthropic=new Anthropic({apiKey});
+  let total=0;
+  for(const aud of auds){
+    try{total+=await generateFor(anthropic,admin,hid,aud,d,mode,period,vPub,vPriv);}
+    catch(e){console.error('Audience error',aud.name,e);}
+  }
+  return total;
 }
 
 Deno.serve(async(req:Request)=>{
@@ -291,8 +324,6 @@ Deno.serve(async(req:Request)=>{
     try{results.push({household_id:hh.id,count:await processHousehold(admin,hh.id,mode,anthropicKey,vPub,vPriv)});}
     catch(err){console.error('Error',hh.id,err);results.push({household_id:hh.id,error:String(err)});}
   }
-  // ok=false when nothing was generated for any processed household, so the
-  // client can show a real error instead of a misleading success.
   const generated=results.reduce((s,r)=>s+(r.count??0),0);
   const anyError=results.some(r=>r.error);
   return new Response(JSON.stringify({ok:generated>0,generated,results}),{status:anyError&&generated===0?502:200,headers:cors});

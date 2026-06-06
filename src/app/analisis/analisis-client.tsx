@@ -128,15 +128,17 @@ export default function AnalisisClient({
     },
   });
 
+  // Insights are tagged by audience: profile_id null = household ("Nuestro"),
+  // otherwise that person's own ("Mío"/pareja). Show the set for the active tab.
   const { data: insights = [] } = useQuery({
-    queryKey: ['insights', profile.household_id],
+    queryKey: ['insights', profile.household_id, scopeProfileId ?? 'all'],
     queryFn: async () => {
-      const { data } = await supabase
+      let q = supabase
         .from('insights')
         .select('id, title, body, severity, created_at')
-        .eq('household_id', profile.household_id)
-        .order('created_at', { ascending: false })
-        .limit(4);
+        .eq('household_id', profile.household_id);
+      q = scopeProfileId ? q.eq('profile_id', scopeProfileId) : q.is('profile_id', null);
+      const { data } = await q.order('created_at', { ascending: false }).limit(4);
       return data ?? [];
     },
   });

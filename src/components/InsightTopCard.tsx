@@ -32,6 +32,8 @@ export function InsightTopCard({ householdId, profileId }: { householdId: string
         .from('insights')
         .select('id, title, body, severity, kind, created_at')
         .eq('household_id', householdId)
+        // your own insights + the household's shared ones
+        .or(`profile_id.eq.${profileId},profile_id.is.null`)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();

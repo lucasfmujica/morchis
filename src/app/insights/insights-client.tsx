@@ -38,6 +38,8 @@ export default function InsightsClient({ householdId, profileId }: { householdId
         .from('insights')
         .select('id, title, body, severity, kind, period, created_at, seen')
         .eq('household_id', householdId)
+        // your own insights + the household's shared ones
+        .or(`profile_id.eq.${profileId},profile_id.is.null`)
         .order('created_at', { ascending: false })
         .limit(20);
       return (data ?? []) as Insight[];
@@ -111,7 +113,7 @@ export default function InsightsClient({ householdId, profileId }: { householdId
           <div className="rounded-3xl p-6 text-center" style={{ background: '#FFFFFF' }}>
             <p className="text-4xl mb-3">🤔</p>
             <p className="font-bold" style={{ color: '#2D2D2D' }}>Todavía no hay insights</p>
-            <p className="text-sm mt-1" style={{ color: '#6B6459' }}>Tocá "Actualizar" para que la IA analice tus gastos.</p>
+            <p className="text-sm mt-1" style={{ color: '#6B6459' }}>Tocá «Actualizar» para que la IA analice tus gastos.</p>
           </div>
         )}
 
