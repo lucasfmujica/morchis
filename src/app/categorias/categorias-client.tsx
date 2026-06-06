@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
@@ -22,10 +22,22 @@ interface Profile {
   display_name: string | null;
 }
 
-export default function CategoriasClient({ profile }: { profile: Profile }) {
+export default function CategoriasClient({
+  profile,
+  partnerProfileId,
+  partnerName,
+}: {
+  profile: Profile;
+  partnerProfileId?: string;
+  partnerName?: string;
+}) {
   const supabase = createClient();
   const qc = useQueryClient();
   const { arsPerUsd } = useFx();
+  // Whose spending the per-category totals reflect. Defaults to "Mío" so the
+  // screen is personal/individual instead of mixing in your partner's expenses.
+  const [scope, setScope] = useState<'me' | 'all' | 'partner'>('me');
+  const scopeProfileId = scope === 'me' ? profile.id : scope === 'partner' ? partnerProfileId : undefined;
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -54,27 +66,37 @@ export default function CategoriasClient({ profile }: { profile: Profile }) {
   const monthEndDate = new Date();
   const monthEnd = `${monthEndDate.getFullYear()}-${String(monthEndDate.getMonth() + 1).padStart(2, '0')}-${String(new Date(monthEndDate.getFullYear(), monthEndDate.getMonth() + 1, 0).getDate()).padStart(2, '0')}`;
 
-  // This month's totals per category (expense + income).
+  // This month's rows per category (expense + income), kept raw so the totals
+  // can be re-sliced by scope (Mío / Nuestro / Pareja) without refetching.
   // Own key (not the Home's 'spent-by-category', which is expenses-only) so the
-  // two don't overwrite each other's cache. Includes income + expense per category.
-  const { data: monthByCategory = {} } = useQuery<Record<string, number>>({
-    queryKey: ['category-month-totals', profile.household_id, monthStart, arsPerUsd],
+  // two don't overwrite each other's cache.
+  const { data: monthRows = [] } = useQuery<
+    { category_id: string | null; amount: number; currency: string | null; profile_id: string | null }[]
+  >({
+    queryKey: ['category-month-totals', profile.household_id, monthStart],
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('category_id, amount, currency')
+        .select('category_id, amount, currency, profile_id')
         .eq('household_id', profile.household_id)
         .gte('occurred_on', monthStart)
         .lte('occurred_on', monthEnd);
-      const map: Record<string, number> = {};
-      for (const t of data ?? []) {
-        if (!t.category_id) continue;
-        const amt = t.currency === 'USD' && arsPerUsd > 0 ? Math.round(t.amount * arsPerUsd) : t.amount;
-        map[t.category_id] = (map[t.category_id] ?? 0) + amt;
-      }
-      return map;
+      return data ?? [];
     },
   });
+
+  // Per-category totals for the active scope. "Mío"/"Pareja" only count that
+  // person's movements; "Nuestro" counts the whole household.
+  const monthByCategory = useMemo<Record<string, number>>(() => {
+    const map: Record<string, number> = {};
+    for (const t of monthRows) {
+      if (!t.category_id) continue;
+      if (scopeProfileId && t.profile_id !== scopeProfileId) continue;
+      const amt = t.currency === 'USD' && arsPerUsd > 0 ? Math.round(t.amount * arsPerUsd) : t.amount;
+      map[t.category_id] = (map[t.category_id] ?? 0) + amt;
+    }
+    return map;
+  }, [monthRows, scopeProfileId, arsPerUsd]);
 
   // Active budget amount per category (summed across scopes), normalized to ARS
   // so a USD budget is compared against the ARS-normalized spend above instead
@@ -155,6 +177,27 @@ export default function CategoriasClient({ profile }: { profile: Profile }) {
           + Nueva
         </button>
       </header>
+
+      {/* Scope toggle — keep the per-category totals personal by default */}
+      <div className="mx-4 mb-3 flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#ECE5DC' }}>
+        {([
+          { key: 'me' as const, label: 'Mío' },
+          { key: 'all' as const, label: 'Nuestro' },
+          ...(partnerProfileId ? [{ key: 'partner' as const, label: partnerName || 'Pareja' }] : []),
+        ]).map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setScope(tab.key)}
+            className="flex-1 py-1.5 text-xs font-bold rounded-xl transition-colors"
+            style={{
+              background: scope === tab.key ? '#FFFFFF' : 'transparent',
+              color: scope === tab.key ? '#2D2D2D' : '#6B6459',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
       {showForm && (
         <div className="mx-4 mb-4 rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
