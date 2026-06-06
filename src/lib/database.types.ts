@@ -77,6 +77,35 @@ export type Database = {
           },
         ]
       }
+      budget_alerts: {
+        Row: {
+          budget_id: string
+          level: number
+          notified_at: string
+          period: string
+        }
+        Insert: {
+          budget_id: string
+          level: number
+          notified_at?: string
+          period: string
+        }
+        Update: {
+          budget_id?: string
+          level?: number
+          notified_at?: string
+          period?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "budget_alerts_budget_id_fkey"
+            columns: ["budget_id"]
+            isOneToOne: false
+            referencedRelation: "budgets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       budgets: {
         Row: {
           active: boolean
@@ -639,6 +668,7 @@ export type Database = {
       }
       recurring_rules: {
         Row: {
+          account_id: string | null
           active: boolean
           amount: number
           anchor_day: number | null
@@ -655,6 +685,7 @@ export type Database = {
           scope: string
         }
         Insert: {
+          account_id?: string | null
           active?: boolean
           amount: number
           anchor_day?: number | null
@@ -671,6 +702,7 @@ export type Database = {
           scope?: string
         }
         Update: {
+          account_id?: string | null
           active?: boolean
           amount?: number
           anchor_day?: number | null
@@ -687,6 +719,13 @@ export type Database = {
           scope?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "recurring_rules_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "recurring_rules_category_id_fkey"
             columns: ["category_id"]
@@ -1060,6 +1099,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "transactions_transfer_account_id_fkey"
+            columns: ["transfer_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
         ]
       }
     }
@@ -1067,10 +1113,12 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      advance_recurring_rules: { Args: never; Returns: number }
       create_household: { Args: { household_name?: string }; Returns: string }
       generate_invite_code: { Args: never; Returns: string }
       join_household: { Args: { invite_code: string }; Returns: string }
       my_household_id: { Args: never; Returns: string }
+      process_recurring_rules: { Args: never; Returns: number }
     }
     Enums: {
       [_ in never]: never

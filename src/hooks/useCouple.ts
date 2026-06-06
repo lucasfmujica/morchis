@@ -58,7 +58,9 @@ export function useCoupleBalance(
         .filter((s) => s.payer_profile_id === partnerProfileId)
         .reduce((acc, s) => acc + s.amount, 0);
 
-      // Settlements reduce the balance
+      // Settlements adjust the balance. Money I paid the partner settles a debt
+      // I owed (pushes net up, toward "partner owes me"); money the partner paid
+      // me settles what they owed (pushes net down).
       const settledByMe = (settlements ?? [])
         .filter((s) => s.from_profile === myProfileId)
         .reduce((acc, s) => acc + s.amount, 0);
@@ -67,7 +69,7 @@ export function useCoupleBalance(
         .filter((s) => s.from_profile === partnerProfileId)
         .reduce((acc, s) => acc + s.amount, 0);
 
-      const net = iOwedToMe - iOwePartner - settledByMe + settledByPartner;
+      const net = iOwedToMe - iOwePartner + settledByMe - settledByPartner;
 
       return { net, iOwedToMe, iOwePartner };
     },
@@ -95,6 +97,10 @@ export async function recordSettlement({
   note?: string;
 }) {
   const supabase = createClient();
+  // Settlements are kept as a ledger and netted against the unsettled splits in
+  // useCoupleBalance, so partial payments work and nothing double-counts. (We
+  // deliberately do NOT flip splits.settled here — that would subtract the debt
+  // twice, once via the cleared split and once via this settlement row.)
   const { error } = await supabase.from('settlements').insert({
     household_id: householdId,
     from_profile: fromProfileId,

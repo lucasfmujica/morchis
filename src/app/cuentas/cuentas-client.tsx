@@ -28,6 +28,22 @@ function daysUntil(dateISO: string): number {
   return Math.round((d.getTime() - today.getTime()) / 86400000);
 }
 
+// Roll a stored monthly date (closing/due) forward one month at a time until it
+// is today or later, so a card whose due date already passed shows the *next*
+// due date instead of "vencido hace 40 días" forever.
+function rollMonthlyForward(dateISO: string): string {
+  const [y, m, d] = dateISO.split('-').map(Number);
+  let dt = new Date(y, m - 1, d);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let guard = 0;
+  while (dt < today && guard < 60) {
+    dt = new Date(dt.getFullYear(), dt.getMonth() + 1, dt.getDate());
+    guard += 1;
+  }
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+
 function dueLabel(dueISO: string): string {
   const d = daysUntil(dueISO);
   if (d < 0) return `Vencido hace ${Math.abs(d)} día${Math.abs(d) === 1 ? '' : 's'}`;
@@ -118,10 +134,42 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
       return s;
     }, initial);
   }
-  function cardMonthSpend(accountId: string) {
-    return accountTx
-      .filter((t) => t.account_id === accountId && t.type === 'expense' && t.occurred_on >= monthStart && t.occurred_on <= todayStr)
-      .reduce((s, t) => s + t.amount, 0);
+  // Start of the current billing cycle: the most recent closing date on/before
+  // today (charges accrue from the day after the last close). Falls back to the
+  // calendar month when the card has no closing date set.
+  function cardCycleStart(closingISO: string | null | undefined): string {
+    if (!closingISO) return monthStart;
+    const [y, m, d] = closingISO.split('-').map(Number);
+    let close = new Date(y, m - 1, d);
+    const today = new Date(todayStr + 'T00:00:00');
+    // Step the monthly closing date until it's the last one on/before today.
+    let guard = 0;
+    while (close > today && guard < 120) { close = new Date(close.getFullYear(), close.getMonth() - 1, close.getDate()); guard += 1; }
+    guard = 0;
+    while (new Date(close.getFullYear(), close.getMonth() + 1, close.getDate()) <= today && guard < 120) {
+      close = new Date(close.getFullYear(), close.getMonth() + 1, close.getDate()); guard += 1;
+    }
+    // Cycle opens the day after the last close.
+    const next = new Date(close.getFullYear(), close.getMonth(), close.getDate() + 1);
+    return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`;
+  }
+
+  // Spend accrued on a credit card during the current billing cycle, net of
+  // payments to the card (a transfer into it) and refunds (income to it).
+  function cardCycleSpend(accountId: string, closingISO: string | null | undefined) {
+    const start = cardCycleStart(closingISO);
+    let charges = 0;
+    let credits = 0;
+    for (const t of accountTx) {
+      if (t.occurred_on < start || t.occurred_on > todayStr) continue;
+      if (t.account_id === accountId) {
+        if (t.type === 'expense') charges += t.amount;
+        else if (t.type === 'income') credits += t.amount; // refund/credit note
+      } else if (t.type === 'transfer' && t.transfer_account_id === accountId) {
+        credits += t.amount; // paying down the card
+      }
+    }
+    return Math.max(0, charges - credits);
   }
 
   function openNew() {
@@ -349,28 +397,37 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
                 {a.archived && ' · Archivada'}
               </p>
               {a.type === 'credit' ? (
-                <div className="mt-1">
-                  {(a.statement_ars || a.statement_usd) ? (
-                    <p className="text-sm font-black" style={{ color: '#FF7F6B' }}>
-                      {[
-                        a.statement_ars ? formatARS(a.statement_ars) : null,
-                        a.statement_usd ? formatUSD(a.statement_usd) : null,
-                      ].filter(Boolean).join(' + ')}
-                      <span className="text-xs font-semibold" style={{ color: '#6B6459' }}> resumen</span>
-                    </p>
-                  ) : (
-                    <p className="text-sm font-black" style={{ color: '#FF7F6B' }}>
-                      {formatARS(cardMonthSpend(a.id))}
-                      <span className="text-xs font-semibold" style={{ color: '#6B6459' }}> gastado este mes</span>
-                    </p>
-                  )}
-                  {a.due_date && (
-                    <p className="text-xs font-bold mt-0.5" style={{ color: daysUntil(a.due_date) < 0 ? '#E5604C' : '#6B6459' }}>
-                      {dueLabel(a.due_date)}
-                      {a.closing_date ? ` · cierre ${a.closing_date.slice(8, 10)}/${a.closing_date.slice(5, 7)}` : ''}
-                    </p>
-                  )}
-                </div>
+                (() => {
+                  const cycleSpend = cardCycleSpend(a.id, a.closing_date);
+                  const hasStatement = a.statement_ars || a.statement_usd;
+                  const nextDue = a.due_date ? rollMonthlyForward(a.due_date) : null;
+                  return (
+                    <div className="mt-1">
+                      {hasStatement && (
+                        <p className="text-sm font-black" style={{ color: '#FF7F6B' }}>
+                          {[
+                            a.statement_ars ? formatARS(a.statement_ars) : null,
+                            a.statement_usd ? formatUSD(a.statement_usd) : null,
+                          ].filter(Boolean).join(' + ')}
+                          <span className="text-xs font-semibold" style={{ color: '#6B6459' }}> resumen</span>
+                        </p>
+                      )}
+                      {/* New charges accruing toward the next statement (net of payments). */}
+                      <p className={hasStatement ? 'text-xs font-semibold' : 'text-sm font-black'} style={{ color: hasStatement ? '#6B6459' : '#FF7F6B' }}>
+                        {formatARS(cycleSpend)}
+                        <span className="text-xs font-semibold" style={{ color: '#6B6459' }}>
+                          {a.closing_date ? ' del ciclo actual' : ' gastado este mes'}
+                        </span>
+                      </p>
+                      {nextDue && (
+                        <p className="text-xs font-bold mt-0.5" style={{ color: daysUntil(nextDue) <= 3 ? '#E5604C' : '#6B6459' }}>
+                          {dueLabel(nextDue)}
+                          {a.closing_date ? ` · cierre ${rollMonthlyForward(a.closing_date).slice(8, 10)}/${rollMonthlyForward(a.closing_date).slice(5, 7)}` : ''}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()
               ) : (
                 (() => {
                   const bal = assetBalance(a.id, a.initial_balance ?? 0);

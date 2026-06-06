@@ -11,6 +11,36 @@ export interface ProjectionRule {
   next_run: string | null;
   active: boolean;
   profile_id: string;
+  /** Defaults to 'monthly' when missing (one occurrence per remaining month). */
+  cadence?: 'weekly' | 'biweekly' | 'monthly';
+}
+
+/** Every occurrence date of a rule in (fromExclusive, toInclusive], expanding
+ *  weekly/biweekly so a rule that fires more than once in the rest of the month
+ *  is counted that many times (the old code only counted next_run once). */
+function occurrencesInRange(
+  rule: ProjectionRule,
+  fromExclusiveISO: string,
+  toInclusiveISO: string,
+): string[] {
+  if (!rule.next_run) return [];
+  const cadence = rule.cadence ?? 'monthly';
+  const dates: string[] = [];
+  const [y, m, d] = rule.next_run.split('-').map(Number);
+  let cur = new Date(y, m - 1, d);
+  const iso = (dt: Date) =>
+    `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+  let guard = 0;
+  while (guard < 60) {
+    const curISO = iso(cur);
+    if (curISO > toInclusiveISO) break;
+    if (curISO > fromExclusiveISO) dates.push(curISO);
+    if (cadence === 'weekly') cur = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + 7);
+    else if (cadence === 'biweekly') cur = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + 14);
+    else cur = new Date(cur.getFullYear(), cur.getMonth() + 1, cur.getDate());
+    guard += 1;
+  }
+  return dates;
 }
 
 export interface ProjectionResult {
@@ -69,29 +99,16 @@ export function computeProjection(
 
   const currentBalance = incomeSoFar - expensesSoFar;
 
-  // Remaining recurring income: next_run is within the rest of this month
+  // Remaining recurring amounts: count every occurrence left this month (so a
+  // biweekly rule that fires twice in the rest of the month counts twice).
   const todayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayOfMonth).padStart(2, '0')}`;
   const remainingIncome = filteredRules
-    .filter(
-      (r) =>
-        r.active &&
-        r.direction === 'income' &&
-        r.next_run != null &&
-        r.next_run > todayStr &&
-        r.next_run <= monthEnd,
-    )
-    .reduce((s, r) => s + r.amount, 0);
+    .filter((r) => r.active && r.direction === 'income')
+    .reduce((s, r) => s + r.amount * occurrencesInRange(r, todayStr, monthEnd).length, 0);
 
   const remainingFixedExpenses = filteredRules
-    .filter(
-      (r) =>
-        r.active &&
-        r.direction === 'expense' &&
-        r.next_run != null &&
-        r.next_run > todayStr &&
-        r.next_run <= monthEnd,
-    )
-    .reduce((s, r) => s + r.amount, 0);
+    .filter((r) => r.active && r.direction === 'expense')
+    .reduce((s, r) => s + r.amount * occurrencesInRange(r, todayStr, monthEnd).length, 0);
 
   // Variable spend pace: expenses so far / days elapsed × days remaining
   const dailyRate = expensesSoFar / daysElapsed;
@@ -115,13 +132,14 @@ export function computeProjection(
       running += dayIncome - dayExpense;
       dailyBalances.push(running);
     } else {
-      // Project: subtract daily variable rate, add any recurring on this day
+      // Project: subtract daily variable rate, add any recurring occurrences on
+      // this day (expanded, so a biweekly rule hits both of its days).
       const ruleIncome = filteredRules
-        .filter((r) => r.active && r.direction === 'income' && r.next_run === dayStr)
-        .reduce((s, r) => s + r.amount, 0);
+        .filter((r) => r.active && r.direction === 'income')
+        .reduce((s, r) => s + r.amount * occurrencesInRange(r, todayStr, dayStr).filter((o) => o === dayStr).length, 0);
       const ruleExpense = filteredRules
-        .filter((r) => r.active && r.direction === 'expense' && r.next_run === dayStr)
-        .reduce((s, r) => s + r.amount, 0);
+        .filter((r) => r.active && r.direction === 'expense')
+        .reduce((s, r) => s + r.amount * occurrencesInRange(r, todayStr, dayStr).filter((o) => o === dayStr).length, 0);
       running += ruleIncome - ruleExpense - dailyRate;
       dailyBalances.push(Math.round(running));
     }

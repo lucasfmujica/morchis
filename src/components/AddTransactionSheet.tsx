@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { NumberKeypad } from '@/components/NumberKeypad';
 import { useFx } from '@/hooks/useFx';
 import { createClient } from '@/lib/supabase';
@@ -54,6 +55,7 @@ interface EditTx {
   is_shared: boolean;
   merchant: string | null;
   occurred_on: string;
+  installment_total?: number | null;
   // Whose movement it is. Optional because not every edit caller selects it;
   // when missing we treat it as mine.
   profile_id?: string | null;
@@ -144,6 +146,8 @@ export function AddTransactionSheet({
   const [date, setDate] = useState(todayISO());
   const [installments, setInstallments] = useState(1);
   const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -208,7 +212,49 @@ export function AddTransactionSheet({
     return () => {
       cancelled = true;
     };
-  }, [open, editTx, arsPerUsd, supabase]);
+    // Intentionally NOT depending on arsPerUsd: the split is loaded once when the
+    // sheet opens for editing. Re-running on every FX refresh would snap the
+    // slider back to the saved value and discard a percentage the user just set.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editTx]);
+
+  // Refresh every query a money change can touch, so all pages stay in sync
+  // after a save or delete (balances, budgets, analytics, couple balance).
+  async function invalidateMoneyQueries() {
+    await Promise.all(
+      [
+        'transactions',
+        'account-tx',
+        'spent-by-category',
+        'category-month-totals',
+        'budget-expense-rows',
+        'summary',
+        'projection',
+        'couple-balance',
+        'couple-transactions',
+      ].map((key) => qc.invalidateQueries({ queryKey: [key] })),
+    );
+  }
+
+  async function handleDelete() {
+    if (!editTx) return;
+    setDeleting(true);
+    try {
+      // Splits have no ON DELETE CASCADE, so clear them before the parent row.
+      await supabase.from('splits').delete().eq('transaction_id', editTx.id);
+      const { error } = await supabase.from('transactions').delete().eq('id', editTx.id);
+      if (error) throw error;
+      await invalidateMoneyQueries();
+      toast.success('Movimiento eliminado');
+      setConfirmDelete(false);
+      onClose();
+    } catch (e) {
+      toast.error('No se pudo eliminar. Intentá de nuevo.');
+      console.error(e);
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   function addMonthsISO(iso: string, k: number) {
     const [y, m, d] = iso.split('-').map(Number);
@@ -301,7 +347,11 @@ export function AddTransactionSheet({
   // Account picker scope: list the payer's own accounts (plus any with no known
   // owner). A "Mío" movement → my accounts; the partner's → theirs; "Hogar" →
   // whoever paid, so you pick the card that was actually used.
-  const visibleAccounts = accounts.filter(
+  // Fall back to the internally-fetched account list when the opening page
+  // didn't pass any (e.g. the FAB on Categorías/Análisis), so you can still
+  // pick the account that was used.
+  const baseAccounts: Account[] = accounts.length > 0 ? accounts : acctMeta;
+  const visibleAccounts = baseAccounts.filter(
     (a) => a.owner_profile_id == null || a.owner_profile_id === txProfileId,
   );
 
@@ -370,10 +420,7 @@ export function AddTransactionSheet({
           if (error) throw error;
         }
 
-        await qc.invalidateQueries({ queryKey: ['transactions'] });
-        await qc.invalidateQueries({ queryKey: ['account-tx'] });
-        await qc.invalidateQueries({ queryKey: ['summary'] });
-        await qc.invalidateQueries({ queryKey: ['projection'] });
+        await invalidateMoneyQueries();
         toast.success(editTx ? 'Transferencia actualizada ✓' : 'Transferencia guardada ✓');
         onClose();
         return;
@@ -468,15 +515,7 @@ export function AddTransactionSheet({
         }
       }
 
-      await qc.invalidateQueries({ queryKey: ['transactions'] });
-      await qc.invalidateQueries({ queryKey: ['account-tx'] });
-      await qc.invalidateQueries({ queryKey: ['spent-by-category'] });
-      await qc.invalidateQueries({ queryKey: ['category-month-totals'] });
-      await qc.invalidateQueries({ queryKey: ['budget-expense-rows'] });
-      await qc.invalidateQueries({ queryKey: ['summary'] });
-      await qc.invalidateQueries({ queryKey: ['projection'] });
-      await qc.invalidateQueries({ queryKey: ['couple-balance'] });
-      await qc.invalidateQueries({ queryKey: ['couple-transactions'] });
+      await invalidateMoneyQueries();
       // Best-effort push if this pushed a budget past 80% / 100% (for me or my partner).
       if (txType === 'expense') triggerBudgetAlerts(supabase);
       toast.success(
@@ -530,7 +569,7 @@ export function AddTransactionSheet({
                   {inputUSD ? 'USD' : 'ARS'}
                 </button>
               )}
-              {!editTx && (
+              {!editTx ? (
                 <button
                   onClick={() => {
                     onClose();
@@ -540,6 +579,14 @@ export function AddTransactionSheet({
                   style={{ borderColor: '#ECE5DC', color: '#6B6459', background: '#FFFFFF' }}
                 >
                   🧾 Escanear ticket
+                </button>
+              ) : (
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="text-xs font-bold px-3 py-1 rounded-full border flex items-center gap-1"
+                  style={{ borderColor: '#FF7F6B', color: '#FF7F6B', background: '#FFFFFF' }}
+                >
+                  🗑️ Eliminar
                 </button>
               )}
             </div>
@@ -872,6 +919,18 @@ export function AddTransactionSheet({
           </div>
         </div>
       </SheetContent>
+      <ConfirmDialog
+        open={confirmDelete}
+        title="¿Eliminar movimiento?"
+        message={
+          editTx?.installment_total && editTx.installment_total > 1
+            ? 'Se elimina solo esta cuota. Las demás cuotas quedan registradas.'
+            : 'Esta acción no se puede deshacer.'
+        }
+        confirmLabel={deleting ? 'Eliminando…' : 'Eliminar'}
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </Sheet>
   );
 }

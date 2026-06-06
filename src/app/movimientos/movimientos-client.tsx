@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
@@ -9,8 +9,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { EmptyState } from '@/components/EmptyState';
 import { exportTransactionsToCSV } from '@/lib/csvExport';
 import { formatARS } from '@/lib/format';
-import { todayISO } from '@/lib/date';
-import { toast } from 'sonner';
+import { todayISO, weekRange, shortDM } from '@/lib/date';
 import {
   BarChart,
   Bar,
@@ -58,7 +57,6 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   // format()/secondary() then render it in the active display currency.
   const toArs = (amount: number, currency: string) =>
     currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount;
-  const qc = useQueryClient();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   const [editTx, setEditTx] = useState<Tx | null>(null);
@@ -66,7 +64,22 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   const [filterScope, setFilterScope] = useState<'all' | 'personal' | 'household'>('personal');
   const [filterShared, setFilterShared] = useState<boolean | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>('all');
+  // Date range: defaults from the ?range= query param (e.g. Home's "Gastos de
+  // la semana" links here with range=week).
+  const [filterRange, setFilterRange] = useState<'all' | 'week' | 'month'>(() => {
+    if (typeof window === 'undefined') return 'all';
+    const r = new URLSearchParams(window.location.search).get('range');
+    return r === 'week' || r === 'month' ? r : 'all';
+  });
   const [showChart, setShowChart] = useState(false);
+
+  const week = weekRange(new Date());
+  const monthPrefix = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+  function inRange(occurredOn: string): boolean {
+    if (filterRange === 'week') return occurredOn >= week.start && occurredOn <= week.end;
+    if (filterRange === 'month') return occurredOn.startsWith(monthPrefix);
+    return true;
+  }
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],
@@ -114,11 +127,14 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     [transactions, profile.id],
   );
 
-  const filtered = useMemo(() => {
+  // Structural filters (scope / shared / search) but NOT the single-category
+  // drilldown. The month summary and the per-category breakdown build on this so
+  // they react to the scope you picked while still showing every category.
+  const scopeFiltered = useMemo(() => {
     return visibleTransactions.filter((tx) => {
       if (filterScope !== 'all' && tx.scope !== filterScope) return false;
       if (filterShared !== null && tx.is_shared !== filterShared) return false;
-      if (filterCategory !== 'all' && tx.category_id !== filterCategory) return false;
+      if (!inRange(tx.occurred_on)) return false;
       if (search) {
         const q = search.toLowerCase();
         const m = tx.merchant?.toLowerCase() ?? '';
@@ -127,7 +143,16 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       }
       return true;
     });
-  }, [visibleTransactions, filterScope, filterShared, filterCategory, search]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleTransactions, filterScope, filterShared, filterRange, search]);
+
+  const filtered = useMemo(
+    () =>
+      filterCategory === 'all'
+        ? scopeFiltered
+        : scopeFiltered.filter((tx) => tx.category_id === filterCategory),
+    [scopeFiltered, filterCategory],
+  );
 
   const grouped = useMemo(() => {
     const map = new Map<string, Tx[]>();
@@ -150,11 +175,11 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   const monthSummary = useMemo(() => {
     const now = new Date();
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const current = visibleTransactions.filter((tx) => tx.occurred_on.startsWith(month));
+    const current = filtered.filter((tx) => tx.occurred_on.startsWith(month));
     const expenses = current.filter((tx) => tx.type === 'expense').reduce((s, tx) => s + toArs(tx.amount, tx.currency), 0);
     const income = current.filter((tx) => tx.type === 'income').reduce((s, tx) => s + toArs(tx.amount, tx.currency), 0);
     return { expenses, income };
-  }, [visibleTransactions]);
+  }, [filtered]);
 
   // Chart data: top 5 categories current vs previous month
   const chartData = useMemo(() => {
@@ -166,7 +191,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     const curMap = new Map<string, number>();
     const prevMap = new Map<string, number>();
 
-    for (const tx of visibleTransactions) {
+    for (const tx of scopeFiltered) {
       if (tx.type !== 'expense') continue;
       const id = tx.category_id ?? '__none__';
       if (tx.occurred_on.startsWith(curMonth)) {
@@ -185,14 +210,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       'Este mes': cur,
       'Mes anterior': prevMap.get(id) ?? 0,
     }));
-  }, [visibleTransactions, categories]);
-
-  async function handleDelete(id: string) {
-    const { error } = await supabase.from('transactions').delete().eq('id', id);
-    if (error) { toast.error('No se pudo eliminar.'); return; }
-    await qc.invalidateQueries({ queryKey: ['transactions'] });
-    toast.success('Eliminado');
-  }
+  }, [scopeFiltered, categories]);
 
   function handleExport() {
     const filename = `movimientos-${todayISO()}.csv`;
@@ -207,7 +225,9 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       <header className="px-5 pt-14 pb-4 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Movimientos</h1>
-          <p className="text-xs mt-0.5" style={{ color: '#6B6459' }}>Este mes</p>
+          <p className="text-xs mt-0.5" style={{ color: '#6B6459' }}>
+            {filterRange === 'week' ? `Semana · Lun ${shortDM(week.start)} – Dom ${shortDM(week.end)}` : filterRange === 'month' ? 'Este mes' : 'Histórico'}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -315,6 +335,21 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
           >
             🤝 Compartidos
           </button>
+          {/* Date range */}
+          {(['all', 'week', 'month'] as const).map((r) => (
+            <button
+              key={r}
+              onClick={() => setFilterRange(r)}
+              className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border"
+              style={{
+                background: filterRange === r ? '#5BA886' : '#FFFFFF',
+                borderColor: filterRange === r ? '#5BA886' : '#ECE5DC',
+                color: filterRange === r ? '#FFFFFF' : '#6B6459',
+              }}
+            >
+              {r === 'all' ? 'Histórico' : r === 'week' ? '📆 Semana' : 'Mes'}
+            </button>
+          ))}
         </div>
 
         {/* Category filter */}
@@ -412,7 +447,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
 
       {/* By-category summary */}
       <CategorySummary
-        transactions={visibleTransactions
+        transactions={scopeFiltered
           .filter((tx) => {
             const now = new Date();
             const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;

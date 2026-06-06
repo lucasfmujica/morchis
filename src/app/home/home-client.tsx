@@ -19,7 +19,7 @@ import { InsightTopCard } from '@/components/InsightTopCard';
 import { DonutChart } from '@/components/DonutChart';
 import { computeProjection } from '@/lib/projection';
 import { netWorthAt, type AccountRow, type AccountTx } from '@/lib/accounts';
-import { todayISO } from '@/lib/date';
+import { todayISO, weekRange, shortDM } from '@/lib/date';
 import { formatARS } from '@/lib/format';
 
 interface Profile {
@@ -267,7 +267,7 @@ export default function HomeClient({
   partnerName?: string;
 }) {
   const supabase = createClient();
-  const { format, toggle, showUSD, arsPerUsd } = useFx();
+  const { format, toggle, showUSD, arsPerUsd, rateStale } = useFx();
   const { hideAmounts, toggle: toggleHide } = usePrivacyStore();
   // Bank-style mask: when the ojito is on, every money value renders as dots.
   const mask = (s: string) => (hideAmounts ? '••••••' : s);
@@ -324,20 +324,23 @@ export default function HomeClient({
     queryFn: async () => {
       const now = new Date();
       const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
       const { data } = await supabase
         .from('transactions')
         .select('amount, type, occurred_on, profile_id, category_id, currency')
         .eq('household_id', profile.household_id)
-        .gte('occurred_on', `${month}-01`);
+        .gte('occurred_on', `${month}-01`)
+        // Cap at month end so a future-month installment cuota doesn't leak into
+        // this month's "Gastos" tile, donut and projection.
+        .lte('occurred_on', `${month}-${String(lastDay).padStart(2, '0')}`);
       return data ?? [];
     },
   });
 
   // Load budgets for current month summary
-  const monthStart = (() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-  })();
+  const now0 = new Date();
+  const monthStart = `${now0.getFullYear()}-${String(now0.getMonth() + 1).padStart(2, '0')}-01`;
+  const monthEnd = `${now0.getFullYear()}-${String(now0.getMonth() + 1).padStart(2, '0')}-${String(new Date(now0.getFullYear(), now0.getMonth() + 1, 0).getDate()).padStart(2, '0')}`;
 
   const { data: budgets = [] } = useQuery({
     queryKey: ['budgets', profile.household_id],
@@ -361,7 +364,8 @@ export default function HomeClient({
         .select(BUDGET_EXPENSE_SELECT)
         .eq('household_id', profile.household_id)
         .eq('type', 'expense')
-        .gte('occurred_on', monthStart);
+        .gte('occurred_on', monthStart)
+        .lte('occurred_on', monthEnd);
       return (data ?? []) as BudgetExpenseRow[];
     },
   });
@@ -404,6 +408,7 @@ export default function HomeClient({
       next_run: r.next_run,
       active: r.active,
       profile_id: r.profile_id,
+      cadence: r.cadence as 'weekly' | 'biweekly' | 'monthly' | undefined,
     })),
     new Date(),
     scopeProfileId,
@@ -429,6 +434,11 @@ export default function HomeClient({
     (t) => t.type === 'expense' && (!scopeProfileId || t.profile_id === scopeProfileId),
   );
   const monthExpenseTotal = scopedExpenses.reduce((s, t) => s + t.amount, 0);
+  // This week's spend (Mon–Sun) for the active scope.
+  const week = weekRange(new Date());
+  const weekExpenseTotal = scopedExpenses
+    .filter((t) => t.occurred_on >= week.start && t.occurred_on <= week.end)
+    .reduce((s, t) => s + t.amount, 0);
   const scopedSpentByCategory = scopedExpenses.reduce<Record<string, number>>((map, t) => {
     if (t.category_id) map[t.category_id] = (map[t.category_id] ?? 0) + t.amount;
     return map;
@@ -471,7 +481,7 @@ export default function HomeClient({
   const scopeTabs = [
     { key: 'me' as const, label: 'Mío' },
     { key: 'all' as const, label: 'Nuestro' },
-    ...(partnerProfileId ? [{ key: 'partner' as const, label: partnerName || 'Sofi' }] : []),
+    ...(partnerProfileId ? [{ key: 'partner' as const, label: partnerName || 'Pareja' }] : []),
   ];
 
   return (
@@ -517,6 +527,16 @@ export default function HomeClient({
           </button>
         ))}
       </div>
+
+      {/* Stale FX warning — USD conversions are approximate until the rate refreshes */}
+      {rateStale && (
+        <div className="mx-4 mb-3 rounded-2xl px-4 py-2.5 flex items-center gap-2" style={{ background: '#FDF1D8' }}>
+          <span>⚠️</span>
+          <p className="text-[11px] font-semibold" style={{ color: '#B8860B' }}>
+            Cotización del dólar desactualizada — los montos en USD son aproximados.
+          </p>
+        </div>
+      )}
 
       {/* Hero projection card */}
       <div
@@ -591,6 +611,23 @@ export default function HomeClient({
           </Link>
         ))}
       </div>
+
+      {/* This week's spend (Mon–Sun) — tap to see the week's movements */}
+      <Link
+        href="/movimientos?range=week"
+        className="mx-4 mb-4 flex items-center gap-3 px-5 py-4 rounded-3xl"
+        style={{ background: '#FFFFFF' }}
+      >
+        <span className="text-2xl">📆</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Gastos de la semana</p>
+          <p className="text-[11px]" style={{ color: '#6B6459' }}>Lun {shortDM(week.start)} – Dom {shortDM(week.end)}</p>
+        </div>
+        <p className="text-xl font-black flex-shrink-0" style={{ color: '#FF7F6B', fontVariantNumeric: 'tabular-nums' }}>
+          {mask(format(weekExpenseTotal))}
+        </p>
+        <span className="text-xs flex-shrink-0" style={{ color: '#C4B9AE' }}>›</span>
+      </Link>
 
       {/* Income of the month + savings rate */}
       <IncomeCard incomeSoFar={incomeSoFar} expensesSoFar={expensesSoFar} incomeRules={incomeRules} fmt={(n) => mask(format(n))} />

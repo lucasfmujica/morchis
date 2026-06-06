@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
@@ -8,7 +8,7 @@ import { useCoupleBalance, recordSettlement } from '@/hooks/useCouple';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { InvitePartnerModal } from '@/components/InvitePartnerModal';
-import { formatARS } from '@/lib/format';
+import { formatARS, parseMoney } from '@/lib/format';
 import { toast } from 'sonner';
 import Link from 'next/link';
 
@@ -33,6 +33,7 @@ function SettleUpSheet({
   householdId,
   myProfileId,
   partnerProfileId,
+  fmt,
 }: {
   open: boolean;
   onClose: () => void;
@@ -42,33 +43,49 @@ function SettleUpSheet({
   householdId: string;
   myProfileId: string;
   partnerProfileId: string;
+  fmt: (n: number) => string;
 }) {
   const qc = useQueryClient();
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
+  // Amount being settled, in ARS. Defaults to the full balance but can be a
+  // partial payment. Kept as a string so the field can be cleared while typing.
+  const [amountStr, setAmountStr] = useState('');
 
   // Who owes whom
   // net > 0 → partner owes me → partner pays me
   // net < 0 → I owe partner → I pay partner
-  const absNet = Math.abs(net);
+  const absNet = Math.round(Math.abs(net));
   const iOwe = net < 0;
+  const amount = amountStr === '' ? absNet : Math.min(Math.round(parseMoney(amountStr)), absNet);
+  const isPartial = amount > 0 && amount < absNet;
+
+  // Reset the amount to the full balance whenever the sheet (re)opens.
+  useEffect(() => {
+    if (open) setAmountStr('');
+  }, [open, absNet]);
 
   if (!open) return null;
 
   async function handleSettle() {
-    if (absNet === 0) return;
+    if (amount <= 0) return;
     setSaving(true);
     try {
       await recordSettlement({
         householdId,
         fromProfileId: iOwe ? myProfileId : partnerProfileId,
         toProfileId: iOwe ? partnerProfileId : myProfileId,
-        amount: absNet,
+        amount,
         note,
       });
       await qc.invalidateQueries({ queryKey: ['couple-balance'] });
       await qc.invalidateQueries({ queryKey: ['couple-transactions'] });
-      toast.success('¡Saldo saldado! Balance en cero ✓');
+      const remaining = absNet - amount;
+      toast.success(
+        remaining <= 0
+          ? '¡Saldo saldado! Balance en cero ✓'
+          : `Pago parcial registrado. Queda ${fmt(remaining)} ✓`,
+      );
       onClose();
       setNote('');
     } catch {
@@ -92,8 +109,8 @@ function SettleUpSheet({
         <h2 className="text-xl font-black mb-1" style={{ color: '#2D2D2D' }}>Saldar deuda</h2>
         <p className="text-sm mb-5" style={{ color: '#6B6459' }}>
           {iOwe
-            ? `Le pagás ${formatARS(absNet)} a ${partnerName}`
-            : `${partnerName} te paga ${formatARS(absNet)}`}
+            ? `Le pagás a ${partnerName} (debés ${fmt(absNet)})`
+            : `${partnerName} te paga (te debe ${fmt(absNet)})`}
         </p>
 
         <div
@@ -101,12 +118,38 @@ function SettleUpSheet({
           style={{ background: iOwe ? '#FFE7E2' : '#E4F2EA' }}
         >
           <p className="text-3xl font-black" style={{ color: iOwe ? '#E5604C' : '#5BA886' }}>
-            {formatARS(absNet)}
+            {fmt(amount)}
           </p>
           <p className="text-xs mt-1" style={{ color: iOwe ? '#E5604C' : '#5BA886', opacity: 0.75 }}>
             {iOwe ? `${myName} → ${partnerName}` : `${partnerName} → ${myName}`}
           </p>
         </div>
+
+        {/* Amount — defaults to the full balance; lower it for a partial payment */}
+        <p className="text-xs font-bold mb-1.5" style={{ color: '#6B6459' }}>¿Cuánto pagás? (ARS)</p>
+        <div className="flex items-center gap-2 mb-2">
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder={String(absNet)}
+            value={amountStr}
+            onChange={(e) => setAmountStr(e.target.value)}
+            className="flex-1 px-4 py-3 rounded-2xl text-sm border bg-white outline-none"
+            style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+          />
+          <button
+            onClick={() => setAmountStr('')}
+            className="px-3 py-3 rounded-2xl text-xs font-bold border"
+            style={{ borderColor: '#ECE5DC', color: '#6B6459', background: '#FFFFFF' }}
+          >
+            Todo
+          </button>
+        </div>
+        {isPartial && (
+          <p className="text-xs mb-3" style={{ color: '#6B6459' }}>
+            Pago parcial — quedará un saldo de {fmt(absNet - amount)}.
+          </p>
+        )}
 
         <input
           type="text"
@@ -119,11 +162,11 @@ function SettleUpSheet({
 
         <button
           onClick={handleSettle}
-          disabled={saving || absNet === 0}
+          disabled={saving || amount <= 0}
           className="w-full py-4 rounded-2xl text-lg font-black text-white disabled:opacity-40"
           style={{ background: '#FF7F6B' }}
         >
-          {saving ? 'Guardando…' : 'Confirmar pago'}
+          {saving ? 'Guardando…' : isPartial ? 'Registrar pago parcial' : 'Confirmar pago'}
         </button>
       </div>
     </div>
@@ -211,9 +254,10 @@ export default function ParejaClient({
   const sharedCats = Object.values(sharedByCategory).sort((a, b) => b.amount - a.amount);
 
   const absNet = Math.abs(net);
-  const partnerOwesMe = net > 0;
-  const iOwePartner = net < 0;
-  const balanced = net === 0;
+  // Splits are rounded ARS, so treat sub-peso residue as settled.
+  const balanced = absNet < 1;
+  const partnerOwesMe = !balanced && net > 0;
+  const iOwePartner = !balanced && net < 0;
 
   const f = (n: number) =>
     showUSD && arsPerUsd > 0
@@ -339,7 +383,7 @@ export default function ParejaClient({
           </p>
           <div className="flex flex-col gap-2">
             {sharedCats.map((cat) => {
-              const pct = totalExpenses > 0 ? cat.amount / totalExpenses : 0;
+              const pct = sharedExpenses > 0 ? cat.amount / sharedExpenses : 0;
               return (
                 <div key={cat.name}>
                   <div className="flex items-center justify-between mb-1">
@@ -388,6 +432,7 @@ export default function ParejaClient({
           householdId={profile.household_id}
           myProfileId={profile.id}
           partnerProfileId={partner.id}
+          fmt={f}
         />
       )}
 

@@ -36,6 +36,14 @@ interface Rule {
   scope: string;
   profile_id: string;
   category_id: string | null;
+  account_id: string | null;
+}
+
+interface AccountOption {
+  id: string;
+  name: string;
+  type: string;
+  owner_profile_id?: string | null;
 }
 
 // A rule's amount is stored in its own currency. Format it accordingly,
@@ -85,7 +93,7 @@ function daysUntil(dateStr: string): number {
   return Math.round((d.getTime() - today.getTime()) / 86400000);
 }
 
-function UpcomingBills({ rules }: { rules: Rule[] }) {
+function UpcomingBills({ rules, onEdit }: { rules: Rule[]; onEdit: (r: Rule) => void }) {
   const { arsPerUsd } = useFx();
   const upcoming = rules
     .filter((r) => r.active && r.next_run != null && daysUntil(r.next_run) >= 0 && daysUntil(r.next_run) <= 35)
@@ -114,7 +122,12 @@ function UpcomingBills({ rules }: { rules: Rule[] }) {
           const d = daysUntil(r.next_run!);
           const soon = d <= 3;
           return (
-            <div key={r.id} className="flex items-center gap-3">
+            <button
+              key={r.id}
+              onClick={() => onEdit(r)}
+              aria-label={`Editar ${r.label}`}
+              className="flex items-center gap-3 w-full text-left active:scale-[0.99] transition-transform"
+            >
               <div
                 className="w-9 h-9 rounded-full flex items-center justify-center text-sm flex-shrink-0"
                 style={{ background: r.direction === 'income' ? '#E4F2EA' : soon ? '#FFE7E2' : '#F0EDE8' }}
@@ -128,7 +141,8 @@ function UpcomingBills({ rules }: { rules: Rule[] }) {
               <p className="text-sm font-black flex-shrink-0" style={{ color: r.direction === 'income' ? '#7EC8A4' : '#FF7F6B' }}>
                 {r.direction === 'income' ? '+' : '-'}{fmtMoney(r.amount, r.currency)}
               </p>
-            </div>
+              <span className="text-[11px] flex-shrink-0" style={{ color: '#C4B9AE' }}>✏️</span>
+            </button>
           );
         })}
       </div>
@@ -228,10 +242,12 @@ function nextRunFromAnchor(cadence: string, anchorDay: number): string {
 
 function RuleForm({
   initial,
+  accounts,
   onSave,
   onCancel,
 }: {
   initial?: Partial<Rule>;
+  accounts: AccountOption[];
   onSave: (data: Omit<Rule, 'id' | 'profile_id'>) => void;
   onCancel: () => void;
 }) {
@@ -249,6 +265,7 @@ function RuleForm({
   );
   const [scope, setScope] = useState(initial?.scope ?? 'personal');
   const [active, setActive] = useState(initial?.active ?? true);
+  const [accountId, setAccountId] = useState<string>(initial?.account_id ?? '');
 
   function handleSave() {
     const amount = parseMoney(amountStr);
@@ -257,8 +274,13 @@ function RuleForm({
       return;
     }
     const anchor = parseInt(anchorDay, 10) || 1;
-    const next_run = nextRunFromAnchor(cadence, anchor);
-    onSave({ direction, label: label.trim(), amount, currency, cadence, anchor_day: anchor, next_run, scope, active, category_id: initial?.category_id ?? null });
+    // Only recompute the next run when the schedule actually changed. Editing
+    // just the amount/label of an existing rule should keep its current cycle
+    // (otherwise the date jumped forward and the projection shifted).
+    const scheduleChanged = initial?.cadence !== cadence || initial?.anchor_day !== anchor;
+    const next_run =
+      initial?.next_run && !scheduleChanged ? initial.next_run : nextRunFromAnchor(cadence, anchor);
+    onSave({ direction, label: label.trim(), amount, currency, cadence, anchor_day: anchor, next_run, scope, active, category_id: initial?.category_id ?? null, account_id: accountId || null });
   }
 
   return (
@@ -392,6 +414,24 @@ function RuleForm({
         {scope === 'household' ? '🏠 Hogar' : '👤 Personal'}
       </button>
 
+      {/* Account — where this rule credits (income) or debits (expense) */}
+      <div>
+        <p className="text-xs font-semibold mb-1" style={{ color: '#6B6459' }}>
+          {direction === 'income' ? 'Se acredita en' : 'Se debita de'}
+        </p>
+        <select
+          value={accountId}
+          onChange={(e) => setAccountId(e.target.value)}
+          className="w-full px-4 py-2.5 rounded-xl text-sm border outline-none bg-white"
+          style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+        >
+          <option value="">Sin cuenta</option>
+          {accounts.map((a) => (
+            <option key={a.id} value={a.id}>{a.name}</option>
+          ))}
+        </select>
+      </div>
+
       {/* Active toggle */}
       <button
         onClick={() => setActive((v) => !v)}
@@ -454,7 +494,7 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('recurring_rules')
-        .select('id, direction, label, amount, currency, cadence, anchor_day, next_run, active, scope, profile_id, category_id')
+        .select('id, direction, label, amount, currency, cadence, anchor_day, next_run, active, scope, profile_id, category_id, account_id')
         .eq('household_id', profile.household_id)
         .order('direction')
         .order('label');
@@ -518,7 +558,9 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
         <div className="flex-1 min-w-0">
           <p className="font-bold text-sm truncate" style={{ color: '#2D2D2D' }}>{rule.label}</p>
           <p className="text-xs" style={{ color: '#6B6459' }}>
-            {CADENCE_LABEL[rule.cadence]} · día {rule.anchor_day}
+            {rule.cadence === 'weekly'
+              ? `${CADENCE_LABEL[rule.cadence]} · ${WEEKDAYS[rule.anchor_day ?? 0]}`
+              : `${CADENCE_LABEL[rule.cadence]} · día ${rule.anchor_day}`}
             {rule.next_run ? ` · próx. ${rule.next_run}` : ''}
             {!rule.active ? ' · inactiva' : ''}
           </p>
@@ -557,8 +599,8 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
       </header>
 
       <div className="px-4 flex flex-col gap-4">
-        {/* Upcoming bills this month */}
-        {!showForm && !editRule && <UpcomingBills rules={rules} />}
+        {/* Upcoming bills this month — tap one to edit it */}
+        {!showForm && !editRule && <UpcomingBills rules={rules} onEdit={(r) => setEditRule(r)} />}
 
         {/* Monthly summary */}
         {!showForm && !editRule && rules.length > 0 && <FixedSummaryCard rules={rules} />}
@@ -566,6 +608,7 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
         {/* New rule form */}
         {showForm && !editRule && (
           <RuleForm
+            accounts={accounts}
             onSave={(data) => createMutation.mutate(data)}
             onCancel={() => setShowForm(false)}
           />
@@ -574,6 +617,7 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
         {editRule && (
           <RuleForm
             initial={editRule}
+            accounts={accounts}
             onSave={(data) => updateMutation.mutate({ id: editRule.id, data })}
             onCancel={() => setEditRule(null)}
           />

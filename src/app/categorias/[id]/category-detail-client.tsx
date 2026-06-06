@@ -51,6 +51,8 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
   const today = new Date();
   const months = lastSixMonths(today);
   const currentKey = months[months.length - 1].key;
+  // Which month's transactions / item breakdown to show (tap a bar to drill in).
+  const [selectedMonth, setSelectedMonth] = useState(currentKey);
   const rangeStart = `${months[0].key}-01`;
   const accent = category.color || (category.kind === 'income' ? '#7EC8A4' : '#FF7F6B');
 
@@ -68,17 +70,21 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
     },
   });
 
-  // Active budget for this category
+  // Active budget for this category, normalized to ARS (USD budgets converted at
+  // the blue rate) so it lines up with the ARS-normalized monthly spend below.
   const { data: budget = 0 } = useQuery<number>({
-    queryKey: ['category-budget', category.id],
+    queryKey: ['category-budget', category.id, arsPerUsd],
     queryFn: async () => {
       const { data } = await supabase
         .from('budgets')
-        .select('amount')
+        .select('amount, currency')
         .eq('household_id', profile.household_id)
         .eq('category_id', category.id)
         .eq('active', true);
-      return (data ?? []).reduce((s, b) => s + b.amount, 0);
+      return (data ?? []).reduce(
+        (s, b) => s + (b.currency === 'USD' && arsPerUsd > 0 ? Math.round(b.amount * arsPerUsd) : b.amount),
+        0,
+      );
     },
   });
 
@@ -95,12 +101,16 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
     },
   });
 
-  const thisMonthTxIds = new Set(txns.filter((t) => t.occurred_on.startsWith(currentKey)).map((t) => t.id));
+  // line_total is in the parent transaction's currency, so normalize to ARS
+  // before summing (otherwise a USD receipt's items pollute the ARS totals).
+  const txCurrencyById = new Map(txns.map((t) => [t.id, t.currency]));
+  const selectedMonthTxIds = new Set(txns.filter((t) => t.occurred_on.startsWith(selectedMonth)).map((t) => t.id));
   const groupTotals = (() => {
     const map = new Map<string, number>();
     for (const it of items) {
-      if (!thisMonthTxIds.has(it.transaction_id)) continue;
-      map.set(it.item_group, (map.get(it.item_group) ?? 0) + it.line_total);
+      if (!selectedMonthTxIds.has(it.transaction_id)) continue;
+      const cur = txCurrencyById.get(it.transaction_id) ?? 'ARS';
+      map.set(it.item_group, (map.get(it.item_group) ?? 0) + toArs(it.line_total, cur));
     }
     const total = [...map.values()].reduce((a, b) => a + b, 0);
     return { rows: [...map.entries()].map(([g, v]) => ({ g, v, pct: total > 0 ? v / total : 0 })).sort((a, b) => b.v - a.v), total };
@@ -128,7 +138,9 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
   const pct = budget > 0 ? thisMonth / budget : 0;
   const barCol = pct >= 1 ? '#FF7F6B' : pct >= 0.8 ? '#F5A623' : accent;
 
-  const thisMonthTx = txns.filter((t) => t.occurred_on.startsWith(currentKey));
+  const selectedMonthTx = txns.filter((t) => t.occurred_on.startsWith(selectedMonth));
+  const selectedMonthLabel = months.find((m) => m.key === selectedMonth)?.label ?? '';
+  const isCurrentMonth = selectedMonth === currentKey;
 
   function fmtDate(d: string) {
     return new Date(d + 'T00:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
@@ -165,16 +177,18 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
           )}
         </div>
 
-        {/* 6-month evolution */}
+        {/* 6-month evolution — tap a bar to drill into that month */}
         <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
           <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>Evolución · 6 meses</p>
-          <SingleBars rows={monthRows} color={accent} />
+          <SingleBars rows={monthRows} color={accent} onSelect={setSelectedMonth} selectedKey={selectedMonth} />
         </div>
 
         {/* In what the money went — from scanned receipts */}
         {groupTotals.rows.length > 0 && (
           <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>En qué se fue · este mes</p>
+            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>
+              En qué se fue · {isCurrentMonth ? 'este mes' : selectedMonthLabel}
+            </p>
             <div className="flex flex-col gap-2.5">
               {groupTotals.rows.map(({ g, v, pct }) => {
                 const meta = GROUP_META[g] ?? GROUP_META.otros;
@@ -197,14 +211,16 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
           </div>
         )}
 
-        {/* This month's movements */}
+        {/* Selected month's movements */}
         <div>
-          <p className="text-sm font-black mb-2 px-1" style={{ color: '#2D2D2D' }}>Movimientos de este mes</p>
-          {thisMonthTx.length === 0 ? (
-            <EmptyState icon={category.icon} title="Sin movimientos" subtitle="No hay registros en esta categoría este mes." />
+          <p className="text-sm font-black mb-2 px-1" style={{ color: '#2D2D2D' }}>
+            Movimientos de {isCurrentMonth ? 'este mes' : selectedMonthLabel}
+          </p>
+          {selectedMonthTx.length === 0 ? (
+            <EmptyState icon={category.icon} title="Sin movimientos" subtitle={`No hay registros en esta categoría en ${isCurrentMonth ? 'este mes' : selectedMonthLabel}.`} />
           ) : (
             <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
-              {thisMonthTx.map((tx, i) => (
+              {selectedMonthTx.map((tx, i) => (
                 <button
                   key={tx.id}
                   onClick={() => { setEditTx(tx); setSheetOpen(true); }}

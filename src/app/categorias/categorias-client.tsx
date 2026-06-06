@@ -49,6 +49,10 @@ export default function CategoriasClient({ profile }: { profile: Profile }) {
   });
 
   const monthStart = monthKey() + '-01';
+  // Last day of the current month, so future-dated rows (later installments)
+  // don't inflate this month's per-category totals.
+  const monthEndDate = new Date();
+  const monthEnd = `${monthEndDate.getFullYear()}-${String(monthEndDate.getMonth() + 1).padStart(2, '0')}-${String(new Date(monthEndDate.getFullYear(), monthEndDate.getMonth() + 1, 0).getDate()).padStart(2, '0')}`;
 
   // This month's totals per category (expense + income).
   // Own key (not the Home's 'spent-by-category', which is expenses-only) so the
@@ -60,7 +64,8 @@ export default function CategoriasClient({ profile }: { profile: Profile }) {
         .from('transactions')
         .select('category_id, amount, currency')
         .eq('household_id', profile.household_id)
-        .gte('occurred_on', monthStart);
+        .gte('occurred_on', monthStart)
+        .lte('occurred_on', monthEnd);
       const map: Record<string, number> = {};
       for (const t of data ?? []) {
         if (!t.category_id) continue;
@@ -71,18 +76,21 @@ export default function CategoriasClient({ profile }: { profile: Profile }) {
     },
   });
 
-  // Active budget amount per category (summed across scopes).
+  // Active budget amount per category (summed across scopes), normalized to ARS
+  // so a USD budget is compared against the ARS-normalized spend above instead
+  // of being read as pesos (which marked any USD budget "Excedido" instantly).
   const { data: budgetByCategory = {} } = useQuery<Record<string, number>>({
-    queryKey: ['budgets', profile.household_id],
+    queryKey: ['budgets', profile.household_id, arsPerUsd],
     queryFn: async () => {
       const { data } = await supabase
         .from('budgets')
-        .select('category_id, amount')
+        .select('category_id, amount, currency')
         .eq('household_id', profile.household_id)
         .eq('active', true);
       const map: Record<string, number> = {};
       for (const b of data ?? []) {
-        map[b.category_id] = (map[b.category_id] ?? 0) + b.amount;
+        const amt = b.currency === 'USD' && arsPerUsd > 0 ? Math.round(b.amount * arsPerUsd) : b.amount;
+        map[b.category_id] = (map[b.category_id] ?? 0) + amt;
       }
       return map;
     },

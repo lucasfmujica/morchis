@@ -19,8 +19,9 @@ export function CoupleBalanceChip({ householdId, myProfileId, partnerProfileId, 
   if (!partnerProfileId || loading) return null;
 
   const absNet = Math.abs(net);
-  const balanced = net === 0;
-  const partnerOwesMe = net > 0;
+  // Splits are rounded ARS, so treat sub-peso residue as settled.
+  const balanced = absNet < 1;
+  const partnerOwesMe = !balanced && net > 0;
   const amt = hideAmounts ? '••••••' : formatARS(absNet);
 
   const bg = balanced ? '#ECE5DC' : partnerOwesMe ? '#E4F2EA' : '#FFE7E2';

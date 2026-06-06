@@ -12,9 +12,12 @@ import { PrimaryButton } from '@/components/PrimaryButton';
 import { EmptyState } from '@/components/EmptyState';
 import {
   spentForBudget as computeSpentForBudget,
+  myShareArs,
+  toArs as toArsLib,
   BUDGET_EXPENSE_SELECT,
   type BudgetExpenseRow,
 } from '@/lib/budgets';
+import { weekRange, shortDM } from '@/lib/date';
 
 interface Profile {
   id: string;
@@ -31,6 +34,7 @@ interface Budget {
   amount: number;
   currency: string;
   active: boolean;
+  period: string;
 }
 
 interface Category {
@@ -99,6 +103,7 @@ function BudgetSheet({
     (editing?.scope as 'personal' | 'household') ?? 'personal',
   );
   const [currency, setCurrency] = useState<'ARS' | 'USD'>((editing?.currency as 'ARS' | 'USD') ?? 'ARS');
+  const [period, setPeriod] = useState<'monthly' | 'weekly'>((editing?.period as 'monthly' | 'weekly') ?? 'monthly');
   const [saving, setSaving] = useState(false);
 
   async function save() {
@@ -111,7 +116,7 @@ function BudgetSheet({
       profile_id: scope === 'personal' ? profileId : null,
       amount: parseMoney(amount),
       currency,
-      period: 'monthly',
+      period,
       active: true,
     };
     if (editing) {
@@ -156,6 +161,24 @@ function BudgetSheet({
           ))}
         </div>
 
+        {/* Period */}
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Período</p>
+        <div className="flex rounded-2xl overflow-hidden mb-4 p-1 gap-1" style={{ background: '#ECE5DC' }}>
+          {(['monthly', 'weekly'] as const).map((p) => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className="flex-1 py-1.5 text-xs font-bold rounded-xl transition-colors"
+              style={{
+                background: period === p ? '#FFFFFF' : 'transparent',
+                color: period === p ? '#2D2D2D' : '#6B6459',
+              }}
+            >
+              {p === 'monthly' ? 'Mensual' : 'Semanal (Lun–Dom)'}
+            </button>
+          ))}
+        </div>
+
         {/* Category */}
         <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Categoría</p>
         <div className="flex flex-wrap gap-2 mb-4 max-h-40 overflow-y-auto">
@@ -194,7 +217,9 @@ function BudgetSheet({
         </div>
 
         {/* Amount */}
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Límite mensual ({currency})</p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>
+          Límite {period === 'weekly' ? 'semanal' : 'mensual'} ({currency})
+        </p>
         <MoneyInput
           value={parseMoney(amount)}
           onChange={(n) => setAmount(n ? String(n) : '')}
@@ -232,6 +257,13 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
 
   const now = new Date();
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  // End of the current month, so a future-dated row (e.g. an installment booked
+  // for a later month) doesn't inflate this month's budget spend / alerts.
+  const monthEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, '0')}`;
+  const week = weekRange(now);
+  // Load enough rows to cover both windows (the week can straddle a month edge).
+  const rowsStart = week.start < monthStart ? week.start : monthStart;
+  const rowsEnd = week.end > monthEnd ? week.end : monthEnd;
 
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: ['categories', profile.household_id],
@@ -275,14 +307,15 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   // personal budgets count only the owner's *share* of each expense — including
   // their part of shared expenses, no matter who actually paid.
   const { data: expenseRows = [] } = useQuery<BudgetExpenseRow[]>({
-    queryKey: ['budget-expense-rows', profile.household_id, monthStart],
+    queryKey: ['budget-expense-rows', profile.household_id, rowsStart, rowsEnd],
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
         .select(BUDGET_EXPENSE_SELECT)
         .eq('household_id', profile.household_id)
         .eq('type', 'expense')
-        .gte('occurred_on', monthStart);
+        .gte('occurred_on', rowsStart)
+        .lte('occurred_on', rowsEnd);
       return (data ?? []) as BudgetExpenseRow[];
     },
   });
@@ -291,9 +324,33 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   const toArs = (amount: number, currency: string) =>
     currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount;
 
-  function spentForBudget(b: Budget): number {
-    return computeSpentForBudget(b, expenseRows, profile.id, arsPerUsd);
+  // Rows inside a budget's period window. A weekly budget only counts Mon–Sun
+  // of the current week; a monthly one counts the whole month.
+  function rowsForPeriod(p: string): BudgetExpenseRow[] {
+    const [from, to] = p === 'weekly' ? [week.start, week.end] : [monthStart, monthEnd];
+    return expenseRows.filter((r) => r.occurred_on != null && r.occurred_on >= from && r.occurred_on <= to);
   }
+
+  function spentForBudget(b: Budget): number {
+    return computeSpentForBudget(b, rowsForPeriod(b.period), profile.id, arsPerUsd);
+  }
+
+  // "Esta semana" total for the active scope: my own share when on the Personal
+  // tab, the combined household spend on the Nuestro tab.
+  const weekRows = expenseRows.filter(
+    (r) => r.occurred_on != null && r.occurred_on >= week.start && r.occurred_on <= week.end,
+  );
+  const weekSpend = weekRows.reduce((sum, r) => {
+    if (tab === 'household') {
+      return r.scope === 'household' ? sum + toArsLib(r.amount, r.currency, arsPerUsd) : sum;
+    }
+    if (r.is_shared) return sum + myShareArs(r, profile.id, arsPerUsd);
+    // Non-shared: my spend when I fronted it — a solo expense or a household one
+    // I paid without dividing (mirrors spentForBudget).
+    return r.profile_id === profile.id
+      ? sum + toArsLib(r.amount, r.currency, arsPerUsd)
+      : sum;
+  }, 0);
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -349,6 +406,23 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
         ))}
       </div>
 
+      {/* This week's spend (Mon–Sun) */}
+      <div className="mx-4 mb-4 rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>
+              {tab === 'household' ? 'Gastos de la semana' : 'Gastaste esta semana'}
+            </p>
+            <p className="text-[11px]" style={{ color: '#6B6459' }}>
+              Lun {shortDM(week.start)} – Dom {shortDM(week.end)}
+            </p>
+          </div>
+          <p className="text-2xl font-black" style={{ color: '#FF7F6B', fontVariantNumeric: 'tabular-nums' }}>
+            {formatARS(weekSpend)}
+          </p>
+        </div>
+      </div>
+
       {/* Budget cards */}
       <div className="px-4 flex flex-col gap-3">
         {filteredBudgets.length === 0 ? (
@@ -371,7 +445,15 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
                   <div className="flex items-center gap-2">
                     <span className="text-2xl">{cat?.icon ?? '📦'}</span>
                     <div>
-                      <p className="font-bold text-sm" style={{ color: '#2D2D2D' }}>{cat?.name ?? '—'}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-bold text-sm" style={{ color: '#2D2D2D' }}>{cat?.name ?? '—'}</p>
+                        <span
+                          className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                          style={{ background: '#ECE5DC', color: '#6B6459' }}
+                        >
+                          {b.period === 'weekly' ? 'Semanal' : 'Mensual'}
+                        </span>
+                      </div>
                       {over && (
                         <span
                           className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"

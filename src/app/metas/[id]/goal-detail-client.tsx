@@ -9,6 +9,7 @@ import { todayISO } from '@/lib/date';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { useFx } from '@/hooks/useFx';
+import { toast } from 'sonner';
 
 interface Profile {
   id: string;
@@ -174,25 +175,36 @@ function AportarSheet({
   const [saving, setSaving] = useState(false);
 
   const amountNum = parseMoney(amount);
-  const amountArs = inputCurrency === 'USD' ? usdToArs(amountNum, arsPerUsd) : amountNum;
+  // Store the contribution in the goal's own currency, converting only when the
+  // input currency differs. The goal then accumulates in its target currency, so
+  // a USD goal's progress never swings with the daily blue rate.
+  const amountInGoalCurrency =
+    inputCurrency === goal.target_currency
+      ? amountNum
+      : inputCurrency === 'USD'
+        ? usdToArs(amountNum, arsPerUsd) // input USD, goal ARS
+        : arsToUsd(amountNum, arsPerUsd); // input ARS, goal USD
 
   async function save() {
     if (!amountNum) return;
     setSaving(true);
 
-    const newCurrentAmount = goal.current_amount + amountArs;
-
-    await supabase.from('goal_contributions').insert({
+    // current_amount is kept in sync by a DB trigger on goal_contributions, so
+    // we only insert the contribution — no manual read-modify-write (which raced
+    // when both partners contributed at once).
+    const { error } = await supabase.from('goal_contributions').insert({
       goal_id: goal.id,
       profile_id: profileId,
-      amount: amountArs,
+      amount: amountInGoalCurrency,
       occurred_on: todayISO(),
       note: note || null,
     });
 
-    await supabase.from('goals').update({ current_amount: newCurrentAmount }).eq('id', goal.id);
-
     setSaving(false);
+    if (error) {
+      toast.error('No se pudo registrar el aporte. Intentá de nuevo.');
+      return;
+    }
     onSaved();
     onClose();
   }
@@ -207,7 +219,7 @@ function AportarSheet({
         <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
         <h2 className="text-lg font-black mb-1" style={{ color: '#2D2D2D' }}>Aportar a {goal.name}</h2>
         <p className="text-sm mb-5" style={{ color: '#6B6459' }}>
-          Tenés {goal.target_currency === 'USD' ? formatUSD(arsToUsd(goal.current_amount, arsPerUsd)) : formatARS(goal.current_amount)} de{' '}
+          Tenés {goal.target_currency === 'USD' ? formatUSD(goal.current_amount) : formatARS(goal.current_amount)} de{' '}
           {goal.target_currency === 'USD' ? formatUSD(goal.target_amount) : formatARS(goal.target_amount)}
         </p>
 
@@ -237,7 +249,7 @@ function AportarSheet({
         />
         {inputCurrency === 'USD' && amountNum > 0 && (
           <p className="text-xs mb-3 font-semibold" style={{ color: '#6B6459' }}>
-            ≈ {formatARS(amountArs)} al tipo de cambio blue
+            ≈ {formatARS(usdToArs(amountNum, arsPerUsd))} al tipo de cambio blue
           </p>
         )}
 
@@ -270,7 +282,7 @@ export default function GoalDetailClient({ goalId, profile }: { goalId: string; 
   const supabase = createClient();
   const qc = useQueryClient();
   const router = useRouter();
-  const { arsPerUsd, format, secondary } = useFx();
+  const { arsPerUsd } = useFx();
   const [aportarOpen, setAportarOpen] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const prevDoneRef = useRef(false);
@@ -298,13 +310,15 @@ export default function GoalDetailClient({ goalId, profile }: { goalId: string; 
   // Trigger confetti when goal just became complete
   useEffect(() => {
     if (!goal) return;
-    const targetArs = goal.target_currency === 'USD' ? usdToArs(goal.target_amount, arsPerUsd) : goal.target_amount;
-    const done = targetArs > 0 && goal.current_amount >= targetArs;
+    // Progress is in the goal's own currency, so completion is a plain compare
+    // (no FX) — the confetti no longer fires/unfires as the blue rate moves.
+    const done = goal.target_amount > 0 && goal.current_amount >= goal.target_amount;
     if (done && !prevDoneRef.current) {
       setShowConfetti(true);
     }
     prevDoneRef.current = done;
-  }, [goal, arsPerUsd]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goal]);
 
   function handleSaved() {
     qc.invalidateQueries({ queryKey: ['goal', goalId] });
@@ -321,13 +335,18 @@ export default function GoalDetailClient({ goalId, profile }: { goalId: string; 
     );
   }
 
-  const targetArs = goal.target_currency === 'USD' ? usdToArs(goal.target_amount, arsPerUsd) : goal.target_amount;
-  const pct = targetArs > 0 ? Math.min(goal.current_amount / targetArs, 1) : 0;
+  // Everything is in the goal's own currency now.
+  const fmtGoal = (n: number) => (goal.target_currency === 'USD' ? formatUSD(n) : formatARS(n));
+  const pct = goal.target_amount > 0 ? Math.min(goal.current_amount / goal.target_amount, 1) : 0;
   const done = pct >= 1;
 
-  const targetDisplay = goal.target_currency === 'USD' ? formatUSD(goal.target_amount) : formatARS(goal.target_amount);
-  const currentArsDisplay = format(goal.current_amount);
-  const currentSecondary = secondary(goal.current_amount);
+  const targetDisplay = fmtGoal(goal.target_amount);
+  const currentArsDisplay = fmtGoal(goal.current_amount);
+  // Secondary line shows the rough equivalent in the other currency.
+  const currentSecondary =
+    goal.target_currency === 'USD'
+      ? `≈ ${formatARS(usdToArs(goal.current_amount, arsPerUsd))}`
+      : `≈ ${formatUSD(arsToUsd(goal.current_amount, arsPerUsd))}`;
 
   // On-track logic
   const now = new Date();
@@ -402,12 +421,12 @@ export default function GoalDetailClient({ goalId, profile }: { goalId: string; 
         </div>
 
         {/* Stats row */}
-        {!done && targetArs > 0 && (
+        {!done && goal.target_amount > 0 && (
           <div className="flex justify-between mt-3">
             <div>
               <p className="text-xs" style={{ color: '#6B6459' }}>Falta</p>
               <p className="text-sm font-black" style={{ color: '#2D2D2D' }}>
-                {format(Math.max(0, targetArs - goal.current_amount))}
+                {fmtGoal(Math.max(0, goal.target_amount - goal.current_amount))}
               </p>
             </div>
             <div className="text-right">
@@ -458,7 +477,7 @@ export default function GoalDetailClient({ goalId, profile }: { goalId: string; 
                   )}
                 </div>
                 <p className="text-sm font-black tabular-nums" style={{ color: goal.color || '#7EC8A4' }}>
-                  +{format(c.amount)}
+                  +{fmtGoal(c.amount)}
                 </p>
               </div>
             ))}

@@ -40,6 +40,7 @@ interface Budget {
   amount: number;
   currency: string | null;
   profile_id: string | null;
+  period?: string;
 }
 
 function toArs(amount: number, currency: string | null | undefined, rate: number): number {
@@ -66,7 +67,9 @@ function spentForBudget(b: Budget, rows: ExpenseRow[], rate: number): number {
         return t.scope === "household" ? sum + toArs(t.amount, t.currency, rate) : sum;
       }
       if (t.is_shared) return sum + myShareArs(t, owner, rate);
-      return t.scope === "personal" && t.profile_id === owner ? sum + toArs(t.amount, t.currency, rate) : sum;
+      // Non-shared: the owner's spend when they fronted it — a solo expense or a
+      // household one they paid without dividing (mirrors the in-app helper).
+      return t.profile_id === owner ? sum + toArs(t.amount, t.currency, rate) : sum;
     }, 0);
 }
 
@@ -100,13 +103,17 @@ Deno.serve(async (req) => {
     const now = new Date();
     const period = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
     const monthStart = `${period}-01`;
+    // Cap at month end so a future-month installment cuota doesn't inflate spend
+    // and fire a false over-budget alert.
+    const lastDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
+    const monthEnd = `${period}-${String(lastDay).padStart(2, "0")}`;
 
     const [{ data: budgets }, { data: rows }, { data: fx }] = await Promise.all([
-      admin.from("budgets").select("id, category_id, scope, amount, currency, profile_id")
+      admin.from("budgets").select("id, category_id, scope, amount, currency, profile_id, period")
         .eq("household_id", householdId).eq("active", true),
       admin.from("transactions")
         .select("category_id, amount, currency, scope, profile_id, is_shared, splits(payer_profile_id, ower_profile_id, amount)")
-        .eq("household_id", householdId).eq("type", "expense").gte("occurred_on", monthStart),
+        .eq("household_id", householdId).eq("type", "expense").gte("occurred_on", monthStart).lte("occurred_on", monthEnd),
       admin.from("fx_rates").select("ars_per_usd").eq("source", "blue").order("date", { ascending: false }).limit(1).maybeSingle(),
     ]);
 
@@ -128,6 +135,10 @@ Deno.serve(async (req) => {
 
     let sent = 0;
     for (const b of activeBudgets) {
+      // Weekly budgets are tracked in-app; their push alerts (with a weekly
+      // window + weekly dedupe) are a separate follow-up, so skip them here to
+      // avoid firing a false alert computed over the whole month.
+      if (b.period === "weekly") continue;
       const limit = toArs(b.amount, b.currency, rate);
       if (limit <= 0) continue;
       const spent = spentForBudget(b, expenseRows, rate);
