@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { toast } from 'sonner';
+import Link from 'next/link';
 
 interface Insight {
   id: string;
@@ -120,9 +121,10 @@ export default function InsightsClient({ householdId, profileId }: { householdId
         {insights.map(insight => {
           const s = SEVERITY_STYLE[insight.severity] ?? SEVERITY_STYLE.info;
           return (
-            <div
+            <Link
               key={insight.id}
-              className="rounded-3xl p-5"
+              href={`/insights/${insight.id}`}
+              className="block rounded-3xl p-5"
               style={{ background: s.bg, border: `1px solid ${s.border}` }}
             >
               <div className="flex items-start gap-3">
@@ -140,12 +142,18 @@ export default function InsightsClient({ householdId, profileId }: { householdId
                         {insight.period}
                       </span>
                     )}
+                    {!insight.seen && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: s.color, color: '#FFFFFF' }}>
+                        nuevo
+                      </span>
+                    )}
                   </div>
                   <p className="font-black text-sm leading-tight" style={{ color: s.color }}>{insight.title}</p>
                   <p className="text-xs mt-1 leading-snug" style={{ color: s.color, opacity: 0.85 }}>{insight.body}</p>
+                  <p className="text-[11px] font-bold mt-2" style={{ color: s.color }}>Ver más →</p>
                 </div>
               </div>
-            </div>
+            </Link>
           );
         })}
       </div>

@@ -186,12 +186,12 @@ const CategoryDonutCard = memo(function CategoryDonutCard({
   const { total, legend } = built;
 
   return (
-    <Link href="/analisis" className="mx-4 rounded-3xl p-5 mb-4 block" style={{ background: '#FFFFFF' }}>
+    <Link href="/analisis/categorias" className="mx-4 rounded-3xl p-5 mb-4 block" style={{ background: '#FFFFFF' }}>
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>
           Gastos por categoría
         </p>
-        <span className="text-xs" style={{ color: '#6B6459' }}>Ver análisis →</span>
+        <span className="text-xs" style={{ color: '#6B6459' }}>Ver detalle →</span>
       </div>
       <div className="flex items-center gap-4">
         <div className="shrink-0">
