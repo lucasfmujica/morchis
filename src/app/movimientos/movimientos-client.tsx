@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
@@ -55,8 +55,11 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   const { format, secondary, toggle, showUSD, arsPerUsd } = useFx();
   // Normalize a stored amount to ARS so USD and ARS movements aggregate together;
   // format()/secondary() then render it in the active display currency.
-  const toArs = (amount: number, currency: string) =>
-    currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount;
+  const toArs = useCallback(
+    (amount: number, currency: string) =>
+      currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount,
+    [arsPerUsd],
+  );
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   const [editTx, setEditTx] = useState<Tx | null>(null);
@@ -179,7 +182,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     const expenses = current.filter((tx) => tx.type === 'expense').reduce((s, tx) => s + toArs(tx.amount, tx.currency), 0);
     const income = current.filter((tx) => tx.type === 'income').reduce((s, tx) => s + toArs(tx.amount, tx.currency), 0);
     return { expenses, income };
-  }, [filtered]);
+  }, [filtered, toArs]);
 
   // Chart data: top 5 categories current vs previous month
   const chartData = useMemo(() => {
@@ -210,7 +213,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       'Este mes': cur,
       'Mes anterior': prevMap.get(id) ?? 0,
     }));
-  }, [scopeFiltered, categories]);
+  }, [scopeFiltered, categories, toArs]);
 
   function handleExport() {
     const filename = `movimientos-${todayISO()}.csv`;

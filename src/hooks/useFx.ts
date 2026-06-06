@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useCurrencyStore } from '@/store/currency';
@@ -36,13 +37,18 @@ export function useFx() {
     return ageDays > 3;
   })();
 
-  function format(ars: number): string {
-    return showUSD ? formatUSD(arsToUsd(ars, arsPerUsd)) : formatARS(ars);
-  }
+  // Stable across renders (only changes with the currency toggle or the rate),
+  // so children memoized on these callbacks don't re-render needlessly.
+  const format = useCallback(
+    (ars: number): string => (showUSD ? formatUSD(arsToUsd(ars, arsPerUsd)) : formatARS(ars)),
+    [showUSD, arsPerUsd],
+  );
 
-  function secondary(ars: number): string {
-    return showUSD ? formatARS(ars) : `≈ ${formatUSD(arsToUsd(ars, arsPerUsd))}`;
-  }
+  const secondary = useCallback(
+    (ars: number): string =>
+      showUSD ? formatARS(ars) : `≈ ${formatUSD(arsToUsd(ars, arsPerUsd))}`,
+    [showUSD, arsPerUsd],
+  );
 
   return { arsPerUsd, rateStale, showUSD, toggle, format, secondary };
 }

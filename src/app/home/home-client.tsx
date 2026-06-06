@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo, useCallback, memo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
@@ -51,7 +51,7 @@ function EyeOffIcon() {
   );
 }
 
-function BudgetSummaryCard({
+const BudgetSummaryCard = memo(function BudgetSummaryCard({
   items,
   hideAmounts,
 }: {
@@ -104,10 +104,10 @@ function BudgetSummaryCard({
       </div>
     </Link>
   );
-}
+});
 
 // Inline SVG sparkline — no external dep needed
-function Sparkline({ values, positive }: { values: number[]; positive: boolean }) {
+const Sparkline = memo(function Sparkline({ values, positive }: { values: number[]; positive: boolean }) {
   if (values.length < 2) return null;
   const w = 120;
   const h = 32;
@@ -133,11 +133,11 @@ function Sparkline({ values, positive }: { values: number[]; positive: boolean }
       />
     </svg>
   );
-}
+});
 
 const DONUT_PALETTE = ['#7EC8A4', '#FF7F6B', '#F5A623', '#6FA8DC', '#B084CC', '#E89AC7', '#5BA886', '#C4B9AE'];
 
-function CategoryDonutCard({
+const CategoryDonutCard = memo(function CategoryDonutCard({
   categories,
   spentByCategory,
   hideAmounts,
@@ -146,28 +146,34 @@ function CategoryDonutCard({
   spentByCategory: Record<string, number>;
   hideAmounts: boolean;
 }) {
-  const catById = new Map(categories.map((c) => [c.id, c]));
-  const rows = Object.entries(spentByCategory)
-    .map(([id, value]) => ({ cat: catById.get(id), value }))
-    .filter((r) => r.cat && r.value > 0)
-    .sort((a, b) => b.value - a.value);
+  // Build the donut once per data change instead of on every parent render.
+  const built = useMemo(() => {
+    const catById = new Map(categories.map((c) => [c.id, c]));
+    const rows = Object.entries(spentByCategory)
+      .map(([id, value]) => ({ cat: catById.get(id), value }))
+      .filter((r) => r.cat && r.value > 0)
+      .sort((a, b) => b.value - a.value);
 
-  if (rows.length === 0) return null;
+    if (rows.length === 0) return null;
 
-  const total = rows.reduce((s, r) => s + r.value, 0);
-  const TOP = 6;
-  const top = rows.slice(0, TOP);
-  const rest = rows.slice(TOP);
-  const restTotal = rest.reduce((s, r) => s + r.value, 0);
+    const total = rows.reduce((s, r) => s + r.value, 0);
+    const TOP = 6;
+    const top = rows.slice(0, TOP);
+    const restTotal = rows.slice(TOP).reduce((s, r) => s + r.value, 0);
 
-  const segments = top.map((r, i) => ({
-    id: r.cat!.id,
-    label: r.cat!.name,
-    value: r.value,
-    color: r.cat!.color || DONUT_PALETTE[i % DONUT_PALETTE.length],
-  }));
-  const legend = [...segments] as { id?: string; label: string; value: number; color: string }[];
-  if (restTotal > 0) legend.push({ label: 'Otras', value: restTotal, color: '#C4B9AE' });
+    const segments = top.map((r, i) => ({
+      id: r.cat!.id,
+      label: r.cat!.name,
+      value: r.value,
+      color: r.cat!.color || DONUT_PALETTE[i % DONUT_PALETTE.length],
+    }));
+    const legend = [...segments] as { id?: string; label: string; value: number; color: string }[];
+    if (restTotal > 0) legend.push({ label: 'Otras', value: restTotal, color: '#C4B9AE' });
+    return { total, legend };
+  }, [categories, spentByCategory]);
+
+  if (!built) return null;
+  const { total, legend } = built;
 
   return (
     <Link href="/analisis" className="mx-4 rounded-3xl p-5 mb-4 block" style={{ background: '#FFFFFF' }}>
@@ -195,9 +201,9 @@ function CategoryDonutCard({
       </div>
     </Link>
   );
-}
+});
 
-function IncomeCard({
+const IncomeCard = memo(function IncomeCard({
   incomeSoFar,
   expensesSoFar,
   incomeRules,
@@ -255,7 +261,7 @@ function IncomeCard({
       )}
     </div>
   );
-}
+});
 
 export default function HomeClient({
   profile,
@@ -278,33 +284,46 @@ export default function HomeClient({
   const [scope, setScope] = useState<'all' | 'me' | 'partner'>('me');
   const name = profile.nickname || profile.display_name || 'Morch';
 
+  const handleFab = useCallback((type: 'expense' | 'income') => {
+    setFabType(type);
+    setSheetOpen(true);
+  }, []);
+
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],
     queryFn: async () => {
       const { data } = await supabase.from('categories').select('id, name, icon, kind, color').eq('household_id', profile.household_id).order('name');
       return data ?? [];
     },
+    // Categories rarely change; keep them fresh for half an hour.
+    staleTime: 1000 * 60 * 30,
   });
 
-  const { data: accounts = [] } = useQuery({
-    queryKey: ['accounts', profile.household_id],
-    queryFn: async () => {
-      const { data } = await supabase.from('accounts').select('id, name, type, owner_profile_id').eq('household_id', profile.household_id).eq('archived', false).order('name');
-      return data ?? [];
-    },
-  });
-
-  // Full accounts + their transactions to compute total balance (net worth).
-  const { data: accountsFull = [] } = useQuery<AccountRow[]>({
+  // One accounts query feeds both the net-worth math (needs all accounts incl.
+  // archived) and the Add-transaction sheet (only active ones). The sheet's
+  // subset is derived below instead of issuing a second query.
+  const { data: accountsFull = [] } = useQuery<(AccountRow & { name: string })[]>({
     queryKey: ['accounts-full', profile.household_id],
     queryFn: async () => {
       const { data } = await supabase
         .from('accounts')
-        .select('id, type, currency, archived, initial_balance, owner_profile_id')
-        .eq('household_id', profile.household_id);
-      return (data ?? []) as AccountRow[];
+        .select('id, name, type, currency, archived, initial_balance, owner_profile_id')
+        .eq('household_id', profile.household_id)
+        .order('name');
+      return (data ?? []) as (AccountRow & { name: string })[];
     },
+    staleTime: 1000 * 60 * 30,
   });
+
+  // Active accounts for the sheet dropdown (archived hidden), derived from the
+  // single accounts query above.
+  const accounts = useMemo(
+    () =>
+      accountsFull
+        .filter((a) => !a.archived)
+        .map((a) => ({ id: a.id, name: a.name, type: a.type, owner_profile_id: a.owner_profile_id })),
+    [accountsFull],
+  );
 
   const { data: accountTx = [] } = useQuery<AccountTx[]>({
     queryKey: ['account-tx', profile.household_id],
@@ -389,84 +408,112 @@ export default function HomeClient({
   // Normalize every amount to ARS (USD × blue rate) so one currency flows through
   // the projection and all the home totals. useFx's format() then renders it in
   // the active currency, so a USD income never shows up as "$" pesos.
-  const toArs = (amount: number, currency?: string | null) =>
-    currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount;
+  const toArs = useCallback(
+    (amount: number, currency?: string | null) =>
+      currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount,
+    [arsPerUsd],
+  );
 
-  const txArs = transactions.map((t) => ({ ...t, amount: toArs(t.amount, t.currency as string | null) }));
-  const rulesArs = rules.map((r) => ({ ...r, amount: toArs(r.amount, r.currency as string | null) }));
+  const txArs = useMemo(
+    () => transactions.map((t) => ({ ...t, amount: toArs(t.amount, t.currency as string | null) })),
+    [transactions, toArs],
+  );
+  const rulesArs = useMemo(
+    () => rules.map((r) => ({ ...r, amount: toArs(r.amount, r.currency as string | null) })),
+    [rules, toArs],
+  );
 
-  const projection = computeProjection(
-    txArs.map((t) => ({
-      type: t.type as 'income' | 'expense' | 'transfer',
-      amount: t.amount,
-      occurred_on: t.occurred_on,
-      profile_id: t.profile_id,
-    })),
-    rulesArs.map((r) => ({
-      direction: r.direction as 'income' | 'expense',
-      amount: r.amount,
-      next_run: r.next_run,
-      active: r.active,
-      profile_id: r.profile_id,
-      cadence: r.cadence as 'weekly' | 'biweekly' | 'monthly' | undefined,
-    })),
-    new Date(),
-    scopeProfileId,
+  // Month-end projection — O(days × rules); only recompute when the inputs or
+  // the active scope change, not on every unrelated render.
+  const projection = useMemo(
+    () =>
+      computeProjection(
+        txArs.map((t) => ({
+          type: t.type as 'income' | 'expense' | 'transfer',
+          amount: t.amount,
+          occurred_on: t.occurred_on,
+          profile_id: t.profile_id,
+        })),
+        rulesArs.map((r) => ({
+          direction: r.direction as 'income' | 'expense',
+          amount: r.amount,
+          next_run: r.next_run,
+          active: r.active,
+          profile_id: r.profile_id,
+          cadence: r.cadence as 'weekly' | 'biweekly' | 'monthly' | undefined,
+        })),
+        new Date(),
+        scopeProfileId,
+      ),
+    [txArs, rulesArs, scopeProfileId],
   );
 
   const { projectedBalance, incomeSoFar, expensesSoFar, dailyBalances } = projection;
   const isPositive = projectedBalance >= 0;
 
-  const incomeRules = rulesArs
-    .filter((r) => r.direction === 'income' && (!scopeProfileId || r.profile_id === scopeProfileId))
-    .map((r) => ({ label: (r.label as string) ?? 'Ingreso', amount: r.amount, cadence: (r.cadence as string) ?? 'monthly' }));
+  const incomeRules = useMemo(
+    () =>
+      rulesArs
+        .filter((r) => r.direction === 'income' && (!scopeProfileId || r.profile_id === scopeProfileId))
+        .map((r) => ({ label: (r.label as string) ?? 'Ingreso', amount: r.amount, cadence: (r.cadence as string) ?? 'monthly' })),
+    [rulesArs, scopeProfileId],
+  );
 
   // Quick-access tile values. The Cuentas total respects the scope: in "Mío" it
   // only counts my accounts, in "Nuestro" it counts both.
-  const scopedAccountsFull = scopeProfileId
-    ? accountsFull.filter((a) => a.owner_profile_id === scopeProfileId)
-    : accountsFull;
-  const totalBalance = netWorthAt(scopedAccountsFull, accountTx, todayISO(), arsPerUsd);
+  const totalBalance = useMemo(() => {
+    const scoped = scopeProfileId
+      ? accountsFull.filter((a) => a.owner_profile_id === scopeProfileId)
+      : accountsFull;
+    return netWorthAt(scoped, accountTx, todayISO(), arsPerUsd);
+  }, [accountsFull, accountTx, scopeProfileId, arsPerUsd]);
 
-  // Scope-aware expenses (respect the Nuestro/Mío/Pareja toggle) for the
-  // donut and the "Gastos" tile, so the whole screen reacts to the toggle.
-  const scopedExpenses = txArs.filter(
-    (t) => t.type === 'expense' && (!scopeProfileId || t.profile_id === scopeProfileId),
-  );
-  const monthExpenseTotal = scopedExpenses.reduce((s, t) => s + t.amount, 0);
-  // This week's spend (Mon–Sun) for the active scope.
-  const week = weekRange(new Date());
-  const weekExpenseTotal = scopedExpenses
-    .filter((t) => t.occurred_on >= week.start && t.occurred_on <= week.end)
-    .reduce((s, t) => s + t.amount, 0);
-  const scopedSpentByCategory = scopedExpenses.reduce<Record<string, number>>((map, t) => {
-    if (t.category_id) map[t.category_id] = (map[t.category_id] ?? 0) + t.amount;
-    return map;
-  }, {});
+  // Scope-aware expense aggregations (respect the Nuestro/Mío/Pareja toggle) for
+  // the donut, the "Gastos" tile and the week card — computed once per change.
+  const week = useMemo(() => weekRange(new Date()), []);
+  const { monthExpenseTotal, weekExpenseTotal, scopedSpentByCategory } = useMemo(() => {
+    const scopedExpenses = txArs.filter(
+      (t) => t.type === 'expense' && (!scopeProfileId || t.profile_id === scopeProfileId),
+    );
+    return {
+      monthExpenseTotal: scopedExpenses.reduce((s, t) => s + t.amount, 0),
+      weekExpenseTotal: scopedExpenses
+        .filter((t) => t.occurred_on >= week.start && t.occurred_on <= week.end)
+        .reduce((s, t) => s + t.amount, 0),
+      scopedSpentByCategory: scopedExpenses.reduce<Record<string, number>>((map, t) => {
+        if (t.category_id) map[t.category_id] = (map[t.category_id] ?? 0) + t.amount;
+        return map;
+      }, {}),
+    };
+  }, [txArs, scopeProfileId, week]);
   const savingsRate = incomeSoFar > 0 ? Math.round(((incomeSoFar - expensesSoFar) / incomeSoFar) * 100) : null;
 
   // Per-budget spend with shared expenses counted as each person's real share.
-  // Only my budgets matter on my home: household ones + my own personal ones.
-  const catById = Object.fromEntries(categories.map((c) => [c.id, c]));
-  // My relevant budgets: household-scoped ones + my own personal ones (never the
-  // partner's personal budgets). Each reduced to ARS with share-aware spend.
-  const relevantBudgets = budgets
-    .filter((b) => b.scope === 'household' || b.profile_id === profile.id)
-    .map((b) => {
-      const spent = spentForBudget(b, budgetRows, profile.id, arsPerUsd);
-      const limit = budgetToArs(b.amount, b.currency, arsPerUsd);
-      const cat = catById[b.category_id];
-      return {
-        id: b.id,
-        name: cat?.name ?? 'Categoría',
-        icon: cat?.icon ?? '📦',
-        spent,
-        limit,
-        pct: limit > 0 ? spent / limit : 0,
-      };
-    });
+  // Only my budgets matter on my home: household ones + my own personal ones
+  // (never the partner's personal budgets). Each reduced to ARS.
+  const relevantBudgets = useMemo(() => {
+    const catById = Object.fromEntries(categories.map((c) => [c.id, c]));
+    return budgets
+      .filter((b) => b.scope === 'household' || b.profile_id === profile.id)
+      .map((b) => {
+        const spent = spentForBudget(b, budgetRows, profile.id, arsPerUsd);
+        const limit = budgetToArs(b.amount, b.currency, arsPerUsd);
+        const cat = catById[b.category_id];
+        return {
+          id: b.id,
+          name: cat?.name ?? 'Categoría',
+          icon: cat?.icon ?? '📦',
+          spent,
+          limit,
+          pct: limit > 0 ? spent / limit : 0,
+        };
+      });
+  }, [budgets, budgetRows, categories, profile.id, arsPerUsd]);
   // Only categories near or over their limit, worst first.
-  const budgetAlerts = relevantBudgets.filter((a) => a.pct >= 0.8).sort((a, b) => b.pct - a.pct);
+  const budgetAlerts = useMemo(
+    () => relevantBudgets.filter((a) => a.pct >= 0.8).sort((a, b) => b.pct - a.pct),
+    [relevantBudgets],
+  );
 
   const quickTiles = [
     { href: '/cuentas', icon: '🏦', label: 'Cuentas', value: mask(format(totalBalance)), color: totalBalance < 0 ? '#E5604C' : '#2D2D2D' },
@@ -683,7 +730,7 @@ export default function HomeClient({
       {/* Spending by category donut (scope-aware) */}
       <CategoryDonutCard categories={categories} spentByCategory={scopedSpentByCategory} hideAmounts={hideAmounts} />
 
-      <BottomNav onFab={(type) => { setFabType(type); setSheetOpen(true); }} />
+      <BottomNav onFab={handleFab} />
 
       <AddTransactionSheet
         open={sheetOpen}

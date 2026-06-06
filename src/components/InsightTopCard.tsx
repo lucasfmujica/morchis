@@ -37,7 +37,9 @@ export function InsightTopCard({ householdId, profileId }: { householdId: string
         .maybeSingle();
       return data as Insight | null;
     },
-    staleTime: 5 * 60 * 1000,
+    // Insights are generated periodically (and the refresh button invalidates
+    // this key), so they don't need to refetch every few minutes.
+    staleTime: 30 * 60 * 1000,
   });
 
   async function handleRefresh() {

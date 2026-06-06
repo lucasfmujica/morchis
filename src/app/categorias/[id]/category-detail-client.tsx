@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
@@ -38,18 +38,22 @@ type Tx = {
   scope: string;
   is_shared: boolean;
   profile_id: string | null;
+  // Receipt item breakdown, fetched in the same query as a nested relation.
+  items: { item_group: string; line_total: number }[] | null;
 };
 
 export default function CategoryDetailClient({ profile, category }: { profile: Profile; category: Category }) {
   const supabase = createClient();
   const { format, arsPerUsd } = useFx();
-  const toArs = (amount: number, currency: string) =>
-    currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount;
+  const toArs = useCallback(
+    (amount: number, currency: string) =>
+      currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount,
+    [arsPerUsd],
+  );
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editTx, setEditTx] = useState<Tx | null>(null);
 
-  const today = new Date();
-  const months = lastSixMonths(today);
+  const months = useMemo(() => lastSixMonths(new Date()), []);
   const currentKey = months[months.length - 1].key;
   // Which month's transactions / item breakdown to show (tap a bar to drill in).
   const [selectedMonth, setSelectedMonth] = useState(currentKey);
@@ -61,7 +65,7 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('id, amount, type, currency, category_id, account_id, merchant, occurred_on, scope, is_shared, profile_id')
+        .select('id, amount, type, currency, category_id, account_id, merchant, occurred_on, scope, is_shared, profile_id, items:transaction_items(item_group, line_total)')
         .eq('household_id', profile.household_id)
         .eq('category_id', category.id)
         .gte('occurred_on', rangeStart)
@@ -88,33 +92,20 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
     },
   });
 
-  const txIds = txns.map((t) => t.id);
-  const { data: items = [] } = useQuery({
-    queryKey: ['cat-items', category.id, txIds],
-    enabled: txIds.length > 0,
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('transaction_items')
-        .select('transaction_id, item_group, line_total')
-        .in('transaction_id', txIds);
-      return data ?? [];
-    },
-  });
-
   // line_total is in the parent transaction's currency, so normalize to ARS
   // before summing (otherwise a USD receipt's items pollute the ARS totals).
-  const txCurrencyById = new Map(txns.map((t) => [t.id, t.currency]));
-  const selectedMonthTxIds = new Set(txns.filter((t) => t.occurred_on.startsWith(selectedMonth)).map((t) => t.id));
-  const groupTotals = (() => {
+  // Items now arrive nested on each transaction, so this needs no extra query.
+  const groupTotals = useMemo(() => {
     const map = new Map<string, number>();
-    for (const it of items) {
-      if (!selectedMonthTxIds.has(it.transaction_id)) continue;
-      const cur = txCurrencyById.get(it.transaction_id) ?? 'ARS';
-      map.set(it.item_group, (map.get(it.item_group) ?? 0) + toArs(it.line_total, cur));
+    for (const t of txns) {
+      if (!t.occurred_on.startsWith(selectedMonth)) continue;
+      for (const it of t.items ?? []) {
+        map.set(it.item_group, (map.get(it.item_group) ?? 0) + toArs(it.line_total, t.currency));
+      }
     }
     const total = [...map.values()].reduce((a, b) => a + b, 0);
     return { rows: [...map.entries()].map(([g, v]) => ({ g, v, pct: total > 0 ? v / total : 0 })).sort((a, b) => b.v - a.v), total };
-  })();
+  }, [txns, selectedMonth, toArs]);
 
   const GROUP_META: Record<string, { icon: string; color: string }> = {
     comida: { icon: '🍎', color: '#7EC8A4' },
@@ -127,11 +118,15 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
     otros: { icon: '🏷️', color: '#C4B9AE' },
   };
 
-  const monthRows = months.map((m) => ({
-    key: m.key,
-    label: m.label,
-    value: txns.filter((t) => t.occurred_on.startsWith(m.key)).reduce((s, t) => s + toArs(t.amount, t.currency), 0),
-  }));
+  const monthRows = useMemo(
+    () =>
+      months.map((m) => ({
+        key: m.key,
+        label: m.label,
+        value: txns.filter((t) => t.occurred_on.startsWith(m.key)).reduce((s, t) => s + toArs(t.amount, t.currency), 0),
+      })),
+    [months, txns, toArs],
+  );
   const thisMonth = monthRows[monthRows.length - 1].value;
   const monthsWithData = monthRows.filter((r) => r.value > 0);
   const avg = monthsWithData.length > 0 ? Math.round(monthsWithData.reduce((s, r) => s + r.value, 0) / monthsWithData.length) : 0;

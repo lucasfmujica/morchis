@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
@@ -55,11 +55,18 @@ export default function AnalisisClient({
     ...(partnerProfileId ? [{ key: 'partner' as const, label: partnerName || 'Pareja' }] : []),
   ];
 
-  const today = new Date();
-  const months = lastSixMonths(today);
-  const currentKey = months[months.length - 1].key;
-  const rangeStart = `${months[0].key}-01`;
-  const todayStr = toLocalISO(today);
+  // Computed once per mount so they stay referentially stable across renders
+  // (and don't invalidate the memos below on every keystroke/refresh toggle).
+  const { months, currentKey, rangeStart, todayStr } = useMemo(() => {
+    const t = new Date();
+    const ms = lastSixMonths(t);
+    return {
+      months: ms,
+      currentKey: ms[ms.length - 1].key,
+      rangeStart: `${ms[0].key}-01`,
+      todayStr: toLocalISO(t),
+    };
+  }, []);
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],
@@ -80,7 +87,9 @@ export default function AnalisisClient({
         .from('transactions')
         .select('amount, type, occurred_on, category_id, profile_id, currency, is_shared, scope, splits(payer_profile_id, ower_profile_id, amount)')
         .eq('household_id', profile.household_id)
-        .gte('occurred_on', rangeStart);
+        .gte('occurred_on', rangeStart)
+        // Don't pull future-dated installment rows — Análisis only looks back.
+        .lte('occurred_on', todayStr);
       return data ?? [];
     },
   });
@@ -133,8 +142,11 @@ export default function AnalisisClient({
   });
 
   // USD amounts are converted to ARS so charts/totals are in one currency.
-  const toArs = (amount: number, currency?: string | null) =>
-    currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount;
+  const toArs = useCallback(
+    (amount: number, currency?: string | null) =>
+      currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount,
+    [arsPerUsd],
+  );
 
   type Txn = {
     amount: number;
@@ -153,112 +165,130 @@ export default function AnalisisClient({
   // is split (each only carries their part, whoever paid); a solo expense counts
   // only for its owner. This mirrors the budgets math so Análisis, Presupuestos
   // and the couple balance all agree on "who spent what".
-  const expenseShareArs = (t: Txn, pid: string | undefined): number => {
-    if (!pid) return toArs(t.amount, t.currency); // "Nuestro" → combined household
-    if (!t.is_shared) return t.profile_id === pid ? toArs(t.amount, t.currency) : 0;
-    return myShareArs(t, pid, arsPerUsd);
-  };
-
-  // Only count rows up to today, so a future-dated installment doesn't inflate
-  // the current month.
-  const scopedAccounts = scopeProfileId ? accounts.filter((a) => a.owner_profile_id === scopeProfileId) : accounts;
-
-  // Category breakdown — current month expenses, attributed by share.
-  const catById = new Map(categories.map((c) => [c.id, c]));
-  const spentByCat = new Map<string, number>();
-  for (const t of allTxns) {
-    if (t.type !== 'expense' || !t.occurred_on.startsWith(currentKey) || t.occurred_on > todayStr || !t.category_id) continue;
-    const share = expenseShareArs(t, scopeProfileId);
-    if (share > 0) spentByCat.set(t.category_id, (spentByCat.get(t.category_id) ?? 0) + share);
-  }
-  const catRows = [...spentByCat.entries()]
-    .map(([id, value]) => ({ id, cat: catById.get(id), value }))
-    .filter((r) => r.cat && r.value > 0)
-    .sort((a, b) => b.value - a.value);
-  const monthExpense = catRows.reduce((s, r) => s + r.value, 0);
-  const TOP = 6;
-  const topCats = catRows.slice(0, TOP);
-  const restTotal = catRows.slice(TOP).reduce((s, r) => s + r.value, 0);
-  const segments = topCats.map((r, i) => ({
-    label: r.cat!.name,
-    value: r.value,
-    color: r.cat!.color || DONUT_PALETTE[i % DONUT_PALETTE.length],
-  }));
-  if (restTotal > 0) segments.push({ label: 'Otras', value: restTotal, color: '#C4B9AE' });
-
-  // Subscriptions radar — current-month spend in subscription-type categories.
-  // Match by keyword (substring) so variants like "Suscripción" or "Streaming &
-  // apps" still count, instead of requiring an exact category name.
-  const SUB_KEYWORDS = ['streaming', 'servicios digitales', 'suscrip', 'netflix', 'spotify', 'apps'];
-  const subCatIds = new Set(
-    categories
-      .filter((c) => {
-        const n = c.name.trim().toLowerCase();
-        return SUB_KEYWORDS.some((k) => n.includes(k));
-      })
-      .map((c) => c.id),
+  const expenseShareArs = useCallback(
+    (t: Txn, pid: string | undefined): number => {
+      if (!pid) return toArs(t.amount, t.currency); // "Nuestro" → combined household
+      if (!t.is_shared) return t.profile_id === pid ? toArs(t.amount, t.currency) : 0;
+      return myShareArs(t, pid, arsPerUsd);
+    },
+    [toArs, arsPerUsd],
   );
-  const subRows = [...spentByCat.entries()]
-    .filter(([id]) => subCatIds.has(id))
-    .map(([id, value]) => ({ cat: catById.get(id), value }))
-    .filter((r) => r.cat && r.value > 0)
-    .sort((a, b) => b.value - a.value);
-  const subsTotal = subRows.reduce((s, r) => s + r.value, 0);
+
+  const scopedAccounts = useMemo(
+    () => (scopeProfileId ? accounts.filter((a) => a.owner_profile_id === scopeProfileId) : accounts),
+    [accounts, scopeProfileId],
+  );
+
+  // Category breakdown (current month, attributed by share) + the subscriptions
+  // radar that reuses the same per-category totals. Recomputed only when the
+  // transactions, categories or active scope change.
+  const { monthExpense, topCats, segments, subRows, subsTotal } = useMemo(() => {
+    const catById = new Map(categories.map((c) => [c.id, c]));
+    const spentByCat = new Map<string, number>();
+    for (const t of allTxns) {
+      if (t.type !== 'expense' || !t.occurred_on.startsWith(currentKey) || t.occurred_on > todayStr || !t.category_id) continue;
+      const share = expenseShareArs(t, scopeProfileId);
+      if (share > 0) spentByCat.set(t.category_id, (spentByCat.get(t.category_id) ?? 0) + share);
+    }
+    const catRows = [...spentByCat.entries()]
+      .map(([id, value]) => ({ id, cat: catById.get(id), value }))
+      .filter((r) => r.cat && r.value > 0)
+      .sort((a, b) => b.value - a.value);
+    const monthExpense = catRows.reduce((s, r) => s + r.value, 0);
+    const TOP = 6;
+    const topCats = catRows.slice(0, TOP);
+    const restTotal = catRows.slice(TOP).reduce((s, r) => s + r.value, 0);
+    const segments = topCats.map((r, i) => ({
+      label: r.cat!.name,
+      value: r.value,
+      color: r.cat!.color || DONUT_PALETTE[i % DONUT_PALETTE.length],
+    }));
+    if (restTotal > 0) segments.push({ label: 'Otras', value: restTotal, color: '#C4B9AE' });
+
+    // Subscriptions radar — current-month spend in subscription-type categories.
+    // Match by keyword (substring) so variants like "Suscripción" or "Streaming
+    // & apps" still count, instead of requiring an exact category name.
+    const SUB_KEYWORDS = ['streaming', 'servicios digitales', 'suscrip', 'netflix', 'spotify', 'apps'];
+    const subCatIds = new Set(
+      categories
+        .filter((c) => {
+          const n = c.name.trim().toLowerCase();
+          return SUB_KEYWORDS.some((k) => n.includes(k));
+        })
+        .map((c) => c.id),
+    );
+    const subRows = [...spentByCat.entries()]
+      .filter(([id]) => subCatIds.has(id))
+      .map(([id, value]) => ({ cat: catById.get(id), value }))
+      .filter((r) => r.cat && r.value > 0)
+      .sort((a, b) => b.value - a.value);
+    const subsTotal = subRows.reduce((s, r) => s + r.value, 0);
+    return { monthExpense, topCats, segments, subRows, subsTotal };
+  }, [allTxns, categories, scopeProfileId, currentKey, todayStr, expenseShareArs]);
 
   // Per-person comparison — each person's current-month *share* (so a shared
   // bill is split, not credited entirely to whoever fronted it). Always across
   // both members, independent of the scope toggle.
-  const spentByPerson = new Map<string, number>();
-  for (const m of members) {
-    let total = 0;
-    for (const t of allTxns) {
-      if (t.type !== 'expense' || !t.occurred_on.startsWith(currentKey) || t.occurred_on > todayStr) continue;
-      total += expenseShareArs(t, m.id);
+  const { personRows, personMax } = useMemo(() => {
+    const spentByPerson = new Map<string, number>();
+    for (const m of members) {
+      let total = 0;
+      for (const t of allTxns) {
+        if (t.type !== 'expense' || !t.occurred_on.startsWith(currentKey) || t.occurred_on > todayStr) continue;
+        total += expenseShareArs(t, m.id);
+      }
+      if (total > 0) spentByPerson.set(m.id, total);
     }
-    if (total > 0) spentByPerson.set(m.id, total);
-  }
-  const memberName = (id: string) => {
-    const m = members.find((x) => x.id === id);
-    const base = m?.nickname || m?.display_name || 'Morch';
-    return id === profile.id ? `${base} (vos)` : base;
-  };
-  const personRows = [...spentByPerson.entries()]
-    .map(([id, value]) => ({ id, name: memberName(id), value }))
-    .sort((a, b) => b.value - a.value);
-  const personMax = Math.max(1, ...personRows.map((r) => r.value));
+    const memberName = (id: string) => {
+      const m = members.find((x) => x.id === id);
+      const base = m?.nickname || m?.display_name || 'Morch';
+      return id === profile.id ? `${base} (vos)` : base;
+    };
+    const personRows = [...spentByPerson.entries()]
+      .map(([id, value]) => ({ id, name: memberName(id), value }))
+      .sort((a, b) => b.value - a.value);
+    return { personRows, personMax: Math.max(1, ...personRows.map((r) => r.value)) };
+  }, [allTxns, members, currentKey, todayStr, expenseShareArs, profile.id]);
 
   // 6-month income vs expense. Expenses use each person's share for the scoped
   // view; income isn't shared, so it's attributed to its owner.
-  const trendRows = months.map((m) => {
-    let income = 0;
-    let expense = 0;
-    for (const t of allTxns) {
-      if (!t.occurred_on.startsWith(m.key)) continue;
-      if (t.type === 'income') {
-        if (!scopeProfileId || t.profile_id === scopeProfileId) income += toArs(t.amount, t.currency);
-      } else if (t.type === 'expense') {
-        expense += expenseShareArs(t, scopeProfileId);
-      }
-    }
-    return { ...m, income, expense, rate: income > 0 ? (income - expense) / income : null };
-  });
+  const trendRows = useMemo(
+    () =>
+      months.map((m) => {
+        let income = 0;
+        let expense = 0;
+        for (const t of allTxns) {
+          if (!t.occurred_on.startsWith(m.key)) continue;
+          if (t.type === 'income') {
+            if (!scopeProfileId || t.profile_id === scopeProfileId) income += toArs(t.amount, t.currency);
+          } else if (t.type === 'expense') {
+            expense += expenseShareArs(t, scopeProfileId);
+          }
+        }
+        return { ...m, income, expense, rate: income > 0 ? (income - expense) / income : null };
+      }),
+    [months, allTxns, scopeProfileId, toArs, expenseShareArs],
+  );
 
   // 6-month net worth. We only have current balances (initial_balance is a "now"
   // snapshot), so we can't reconstruct net worth for months before there was any
   // activity — those would wrongly show the full balance. Blank them out.
-  const allDates = [...txns.map((t) => t.occurred_on), ...accountTx.map((t) => t.occurred_on)];
-  const firstDataMonth = allDates.length ? allDates.reduce((a, b) => (a < b ? a : b)).slice(0, 7) : currentKey;
-  const nwRows = months.map((m) => {
-    if (m.key < firstDataMonth) return { key: m.key, label: m.label, value: 0 };
-    const [y, mo] = m.key.split('-').map(Number);
-    const monthEnd = toLocalISO(new Date(y, mo, 0));
-    const asOf = monthEnd > todayStr ? todayStr : monthEnd;
-    return { key: m.key, label: m.label, value: netWorthAt(scopedAccounts, accountTx, asOf, arsPerUsd) };
-  });
-  const currentNetWorth = nwRows[nwRows.length - 1]?.value ?? 0;
-  const prevMonthKey = months[months.length - 2]?.key;
-  const prevHasData = prevMonthKey != null && prevMonthKey >= firstDataMonth;
-  const nwDelta = prevHasData ? currentNetWorth - (nwRows[nwRows.length - 2]?.value ?? 0) : null;
+  const { nwRows, currentNetWorth, nwDelta } = useMemo(() => {
+    const allDates = [...txns.map((t) => t.occurred_on), ...accountTx.map((t) => t.occurred_on)];
+    const firstDataMonth = allDates.length ? allDates.reduce((a, b) => (a < b ? a : b)).slice(0, 7) : currentKey;
+    const nwRows = months.map((m) => {
+      if (m.key < firstDataMonth) return { key: m.key, label: m.label, value: 0 };
+      const [y, mo] = m.key.split('-').map(Number);
+      const monthEnd = toLocalISO(new Date(y, mo, 0));
+      const asOf = monthEnd > todayStr ? todayStr : monthEnd;
+      return { key: m.key, label: m.label, value: netWorthAt(scopedAccounts, accountTx, asOf, arsPerUsd) };
+    });
+    const currentNetWorth = nwRows[nwRows.length - 1]?.value ?? 0;
+    const prevMonthKey = months[months.length - 2]?.key;
+    const prevHasData = prevMonthKey != null && prevMonthKey >= firstDataMonth;
+    const nwDelta = prevHasData ? currentNetWorth - (nwRows[nwRows.length - 2]?.value ?? 0) : null;
+    return { nwRows, currentNetWorth, nwDelta };
+  }, [txns, accountTx, scopedAccounts, months, currentKey, todayStr, arsPerUsd]);
 
   async function handleRefresh() {
     setRefreshing(true);
