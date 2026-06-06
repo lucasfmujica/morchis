@@ -3,10 +3,11 @@
 import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
+import { useFx } from '@/hooks/useFx';
 import { BottomNav } from '@/components/BottomNav';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
-import { formatARS } from '@/lib/format';
+import { formatARS, formatUSD } from '@/lib/format';
 import { triggerBudgetAlerts } from '@/lib/notifyBudgets';
 import { toast } from 'sonner';
 import Link from 'next/link';
@@ -29,6 +30,8 @@ interface Receipt {
   merchant: string;
   date: string;
   total: number;
+  // Currency detected from the proof (ARS by default, USD for dollar charges).
+  currency: 'ARS' | 'USD';
   suggested_category: string;
   items: Item[];
 }
@@ -48,6 +51,7 @@ const GROUP_META: Record<string, { icon: string; color: string }> = {
 export default function TicketClient({ profile }: { profile: Profile }) {
   const supabase = createClient();
   const qc = useQueryClient();
+  const { arsPerUsd } = useFx();
   const fileRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<'idle' | 'working' | 'review' | 'done'>('idle');
   const [receipt, setReceipt] = useState<Receipt | null>(null);
@@ -69,12 +73,26 @@ export default function TicketClient({ profile }: { profile: Profile }) {
   });
   const categories = allCategories.filter((c) => c.kind === 'expense');
 
+  // Map the AI's suggested category onto a real category: exact name first, then
+  // a partial match (so "Transporte" still lands on "Transporte / Viajes"), and
+  // only the first category as a last resort — no supermarket-specific fallback,
+  // which used to mis-bucket non-grocery proofs (e.g. a DiDi ride).
   function defaultCategory(suggested: string): string {
-    const lc = suggested.toLowerCase();
-    const byName = categories.find((c) => c.name.toLowerCase() === lc);
-    if (byName) return byName.id;
-    const supe = categories.find((c) => /super|almac/i.test(c.name));
-    return supe?.id ?? categories[0]?.id ?? '';
+    const lc = (suggested ?? '').toLowerCase().trim();
+    if (lc) {
+      const byName = categories.find((c) => c.name.toLowerCase() === lc);
+      if (byName) return byName.id;
+      const partial = categories.find(
+        (c) => c.name.toLowerCase().includes(lc) || lc.includes(c.name.toLowerCase()),
+      );
+      if (partial) return partial.id;
+    }
+    return categories[0]?.id ?? '';
+  }
+
+  // Format a value in the receipt's own currency (a USD proof stays in dollars).
+  function fmt(n: number): string {
+    return receipt?.currency === 'USD' ? formatUSD(n) : formatARS(n);
   }
 
   async function handleFile(file: File) {
@@ -99,7 +117,8 @@ export default function TicketClient({ profile }: { profile: Profile }) {
       if (!res.ok) throw new Error(json.error ?? 'No se pudo leer el ticket');
 
       const r = json.receipt as Receipt;
-      setReceipt(r);
+      // Guard the currency in case an older function version omits it.
+      setReceipt({ ...r, currency: r.currency === 'USD' ? 'USD' : 'ARS' });
       setCategoryId(defaultCategory(r.suggested_category));
       setStatus('review');
     } catch (err) {
@@ -130,6 +149,8 @@ export default function TicketClient({ profile }: { profile: Profile }) {
           profile_id: profile.id,
           type: 'expense',
           amount: receipt.total,
+          currency: receipt.currency,
+          usd_rate_snapshot: arsPerUsd,
           category_id: categoryId || null,
           merchant: receipt.merchant || 'Compra',
           occurred_on: receipt.date,
@@ -157,9 +178,11 @@ export default function TicketClient({ profile }: { profile: Profile }) {
       await qc.invalidateQueries({ queryKey: ['transactions'] });
       await qc.invalidateQueries({ queryKey: ['account-tx'] });
       await qc.invalidateQueries({ queryKey: ['spent-by-category'] });
+      await qc.invalidateQueries({ queryKey: ['category-month-totals'] });
+      await qc.invalidateQueries({ queryKey: ['category-tx'] });
       triggerBudgetAlerts(supabase);
       setStatus('done');
-      toast.success('Ticket guardado ✓');
+      toast.success('Comprobante guardado ✓');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al guardar');
       setStatus('review');
@@ -177,7 +200,7 @@ export default function TicketClient({ profile }: { profile: Profile }) {
     <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
       <header className="px-5 pt-14 pb-4 flex items-center gap-3">
         <Link href="/mas" className="text-2xl">←</Link>
-        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Escanear ticket 🧾</h1>
+        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Escanear comprobante 🧾</h1>
       </header>
 
       <input
@@ -197,9 +220,10 @@ export default function TicketClient({ profile }: { profile: Profile }) {
         {status === 'idle' && (
           <div className="rounded-3xl p-6 text-center" style={{ background: '#FFFFFF' }}>
             <p className="text-5xl mb-3">🧾</p>
-            <p className="font-bold mb-1" style={{ color: '#2D2D2D' }}>Sacale una foto al ticket</p>
+            <p className="font-bold mb-1" style={{ color: '#2D2D2D' }}>Subí un ticket o un comprobante</p>
             <p className="text-sm mb-5" style={{ color: '#6B6459' }}>
-              La IA detecta los productos y te dice en qué se fue la plata (comida, limpieza, snacks…).
+              Sirve para tickets de súper, facturas o capturas de notificaciones del banco/billetera
+              (DiDi, Mercado Pago, etc.). La IA lo categoriza y detecta la moneda.
             </p>
             <div className="flex gap-3">
               <button
@@ -224,7 +248,7 @@ export default function TicketClient({ profile }: { profile: Profile }) {
         {status === 'working' && (
           <div className="rounded-3xl p-8 text-center" style={{ background: '#FFFFFF' }}>
             <p className="text-4xl mb-3 animate-pulse">🤖</p>
-            <p className="font-bold" style={{ color: '#2D2D2D' }}>Leyendo el ticket…</p>
+            <p className="font-bold" style={{ color: '#2D2D2D' }}>Leyendo el comprobante…</p>
             <p className="text-sm mt-1" style={{ color: '#6B6459' }}>Esto tarda unos segundos.</p>
           </div>
         )}
@@ -251,6 +275,17 @@ export default function TicketClient({ profile }: { profile: Profile }) {
               </div>
               <div className="flex items-center gap-3 mb-3">
                 <span className="text-xs font-semibold" style={{ color: '#6B6459' }}>Total</span>
+                {/* Currency toggle — the AI detects it, but you can correct it. */}
+                <button
+                  onClick={() => setReceipt({ ...receipt, currency: receipt.currency === 'USD' ? 'ARS' : 'USD' })}
+                  className="text-xs font-bold px-3 py-1.5 rounded-xl border"
+                  style={{
+                    borderColor: receipt.currency === 'USD' ? '#FF7F6B' : '#7EC8A4',
+                    color: receipt.currency === 'USD' ? '#FF7F6B' : '#7EC8A4',
+                  }}
+                >
+                  {receipt.currency}
+                </button>
                 <MoneyInput
                   value={receipt.total}
                   onChange={(n) => setReceipt({ ...receipt, total: n })}
@@ -268,9 +303,9 @@ export default function TicketClient({ profile }: { profile: Profile }) {
                   <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
                 ))}
               </select>
-              {Math.abs(itemsSum - receipt.total) > Math.max(50, receipt.total * 0.05) && (
+              {receipt.items.length > 0 && Math.abs(itemsSum - receipt.total) > Math.max(50, receipt.total * 0.05) && (
                 <p className="text-[11px] mt-2" style={{ color: '#B8860B' }}>
-                  ⚠️ La suma de productos ({formatARS(itemsSum)}) no coincide con el total. Revisá los ítems.
+                  ⚠️ La suma de productos ({fmt(itemsSum)}) no coincide con el total. Revisá los ítems.
                 </p>
               )}
             </div>
@@ -287,7 +322,7 @@ export default function TicketClient({ profile }: { profile: Profile }) {
                         <span>{meta.icon}</span>
                         <span className="text-sm capitalize flex-1" style={{ color: '#2D2D2D' }}>{g}</span>
                         <span className="text-xs font-semibold" style={{ color: '#6B6459' }}>{Math.round((total / itemsSum) * 100)}%</span>
-                        <span className="text-sm font-bold w-24 text-right" style={{ color: meta.color }}>{formatARS(total)}</span>
+                        <span className="text-sm font-bold w-24 text-right" style={{ color: meta.color }}>{fmt(total)}</span>
                       </div>
                     );
                   })}
@@ -295,7 +330,9 @@ export default function TicketClient({ profile }: { profile: Profile }) {
               </div>
             )}
 
-            {/* Items */}
+            {/* Items — only for itemized receipts; a single-charge proof
+                (e.g. a DiDi notification) has none, so we skip the list. */}
+            {receipt.items.length > 0 && (
             <div className="rounded-3xl p-3" style={{ background: '#FFFFFF' }}>
               <p className="text-xs font-bold uppercase tracking-wide mb-2 px-2" style={{ color: '#6B6459' }}>
                 Productos ({receipt.items.length})
@@ -328,13 +365,14 @@ export default function TicketClient({ profile }: { profile: Profile }) {
                 ))}
               </div>
             </div>
+            )}
 
             <PrimaryButton
               onClick={handleSave}
               disabled={receipt.total <= 0}
               className="w-full py-4 text-sm"
             >
-              Guardar gasto de {formatARS(receipt.total)}
+              Guardar gasto de {fmt(receipt.total)}
             </PrimaryButton>
             <button
               onClick={() => { setReceipt(null); setStatus('idle'); }}
@@ -350,8 +388,8 @@ export default function TicketClient({ profile }: { profile: Profile }) {
         {status === 'done' && (
           <div className="rounded-3xl p-6 text-center" style={{ background: '#FFFFFF' }}>
             <p className="text-5xl mb-3">✅</p>
-            <p className="font-bold mb-1" style={{ color: '#2D2D2D' }}>¡Ticket guardado!</p>
-            <p className="text-sm mb-5" style={{ color: '#6B6459' }}>Quedó cargado con el detalle de productos.</p>
+            <p className="font-bold mb-1" style={{ color: '#2D2D2D' }}>¡Comprobante guardado!</p>
+            <p className="text-sm mb-5" style={{ color: '#6B6459' }}>Quedó cargado en tus movimientos.</p>
             <div className="flex gap-3">
               <button
                 onClick={() => { setReceipt(null); setStatus('idle'); }}

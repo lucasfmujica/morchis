@@ -14,6 +14,9 @@ import { triggerBudgetAlerts } from '@/lib/notifyBudgets';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
+// Icon choices for the inline "create category" flow inside the sheet.
+const CAT_ICONS = ['🏷️', '🛒', '🍕', '🚇', '💊', '🎭', '📚', '✈️', '🏠', '💼', '💵', '📱', '💻', '👗', '💰', '🎯', '🎮', '🐾', '🌿', '⚽'];
+
 interface Category {
   id: string;
   name: string;
@@ -171,6 +174,12 @@ export function AddTransactionSheet({
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Inline "create category" flow, reachable from the category chips so you can
+  // add a missing category without leaving the add-expense sheet.
+  const [creatingCat, setCreatingCat] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const [newCatIcon, setNewCatIcon] = useState('🏷️');
+  const [savingCat, setSavingCat] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -205,6 +214,9 @@ export function AddTransactionSheet({
         setMyShare(50);
       }
       setInstallments(1);
+      setCreatingCat(false);
+      setNewCatName('');
+      setNewCatIcon('🏷️');
     }
   }, [open, editTx, initialType]);
 
@@ -419,6 +431,42 @@ export function AddTransactionSheet({
   const partnerShareNative = roundMoney((nativeAmount * (100 - myShare)) / 100);
   const myShareNative = roundMoney(nativeAmount - partnerShareNative);
   const fmtNative = (n: number) => (inputUSD ? formatUSD(n) : formatARS(n));
+
+  async function handleCreateCategory() {
+    const name = newCatName.trim();
+    if (!name) {
+      toast.error('Ingresá un nombre.');
+      return;
+    }
+    setSavingCat(true);
+    try {
+      const { data, error } = await supabase
+        .from('categories')
+        .insert({
+          household_id: householdId,
+          name,
+          icon: newCatIcon,
+          // New category is created for whatever the sheet is currently adding.
+          kind: txType,
+          is_default: false,
+        })
+        .select('id')
+        .single();
+      if (error || !data) throw error ?? new Error('No se pudo crear');
+      await qc.invalidateQueries({ queryKey: ['categories'] });
+      // Auto-select the freshly created category for this movement.
+      setCategoryId(data.id);
+      setCreatingCat(false);
+      setNewCatName('');
+      setNewCatIcon('🏷️');
+      toast.success('Categoría creada ✓');
+    } catch (e) {
+      toast.error('No se pudo crear la categoría.');
+      console.error(e);
+    } finally {
+      setSavingCat(false);
+    }
+  }
 
   async function handleSave() {
     if (nativeAmount === 0 || transferInvalid) return;
@@ -679,7 +727,61 @@ export function AddTransactionSheet({
                   <span>{c.name}</span>
                 </button>
               ))}
+              {/* Create a new category inline, without leaving the sheet. */}
+              <button
+                onClick={() => setCreatingCat((v) => !v)}
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-2xl text-sm font-bold border border-dashed transition-colors"
+                style={{
+                  background: creatingCat ? '#E4F2EA' : '#FFFFFF',
+                  borderColor: '#7EC8A4',
+                  color: '#5BA886',
+                }}
+              >
+                <span>＋</span>
+                <span>Crear categoría</span>
+              </button>
             </div>
+
+            {/* Inline new-category form */}
+            {creatingCat && (
+              <div className="mt-2 rounded-2xl p-3 border" style={{ background: '#FFFFFF', borderColor: '#ECE5DC' }}>
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder={`Nueva categoría de ${txType === 'income' ? 'ingreso' : 'gasto'}`}
+                    value={newCatName}
+                    onChange={(e) => setNewCatName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleCreateCategory(); }}
+                    className="flex-1 min-w-0 px-3 py-2 rounded-xl border text-sm outline-none"
+                    style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+                  />
+                  <button
+                    onClick={handleCreateCategory}
+                    disabled={!newCatName.trim() || savingCat}
+                    className="flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-50"
+                    style={{ background: '#7EC8A4' }}
+                  >
+                    {savingCat ? '…' : 'Crear'}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {CAT_ICONS.map((ic) => (
+                    <button
+                      key={ic}
+                      onClick={() => setNewCatIcon(ic)}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
+                      style={{
+                        background: newCatIcon === ic ? '#E4F2EA' : '#F9F5F0',
+                        border: newCatIcon === ic ? '2px solid #7EC8A4' : '2px solid transparent',
+                      }}
+                    >
+                      {ic}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           )}
 
