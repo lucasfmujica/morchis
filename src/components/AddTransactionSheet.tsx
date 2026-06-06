@@ -111,6 +111,29 @@ export function AddTransactionSheet({
     },
   });
 
+  // How often each category has actually been used recently, so the chips can
+  // surface everyday categories first instead of the alphabetical default
+  // (which buried frequent ones behind once-a-month "Agua"/"Alquiler"). We look
+  // at the last batch of movements so the order adapts to current habits.
+  const { data: categoryUsage } = useQuery({
+    queryKey: ['category-usage', householdId],
+    enabled: !!householdId && open,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('transactions')
+        .select('category_id')
+        .eq('household_id', householdId)
+        .not('category_id', 'is', null)
+        .order('occurred_on', { ascending: false })
+        .limit(400);
+      const counts = new Map<string, number>();
+      for (const row of data ?? []) {
+        if (row.category_id) counts.set(row.category_id, (counts.get(row.category_id) ?? 0) + 1);
+      }
+      return counts;
+    },
+  });
+
   const effectivePartnerId = partnerProfileId ?? resolvedPartner?.id ?? null;
   const effectivePartnerName =
     partnerName ?? resolvedPartner?.nickname ?? resolvedPartner?.display_name ?? 'Tu pareja';
@@ -226,6 +249,7 @@ export function AddTransactionSheet({
         'transactions',
         'account-tx',
         'spent-by-category',
+        'category-usage',
         'category-month-totals',
         'budget-expense-rows',
         'summary',
@@ -324,7 +348,17 @@ export function AddTransactionSheet({
   const transferInvalid =
     isTransfer && (!effectiveFromId || !effectiveToId || effectiveFromId === effectiveToId);
 
-  const visibleCategories = categories.filter((c) => c.kind === txType);
+  // Most-used categories first; alphabetical as a stable tiebreak so unused
+  // ones still keep a predictable order. The incoming list is already filtered
+  // to this kind, and .filter() returns a fresh array so the .sort() is safe.
+  const visibleCategories = categories
+    .filter((c) => c.kind === txType)
+    .sort((a, b) => {
+      const ua = categoryUsage?.get(a.id) ?? 0;
+      const ub = categoryUsage?.get(b.id) ?? 0;
+      if (ub !== ua) return ub - ua;
+      return a.name.localeCompare(b.name);
+    });
 
   // Derived from the owner control: a household movement is shared scope; mine
   // and the partner's are both "personal" scope but differ in whose profile
