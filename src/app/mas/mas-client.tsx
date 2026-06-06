@@ -56,7 +56,6 @@ export default function MasClient({ profile }: { profile: Profile }) {
     { href: '/ticket', icon: '🧾', label: 'Escanear ticket' },
     { href: '/extractos', icon: '🧾', label: 'Extractos de tarjeta' },
     { href: '/simulador', icon: '🔮', label: 'Simulador de compras' },
-    { href: '/mas/pin', icon: '🔐', label: 'Bloqueo con PIN' },
     { href: '/mas/notificaciones', icon: '🔔', label: 'Notificaciones' },
   ];
 
@@ -68,26 +67,39 @@ export default function MasClient({ profile }: { profile: Profile }) {
 
       <div className="px-4 flex flex-col gap-3">
         <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
-          <button
-            onClick={() => setInviteOpen(true)}
-            className="w-full flex items-center gap-3 px-5 py-4 text-left"
-          >
-            <span className="text-2xl">💌</span>
-            <p className="flex-1 font-semibold" style={{ color: '#2D2D2D' }}>Invitar a mi pareja</p>
-            <span style={{ color: '#6B6459' }}>→</span>
-          </button>
-          {menuItems.map((item) => (
+          {menuItems.map((item, i) => (
             <Link
               key={item.href}
               href={item.href}
               className="flex items-center gap-3 px-5 py-4"
-              style={{ borderTop: '1px solid #ECE5DC' }}
+              style={i > 0 ? { borderTop: '1px solid #ECE5DC' } : undefined}
             >
               <span className="text-2xl">{item.icon}</span>
               <p className="flex-1 font-semibold" style={{ color: '#2D2D2D' }}>{item.label}</p>
               <span style={{ color: '#6B6459' }}>→</span>
             </Link>
           ))}
+        </div>
+
+        {/* De-emphasised: rarely used. */}
+        <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
+          <button
+            onClick={() => setInviteOpen(true)}
+            className="w-full flex items-center gap-3 px-5 py-3.5 text-left"
+          >
+            <span className="text-xl">💌</span>
+            <p className="flex-1 text-sm font-semibold" style={{ color: '#6B6459' }}>Invitar a mi pareja</p>
+            <span style={{ color: '#6B6459' }}>→</span>
+          </button>
+          <Link
+            href="/mas/pin"
+            className="flex items-center gap-3 px-5 py-3.5"
+            style={{ borderTop: '1px solid #ECE5DC' }}
+          >
+            <span className="text-xl">🔐</span>
+            <p className="flex-1 text-sm font-semibold" style={{ color: '#6B6459' }}>Bloqueo con PIN</p>
+            <span style={{ color: '#6B6459' }}>→</span>
+          </Link>
         </div>
 
         <button
