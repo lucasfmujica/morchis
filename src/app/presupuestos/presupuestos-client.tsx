@@ -12,8 +12,8 @@ import { PrimaryButton } from '@/components/PrimaryButton';
 import { EmptyState } from '@/components/EmptyState';
 import {
   spentForBudget as computeSpentForBudget,
-  myShareArs,
-  toArs as toArsLib,
+  budgetContribution,
+  weekContribution,
   BUDGET_EXPENSE_SELECT,
   type BudgetExpenseRow,
 } from '@/lib/budgets';
@@ -42,6 +42,28 @@ interface Category {
   name: string;
   icon: string;
   kind: string;
+}
+
+// One line in the drill-down sheet: a transaction and the ARS amount it
+// contributes to the total being explained (its own share, for shared expenses).
+interface DetailRow {
+  id: string;
+  label: string;
+  occurred_on: string;
+  shared: boolean;
+  amountArs: number;
+}
+
+interface DetailView {
+  title: string;
+  subtitle: string;
+  icon: string;
+  total: number;
+  rows: DetailRow[];
+}
+
+function fmtDetailDate(iso: string): string {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
 }
 
 function barColor(pct: number): string {
@@ -245,6 +267,56 @@ function BudgetSheet({
   );
 }
 
+function TransactionsSheet({ view, onClose }: { view: DetailView; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
+      <div
+        className="w-full rounded-t-3xl p-6 flex flex-col"
+        style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))', maxHeight: '80vh' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="w-10 h-1 rounded-full mx-auto mb-5 shrink-0" style={{ background: '#ECE5DC' }} />
+        <div className="flex items-start justify-between mb-1 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-2xl">{view.icon}</span>
+            <h2 className="text-lg font-black truncate" style={{ color: '#2D2D2D' }}>{view.title}</h2>
+          </div>
+          <p className="text-lg font-black shrink-0 ml-3" style={{ color: '#FF7F6B', fontVariantNumeric: 'tabular-nums' }}>
+            {formatARS(view.total)}
+          </p>
+        </div>
+        <p className="text-xs mb-4 shrink-0" style={{ color: '#6B6459' }}>{view.subtitle}</p>
+
+        {view.rows.length === 0 ? (
+          <p className="text-sm py-8 text-center" style={{ color: '#6B6459' }}>
+            No hay gastos que sumen a este total.
+          </p>
+        ) : (
+          <div className="rounded-2xl overflow-y-auto" style={{ background: '#F9F5F0' }}>
+            {view.rows.map((r, i) => (
+              <div
+                key={r.id}
+                className="flex items-center gap-3 px-4 py-3.5"
+                style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{r.label}</p>
+                  <p className="text-xs" style={{ color: '#6B6459' }}>
+                    {fmtDetailDate(r.occurred_on)}{r.shared ? ' · compartido' : ''}
+                  </p>
+                </div>
+                <p className="text-base font-black" style={{ color: '#FF7F6B', fontVariantNumeric: 'tabular-nums' }}>
+                  -{formatARS(r.amountArs)}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function PresupuestosClient({ profile }: { profile: Profile }) {
   const supabase = createClient();
   const qc = useQueryClient();
@@ -254,6 +326,8 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   const [editing, setEditing] = useState<Budget | null>(null);
   const [budgetSheetOpen, setBudgetSheetOpen] = useState(false);
+  // Drill-down sheet: the transactions behind a budget's or the week's total.
+  const [detail, setDetail] = useState<DetailView | null>(null);
 
   const now = new Date();
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
@@ -311,7 +385,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select(BUDGET_EXPENSE_SELECT)
+        .select(`${BUDGET_EXPENSE_SELECT}, id, merchant`)
         .eq('household_id', profile.household_id)
         .eq('type', 'expense')
         .gte('occurred_on', rowsStart)
@@ -340,17 +414,10 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   const weekRows = expenseRows.filter(
     (r) => r.occurred_on != null && r.occurred_on >= week.start && r.occurred_on <= week.end,
   );
-  const weekSpend = weekRows.reduce((sum, r) => {
-    if (tab === 'household') {
-      return r.scope === 'household' ? sum + toArsLib(r.amount, r.currency, arsPerUsd) : sum;
-    }
-    if (r.is_shared) return sum + myShareArs(r, profile.id, arsPerUsd);
-    // Non-shared: my spend when I fronted it — a solo expense or a household one
-    // I paid without dividing (mirrors spentForBudget).
-    return r.profile_id === profile.id
-      ? sum + toArsLib(r.amount, r.currency, arsPerUsd)
-      : sum;
-  }, 0);
+  const weekSpend = weekRows.reduce(
+    (sum, r) => sum + weekContribution(r, tab, profile.id, arsPerUsd),
+    0,
+  );
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -374,6 +441,52 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   function openEdit(b: Budget) {
     setEditing(b);
     setBudgetSheetOpen(true);
+  }
+
+  // Build the list of transactions behind a budget's spent total. Each row shows
+  // the amount that actually counts toward the budget (a person's share for
+  // shared expenses), so the rows add up to the total on the card.
+  function openBudgetDetail(b: Budget) {
+    const cat = catMap[b.category_id];
+    const rows: DetailRow[] = rowsForPeriod(b.period)
+      .map((t) => ({ t, amountArs: budgetContribution(b, t, profile.id, arsPerUsd) }))
+      .filter(({ amountArs }) => amountArs > 0)
+      .map(({ t, amountArs }) => ({
+        id: t.id ?? `${t.occurred_on}-${amountArs}`,
+        label: t.merchant || cat?.name || 'Gasto',
+        occurred_on: t.occurred_on ?? '',
+        shared: t.is_shared,
+        amountArs,
+      }))
+      .sort((a, b2) => b2.occurred_on.localeCompare(a.occurred_on));
+    setDetail({
+      title: cat?.name ?? 'Presupuesto',
+      subtitle: `${b.period === 'weekly' ? 'Esta semana' : 'Este mes'} · ${rows.length} ${rows.length === 1 ? 'gasto' : 'gastos'}`,
+      icon: cat?.icon ?? '📦',
+      total: spentForBudget(b),
+      rows,
+    });
+  }
+
+  function openWeekDetail() {
+    const rows: DetailRow[] = weekRows
+      .map((t) => ({ t, amountArs: weekContribution(t, tab, profile.id, arsPerUsd) }))
+      .filter(({ amountArs }) => amountArs > 0)
+      .map(({ t, amountArs }) => ({
+        id: t.id ?? `${t.occurred_on}-${amountArs}`,
+        label: t.merchant || catMap[t.category_id ?? '']?.name || 'Gasto',
+        occurred_on: t.occurred_on ?? '',
+        shared: t.is_shared,
+        amountArs,
+      }))
+      .sort((a, b2) => b2.occurred_on.localeCompare(a.occurred_on));
+    setDetail({
+      title: tab === 'household' ? 'Gastos de la semana' : 'Gastaste esta semana',
+      subtitle: `Lun ${shortDM(week.start)} – Dom ${shortDM(week.end)} · ${rows.length} ${rows.length === 1 ? 'gasto' : 'gastos'}`,
+      icon: '🗓️',
+      total: weekSpend,
+      rows,
+    });
   }
 
   return (
@@ -406,22 +519,26 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
         ))}
       </div>
 
-      {/* This week's spend (Mon–Sun) */}
-      <div className="mx-4 mb-4 rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+      {/* This week's spend (Mon–Sun) — tap to see the expenses behind it */}
+      <button
+        onClick={openWeekDetail}
+        className="mx-4 mb-4 rounded-3xl p-5 w-[calc(100%-2rem)] text-left"
+        style={{ background: '#FFFFFF' }}
+      >
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>
               {tab === 'household' ? 'Gastos de la semana' : 'Gastaste esta semana'}
             </p>
             <p className="text-[11px]" style={{ color: '#6B6459' }}>
-              Lun {shortDM(week.start)} – Dom {shortDM(week.end)}
+              Lun {shortDM(week.start)} – Dom {shortDM(week.end)} · ver detalle ›
             </p>
           </div>
           <p className="text-2xl font-black" style={{ color: '#FF7F6B', fontVariantNumeric: 'tabular-nums' }}>
             {formatARS(weekSpend)}
           </p>
         </div>
-      </div>
+      </button>
 
       {/* Budget cards */}
       <div className="px-4 flex flex-col gap-3">
@@ -440,7 +557,14 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
             const over = spent > limitArs;
             const near = !over && limitArs > 0 && spent / limitArs >= 0.8;
             return (
-              <div key={b.id} className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+              <div
+                key={b.id}
+                onClick={() => openBudgetDetail(b)}
+                role="button"
+                tabIndex={0}
+                className="rounded-3xl p-5 cursor-pointer"
+                style={{ background: '#FFFFFF' }}
+              >
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <span className="text-2xl">{cat?.icon ?? '📦'}</span>
@@ -474,14 +598,14 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
                   </div>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => openEdit(b)}
+                      onClick={(e) => { e.stopPropagation(); openEdit(b); }}
                       className="text-xs px-3 py-1.5 rounded-xl font-semibold"
                       style={{ background: '#F9F5F0', color: '#6B6459' }}
                     >
                       Editar
                     </button>
                     <button
-                      onClick={() => deleteMutation.mutate(b.id)}
+                      onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(b.id); }}
                       className="text-xs px-3 py-1.5 rounded-xl font-semibold"
                       style={{ background: '#FFE7E2', color: '#FF7F6B' }}
                     >
@@ -507,6 +631,8 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
         categories={categories}
         accounts={accounts}
       />
+
+      {detail && <TransactionsSheet view={detail} onClose={() => setDetail(null)} />}
 
       {budgetSheetOpen && (
         <BudgetSheet

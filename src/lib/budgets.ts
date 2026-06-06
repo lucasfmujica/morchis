@@ -27,6 +27,9 @@ export interface BudgetExpenseRow {
   is_shared: boolean;
   occurred_on?: string;
   splits?: SplitRow[] | null;
+  // Optional display fields, only needed when listing the rows behind a total.
+  id?: string;
+  merchant?: string | null;
 }
 
 export function toArs(amount: number, currency: string | null | undefined, arsPerUsd: number): number {
@@ -67,20 +70,48 @@ export function spentForBudget(
   viewerProfileId: string,
   arsPerUsd: number,
 ): number {
+  return rows.reduce((sum, t) => sum + budgetContribution(b, t, viewerProfileId, arsPerUsd), 0);
+}
+
+/**
+ * How much a single expense row contributes to a budget's spend (ARS), using
+ * the same rules as `spentForBudget`. Returns 0 when the row doesn't count
+ * (wrong category, not the owner's spend, or a personal share of 0). Listing
+ * the rows with a non-zero contribution reproduces the budget's total exactly.
+ */
+export function budgetContribution(
+  b: BudgetRow,
+  t: BudgetExpenseRow,
+  viewerProfileId: string,
+  arsPerUsd: number,
+): number {
+  if (t.category_id !== b.category_id) return 0;
   const owner = b.profile_id ?? viewerProfileId;
-  return rows
-    .filter((t) => t.category_id === b.category_id)
-    .reduce((sum, t) => {
-      if (b.scope === 'household') {
-        return t.scope === 'household' ? sum + toArs(t.amount, t.currency, arsPerUsd) : sum;
-      }
-      if (t.is_shared) return sum + myShareArs(t, owner, arsPerUsd);
-      // Non-shared: it's the owner's spend when they fronted it — whether a solo
-      // personal expense or a household one they paid without dividing.
-      return t.profile_id === owner
-        ? sum + toArs(t.amount, t.currency, arsPerUsd)
-        : sum;
-    }, 0);
+  if (b.scope === 'household') {
+    return t.scope === 'household' ? toArs(t.amount, t.currency, arsPerUsd) : 0;
+  }
+  if (t.is_shared) return myShareArs(t, owner, arsPerUsd);
+  // Non-shared: it's the owner's spend when they fronted it — whether a solo
+  // personal expense or a household one they paid without dividing.
+  return t.profile_id === owner ? toArs(t.amount, t.currency, arsPerUsd) : 0;
+}
+
+/**
+ * How much a single expense row contributes to the "this week" total for a tab,
+ * mirroring the budgets page header. On the Nuestro tab it's the full amount of
+ * household-scoped rows; on Personal it's the viewer's own share.
+ */
+export function weekContribution(
+  t: BudgetExpenseRow,
+  tab: 'personal' | 'household',
+  viewerProfileId: string,
+  arsPerUsd: number,
+): number {
+  if (tab === 'household') {
+    return t.scope === 'household' ? toArs(t.amount, t.currency, arsPerUsd) : 0;
+  }
+  if (t.is_shared) return myShareArs(t, viewerProfileId, arsPerUsd);
+  return t.profile_id === viewerProfileId ? toArs(t.amount, t.currency, arsPerUsd) : 0;
 }
 
 /** SQL column list for fetching expense rows compatible with the helpers above. */
