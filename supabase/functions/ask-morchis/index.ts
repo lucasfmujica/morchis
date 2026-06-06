@@ -254,7 +254,7 @@ Deno.serve(async (req: Request) => {
   }
   if (!hid) return new Response(JSON.stringify({ error: 'No household' }), { status: 400, headers: cors });
 
-  let body: { question?: string; history?: { role: string; content: string }[] } = {};
+  let body: { question?: string; history?: { role: string; content: string }[]; as?: string } = {};
   try { body = await req.json(); } catch { /* empty */ }
   const question = (body.question ?? '').trim();
   if (!question) return new Response(JSON.stringify({ error: 'question requerida' }), { status: 400, headers: cors });
@@ -270,7 +270,13 @@ Deno.serve(async (req: Request) => {
   const pm: Record<string, string> = {};
   const profiles = (profs ?? []) as { id: string; nickname: string | null; display_name: string | null }[];
   for (const p of profiles) pm[p.id] = p.nickname ?? p.display_name ?? 'Usuario';
-  if (!askerId) askerId = profiles[0]?.id ?? '';
+  // Real users: askerId comes from their JWT (set above). Only the admin/test
+  // path leaves it null — there an optional `as` (nickname or id) picks whose
+  // viewpoint to simulate, otherwise the first profile.
+  if (!askerId) {
+    const asKey = (body.as ?? '').toLowerCase();
+    askerId = (asKey ? profiles.find(p => (p.nickname ?? '').toLowerCase() === asKey || (p.display_name ?? '').toLowerCase() === asKey || p.id === body.as)?.id : null) ?? profiles[0]?.id ?? '';
+  }
   const partnerId = profiles.find(p => p.id !== askerId)?.id ?? null;
   const debtByTx: Record<string, Debt[]> = {};
   for (const d of (debtRows ?? []) as Debt[]) { if (!d.transaction_id) continue; (debtByTx[d.transaction_id] ??= []).push(d); }
