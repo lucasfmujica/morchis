@@ -75,6 +75,7 @@ export function BottomNav({ onFab }: BottomNavProps) {
       >
         {tab('/home', 'Inicio', '🏠')}
         {tab('/movimientos', 'Movimientos', '📋')}
+        {tab('/preguntale', 'Morchi', '💬')}
         <div className="flex-1 flex justify-center">
           <button
             onClick={() => setMenuOpen((v) => !v)}
