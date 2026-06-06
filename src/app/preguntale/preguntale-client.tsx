@@ -9,9 +9,9 @@ interface Msg { role: 'user' | 'assistant'; content: string }
 
 const SUGGESTIONS = [
   '¿Cuánto gastamos este mes y en qué se nos va más?',
-  '¿Cómo venimos con el ahorro?',
+  '¿Cuánto gastó cada uno este mes?',
+  '¿Cuál es nuestro patrimonio neto y dónde tenemos más?',
   '¿En qué podríamos gastar menos?',
-  '¿Cómo venimos con los presupuestos?',
 ];
 
 // Render the model's light markdown (**bold**) without a heavy dependency.
@@ -84,7 +84,7 @@ export default function PreguntaleClient({ householdId, profileId }: { household
               <p className="text-3xl mb-2">👋</p>
               <p className="font-bold" style={{ color: '#2D2D2D' }}>Hola, soy Morchi</p>
               <p className="text-sm mt-1 leading-snug" style={{ color: '#6B6459' }}>
-                Conozco sus ingresos, gastos, presupuestos, metas y saldos de este mes. Probá con una de estas:
+                Puedo consultar todos sus movimientos: gastos, ingresos, comercios, categorías, meses, saldos, presupuestos, metas y deudas. Probá con una de estas:
               </p>
             </div>
             <div className="mt-3 flex flex-col gap-2">
