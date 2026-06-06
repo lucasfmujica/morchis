@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import Anthropic from "npm:@anthropic-ai/sdk";
 import { createClient, SupabaseClient } from "jsr:@supabase/supabase-js@2";
 
+/* ── web-push (VAPID / RFC 8291), unchanged ──────────────────────────────── */
 function b64uEncode(buf: ArrayBuffer | Uint8Array): string {
   const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
   let str = ''; bytes.forEach(b => (str += String.fromCharCode(b)));
@@ -52,17 +53,21 @@ function jwtPayload(token:string):Record<string,unknown>|null{
   try{return JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));}catch{return null;}
 }
 
+/* ── types ───────────────────────────────────────────────────────────────── */
 interface Profile{id:string;nickname:string|null;display_name:string|null;}
-interface Goal{name:string;target_amount:number;current_amount:number;}
-interface Budget{amount:number;categories:{name:string}|null;}
 interface InsightCard{title:string;body:string;severity:string;kind:string;}
 interface PushSub{endpoint:string;p256dh:string;auth_key:string;profile_id:string;}
-interface TxRow{category_id:string;categories:{name:string}|null;profile_id:string;scope:string;amount:number;}
-function fmt(n:number):string{return '$'+Math.round(n/1000)+'k';}
+// A "fact" is a fully-computed signal. All money math lives here in TS; the LLM
+// only picks the important facts and phrases them — it never does arithmetic.
+interface Fact{kind:string;severity:'info'|'positive'|'warning';weight:number;text:string;}
 
-// Pull the first JSON array out of the model's reply, tolerating code fences or
-// stray prose around it (the model is asked for bare JSON but sometimes adds a
-// sentence). Returns only well-formed cards.
+/* ── money helpers (everything normalised to ARS) ────────────────────────── */
+const fmt=(n:number):string=>'$'+Math.round(n).toLocaleString('es-AR');
+function iso(y:number,m:number,d:number){return new Date(y,m,d).toISOString().slice(0,10);}
+function monthsBetween(a:Date,b:Date){return (b.getFullYear()-a.getFullYear())*12+(b.getMonth()-a.getMonth());}
+const MONTHLY:Record<string,number>={weekly:4.345,biweekly:2.17,monthly:1};
+
+/* ── pull the first JSON array out of the model reply, tolerating fences ──── */
 function parseCards(raw:string):InsightCard[]{
   let s=raw.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/i,'').trim();
   const a=s.indexOf('['), b=s.lastIndexOf(']');
@@ -72,59 +77,166 @@ function parseCards(raw:string):InsightCard[]{
   if(!Array.isArray(arr))return[];
   return (arr as InsightCard[])
     .filter(c=>c&&typeof c.title==='string'&&c.title.trim()&&typeof c.body==='string'&&c.body.trim())
-    .slice(0,4);
+    .slice(0,6);
 }
 
-async function getSpendingData(admin:SupabaseClient,hid:string){
+/* ── gather every signal in TypeScript and turn it into computed facts ────── */
+interface ExpRow{category_id:string|null;categories:{name:string}|null;profile_id:string;scope:string;amount:number;currency:string;usd_rate_snapshot:number|null;merchant:string|null;occurred_on:string;}
+interface HistRow{category_id:string|null;amount:number;currency:string;usd_rate_snapshot:number|null;}
+interface RecRow{label:string;amount:number;currency:string;cadence:string;categories:{name:string}|null;}
+interface BudRow{amount:number;currency:string;categories:{name:string}|null;}
+interface GoalRow{name:string;target_amount:number;current_amount:number;target_currency:string;deadline:string|null;}
+
+async function buildFacts(admin:SupabaseClient,hid:string):Promise<{facts:Fact[];hasData:boolean;income:number;expense:number}>{
   const now=new Date();
-  const m0=new Date(now.getFullYear(),now.getMonth(),1).toISOString().slice(0,10);
-  const m1=new Date(now.getFullYear(),now.getMonth()+1,1).toISOString().slice(0,10);
-  const m3=new Date(now.getFullYear(),now.getMonth()-3,1).toISOString().slice(0,10);
-  const [cr,hr,ir]=await Promise.all([
-    admin.from('transactions').select('category_id,categories(name),profile_id,scope,amount').eq('household_id',hid).eq('type','expense').gte('occurred_on',m0).lt('occurred_on',m1),
-    admin.from('transactions').select('category_id,profile_id,scope,amount').eq('household_id',hid).eq('type','expense').gte('occurred_on',m3).lt('occurred_on',m0),
-    admin.from('transactions').select('amount').eq('household_id',hid).eq('type','income').gte('occurred_on',m0),
+  const y=now.getFullYear(), m=now.getMonth();
+  const m0=iso(y,m,1), m1=iso(y,m+1,1), m3=iso(y,m-3,1);
+  const dim=new Date(y,m+1,0).getDate();
+  const day=now.getDate();
+
+  const [curR,histR,incR,recR,budR,goalR,savR,fxR]=await Promise.all([
+    admin.from('transactions').select('category_id,categories(name),profile_id,scope,amount,currency,usd_rate_snapshot,merchant,occurred_on').eq('household_id',hid).eq('type','expense').gte('occurred_on',m0).lt('occurred_on',m1),
+    admin.from('transactions').select('category_id,amount,currency,usd_rate_snapshot').eq('household_id',hid).eq('type','expense').gte('occurred_on',m3).lt('occurred_on',m0),
+    admin.from('transactions').select('amount,currency,usd_rate_snapshot').eq('household_id',hid).eq('type','income').gte('occurred_on',m0).lt('occurred_on',m1),
+    admin.from('recurring_rules').select('label,amount,currency,cadence,categories(name)').eq('household_id',hid).eq('active',true).eq('direction','expense'),
+    admin.from('budgets').select('amount,currency,categories(name)').eq('household_id',hid).eq('active',true),
+    admin.from('goals').select('name,target_amount,current_amount,target_currency,deadline').eq('household_id',hid).eq('archived',false),
+    admin.from('savings_goals').select('target_pct').order('month',{ascending:false}).limit(1).maybeSingle(),
+    admin.from('fx_rates').select('ars_per_usd').eq('source','blue').order('date',{ascending:false}).limit(1).maybeSingle(),
   ]);
-  const curr=(cr.data??[]) as TxRow[];
-  const hist=(hr.data??[]) as {category_id:string;profile_id:string;scope:string;amount:number}[];
-  const cmap:Record<string,{name:string;pid:string;scope:string;cur:number}>={};
-  for(const t of curr){const k=`${t.category_id}_${t.profile_id}_${t.scope}`;if(!cmap[k])cmap[k]={name:t.categories?.name??'Sin categoría',pid:t.profile_id,scope:t.scope,cur:0};cmap[k].cur+=t.amount;}
-  const hmap:Record<string,number>={};
-  for(const t of hist){const k=`${t.category_id}_${t.profile_id}_${t.scope}`;hmap[k]=(hmap[k]??0)+t.amount;}
-  const cats=Object.entries(cmap).map(([k,v])=>({name:v.name,pid:v.pid,scope:v.scope,cur:v.cur,avg3m:Math.round((hmap[k]??0)/3),pct:hmap[k]?Math.round((v.cur-hmap[k]/3)/(hmap[k]/3)*100):null})).sort((a,b)=>Math.abs(b.pct??0)-Math.abs(a.pct??0));
-  return{cats,expense:curr.reduce((s,t)=>s+t.amount,0),income:((ir.data??[]) as {amount:number}[]).reduce((s,t)=>s+t.amount,0)};
+  const blue=Number(fxR.data?.ars_per_usd??1200);
+  const ars=(a:number,cur:string,snap:number|null)=>cur==='USD'?a*(Number(snap)||blue):a;
+
+  const cur=(curR.data??[]) as ExpRow[];
+  const hist=(histR.data??[]) as HistRow[];
+  const inc=(incR.data??[]) as {amount:number;currency:string;usd_rate_snapshot:number|null}[];
+  const rec=(recR.data??[]) as RecRow[];
+  const buds=(budR.data??[]) as BudRow[];
+  const goals=(goalR.data??[]) as GoalRow[];
+  const targetPct=Number(savR.data?.target_pct??20);
+
+  const expense=cur.reduce((s,t)=>s+ars(t.amount,t.currency,t.usd_rate_snapshot),0);
+  const income=inc.reduce((s,t)=>s+ars(t.amount,t.currency,t.usd_rate_snapshot),0);
+  const net=income-expense;
+  const hasData=cur.length>0||income>0;
+  const facts:Fact[]=[];
+
+  // current + trailing-3m totals per category
+  const catCur:Record<string,{name:string;total:number;n:number;small:number}>={};
+  for(const t of cur){
+    const k=t.category_id??'none';
+    const name=t.categories?.name??'Sin categoría';
+    const a=ars(t.amount,t.currency,t.usd_rate_snapshot);
+    if(!catCur[k])catCur[k]={name,total:0,n:0,small:0};
+    catCur[k].total+=a; catCur[k].n++; if(a<12000)catCur[k].small++;
+  }
+  const catHist:Record<string,number>={};
+  for(const t of hist){const k=t.category_id??'none';catHist[k]=(catHist[k]??0)+ars(t.amount,t.currency,t.usd_rate_snapshot);}
+
+  // 1. savings rate
+  if(income>0){
+    const rate=Math.round(net/income*100);
+    if(rate>=targetPct) facts.push({kind:'saving',severity:'positive',weight:6,text:`Tasa de ahorro este mes: ${rate}% (ahorrás ${fmt(net)} de ${fmt(income)} de ingresos). Meta del hogar: ${targetPct}%. Van por encima.`});
+    else facts.push({kind:'saving',severity:'warning',weight:9,text:`Tasa de ahorro este mes: ${rate}% (ahorrás ${fmt(net)} de ${fmt(income)} de ingresos), por debajo de la meta de ${targetPct}%. Falta recortar ${fmt(income*targetPct/100-net)} para llegar.`});
+  }
+
+  // 2. category spikes vs 3-month average
+  for(const [k,v] of Object.entries(catCur)){
+    const avg=(catHist[k]??0)/3;
+    if(avg>0){
+      const pct=Math.round((v.total-avg)/avg*100);
+      if(pct>=25&&(v.total-avg)>=20000) facts.push({kind:'spike',severity:'warning',weight:8,text:`${v.name}: ${fmt(v.total)} este mes vs ${fmt(avg)} de promedio (${pct>0?'+':''}${pct}%). Es ${fmt(v.total-avg)} más de lo habitual.`});
+    } else if(v.total>=40000){
+      facts.push({kind:'spike',severity:'info',weight:5,text:`${v.name}: ${fmt(v.total)} este mes, categoría nueva (sin historial para comparar).`});
+    }
+  }
+
+  // 3. ant-spending (many small purchases in one category)
+  for(const v of Object.values(catCur)){
+    if(v.small>=6&&v.total>=30000) facts.push({kind:'anthill',severity:'info',weight:7,text:`Gastos hormiga: ${v.small} compras chicas en ${v.name} suman ${fmt(v.total)} este mes.`});
+  }
+
+  // 4. possible duplicate charges (same merchant + amount + day, ≥2)
+  const dup:Record<string,{n:number;name:string;amt:number;day:string}>={};
+  for(const t of cur){
+    if(!t.merchant)continue;
+    const a=Math.round(ars(t.amount,t.currency,t.usd_rate_snapshot));
+    const key=`${t.merchant.toLowerCase()}_${a}_${t.occurred_on}`;
+    if(!dup[key])dup[key]={n:0,name:t.merchant,amt:a,day:t.occurred_on};
+    dup[key].n++;
+  }
+  for(const d of Object.values(dup)) if(d.n>=2&&d.amt>=3000) facts.push({kind:'duplicate',severity:'warning',weight:8,text:`Posible cargo duplicado: "${d.name}" por ${fmt(d.amt)} aparece ${d.n} veces el ${d.day}. Revisalo.`});
+
+  // 5. fixed subscriptions (recurring expenses) + creep detection
+  if(rec.length){
+    const monthly=rec.map(r=>({name:r.categories?.name??r.label,label:r.label,m:ars(r.amount,r.currency,null)*(MONTHLY[r.cadence]??1)}));
+    const subsTotal=monthly.reduce((s,r)=>s+r.m,0);
+    const pctOfExp=expense>0?Math.round(subsTotal/expense*100):0;
+    const top=[...monthly].sort((a,b)=>b.m-a.m).slice(0,3).map(r=>`${r.label} ${fmt(r.m)}`).join(', ');
+    facts.push({kind:'subscription',severity:'info',weight:6,text:`Suscripciones/gastos fijos: ${fmt(subsTotal)}/mes en ${rec.length} servicios (${top}${monthly.length>3?'…':''})${pctOfExp?`, ${pctOfExp}% de tus gastos`:''}.`});
+    const byCat:Record<string,number>={};
+    for(const r of monthly)byCat[r.name]=(byCat[r.name]??0)+1;
+    for(const [name,n] of Object.entries(byCat)) if(n>=2) facts.push({kind:'subscription',severity:'warning',weight:8,text:`Tenés ${n} suscripciones en ${name}. Cancelando una recortás el gasto fijo mensual.`});
+  }
+
+  // 6. budgets — near limit or projected to overflow
+  for(const b of buds){
+    const name=b.categories?.name; if(!name)continue;
+    const budArs=ars(b.amount,b.currency,null);
+    const spent=Object.values(catCur).find(c=>c.name===name)?.total??0;
+    if(budArs<=0)continue;
+    const pct=Math.round(spent/budArs*100);
+    const projected=day>0?spent/day*dim:spent;
+    if(pct>=85) facts.push({kind:'budget',severity:pct>=100?'warning':'info',weight:pct>=100?9:7,text:`Presupuesto ${name}: ${fmt(spent)} de ${fmt(budArs)} (${pct}%)${pct<100?`, quedan ${dim-day} días`:' — superado'}.`});
+    else if(projected>budArs*1.1) facts.push({kind:'budget',severity:'info',weight:6,text:`Presupuesto ${name}: vas ${fmt(spent)} de ${fmt(budArs)}; a este ritmo proyectás ${fmt(projected)} para fin de mes.`});
+  }
+
+  // 7. goal pace vs deadline
+  for(const g of goals){
+    if(!g.deadline)continue;
+    const remaining=Math.max(0,(g.target_currency==='USD'?(g.target_amount-g.current_amount)*blue:(g.target_amount-g.current_amount)));
+    if(remaining<=0)continue;
+    const months=Math.max(1,monthsBetween(now,new Date(g.deadline)));
+    const required=remaining/months;
+    if(net>0&&required>net) facts.push({kind:'goal',severity:'warning',weight:7,text:`Meta "${g.name}": necesitás ${fmt(required)}/mes para llegar al ${g.deadline} (faltan ${fmt(remaining)}); tu ahorro de este mes fue ${fmt(net)}.`});
+    else facts.push({kind:'goal',severity:'info',weight:4,text:`Meta "${g.name}": faltan ${fmt(remaining)}, apartando ${fmt(required)}/mes llegás al ${g.deadline}.`});
+  }
+
+  // 8. top category summary (always useful as a fallback card)
+  const top=Object.values(catCur).sort((a,b)=>b.total-a.total)[0];
+  if(top) facts.push({kind:'summary',severity:'info',weight:3,text:`Mayor gasto del mes: ${top.name} con ${fmt(top.total)} en ${top.n} movimientos.`});
+
+  facts.sort((a,b)=>b.weight-a.weight);
+  return {facts:facts.slice(0,12),hasData,income,expense};
 }
 
-function buildPrompt(sp:Awaited<ReturnType<typeof getSpendingData>>,pm:Record<string,string>,goals:Goal[],budgets:Budget[],mode:string):string{
-  const now=new Date();
-  const dim=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
-  const d=now.getDate();
-  const lines=[`Mes: ${now.toLocaleString('es-AR',{month:'long',year:'numeric'})} (día ${d}/${dim}, ${Math.round(d/dim*100)}% transcurrido)`,`Ingresos: ${fmt(sp.income)} | Gastos: ${fmt(sp.expense)} | Balance: ${fmt(sp.income-sp.expense)}`,'','Categorías:'];
-  for(const c of sp.cats.slice(0,mode==='lite'?3:6))lines.push(`- ${c.name} (${pm[c.pid]??'Hogar'},${c.scope}): ${fmt(c.cur)} vs avg ${fmt(c.avg3m)} → ${c.pct!==null?(c.pct>0?'+':'')+c.pct+'%':'nuevo'}`);
-  if(goals.length&&mode==='full'){lines.push('','Metas:');for(const g of goals.slice(0,3))lines.push(`- ${g.name}: ${Math.round(g.current_amount/g.target_amount*100)}% (${fmt(g.current_amount)}/${fmt(g.target_amount)})`);}
-  if(budgets.length&&mode==='full'){lines.push('','Presupuestos:');for(const b of budgets.slice(0,3)){const nm=b.categories?.name??'';const spent=sp.cats.find(c=>c.name===nm)?.cur??0;lines.push(`- ${nm}: ${Math.round(spent/b.amount*100)}% (${fmt(spent)}/${fmt(b.amount)})`);} }
-  lines.push('',`Generá ${mode==='lite'?'2':'2-4'} insights. pct>25% → warning. Logros metas → positive. Resto → info.`);
-  return lines.join('\n');
+function buildPrompt(facts:Fact[],mode:string):string{
+  const n=mode==='lite'?'2-3':'3-6';
+  const lines=facts.map((f,i)=>`${i+1}. [${f.severity}] ${f.text}`);
+  return `Hechos ya calculados (los números son EXACTOS, usalos tal cual, no recalcules ni inventes):\n${lines.join('\n')}\n\nElegí los ${n} hechos más importantes y accionables y convertilos en cards.`;
 }
+
+const SYSTEM = 'Sos el coach financiero de Morchis, una app para una pareja argentina (Lucas y Sofi). Hablás en español rioplatense, cercano y motivador, sin ser invasivo. Te paso HECHOS ya calculados sobre sus finanzas del mes. Tu trabajo: elegir los más importantes y convertirlos en cards breves y ACCIONABLES — cada una sugiere UNA cosa concreta para gastar menos, ahorrar más o evitar un problema. Reglas: (1) Usá SOLO números que aparezcan en los hechos, nunca inventes ni recalcules montos. (2) Priorizá ahorro y alertas por encima de lo descriptivo. (3) Respondé SOLO con un array JSON sin markdown. Cada item: {"title":string(≤7 palabras),"body":string(1-2 oraciones que incluyan el número del hecho + una acción concreta, ≤30 palabras),"severity":"info"|"positive"|"warning","kind":"saving"|"spike"|"anthill"|"duplicate"|"subscription"|"budget"|"goal"|"summary"}.';
 
 async function processHousehold(admin:SupabaseClient,hid:string,mode:string,apiKey:string,vPub:string,vPriv:string):Promise<number>{
-  const[sp,pr,gr,br]=await Promise.all([getSpendingData(admin,hid),admin.from('profiles').select('id,nickname,display_name').eq('household_id',hid),admin.from('goals').select('name,target_amount,current_amount').eq('household_id',hid).eq('archived',false),admin.from('budgets').select('amount,categories(name)').eq('household_id',hid).eq('active',true)]);
+  const [{facts,hasData},pr]=await Promise.all([
+    buildFacts(admin,hid),
+    admin.from('profiles').select('id,nickname,display_name').eq('household_id',hid),
+  ]);
   const profiles=(pr.data??[]) as Profile[];
-  const goals=(gr.data??[]) as Goal[];
-  const budgets=(br.data??[]) as Budget[];
-  if(sp.income===0&&sp.expense===0&&sp.cats.length===0){console.log('No data',hid);return 0;}
-  const pm:Record<string,string>={};
-  for(const p of profiles)pm[p.id]=p.nickname??p.display_name??'Usuario';
+  if(!hasData||!facts.length){console.log('No data',hid);return 0;}
+
   const anthropic=new Anthropic({apiKey});
   const resp=await anthropic.messages.create({
     model:'claude-sonnet-4-6',
-    max_tokens:800,
-    system:[{type:'text',text:'Sos un asistente financiero para un hogar argentino. Analizás datos y generás insights breves en español rioplatense. Respondés SOLO con array JSON sin markdown. Cada item: {"title":string(≤6 palabras),"body":string(1 oración ≤20 palabras),"severity":"info"|"positive"|"warning","kind":"spending"|"goal"|"budget"|"summary"}',cache_control:{type:'ephemeral'}}],
-    messages:[{role:'user',content:buildPrompt(sp,pm,goals,budgets,mode)}],
+    max_tokens:1200,
+    system:[{type:'text',text:SYSTEM,cache_control:{type:'ephemeral'}}],
+    messages:[{role:'user',content:buildPrompt(facts,mode)}],
   });
   const raw=resp.content[0].type==='text'?resp.content[0].text.trim():'';
   const cards=parseCards(raw);
   if(!cards.length){console.error('No valid cards from model',raw);return 0;}
+
   const now=new Date();
   const period=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   // Insert the fresh batch FIRST, then clear the previous one — so a failed
@@ -133,6 +245,7 @@ async function processHousehold(admin:SupabaseClient,hid:string,mode:string,apiK
   if(insErr||!ins){console.error('Insert error',insErr);return 0;}
   const newIds=(ins as {id:string}[]).map(i=>i.id);
   if(newIds.length)await admin.from('insights').delete().eq('household_id',hid).eq('period',period).not('id','in',`(${newIds.join(',')})`);
+
   if(vPub&&vPriv&&ins){
     const noti=(ins as {severity:string;title:string;body:string}[]).filter(i=>i.severity==='warning'||i.severity==='positive');
     if(noti.length){
