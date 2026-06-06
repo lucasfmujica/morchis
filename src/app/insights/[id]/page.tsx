@@ -31,6 +31,8 @@ export default async function InsightDetailPage({ params }: { params: Promise<{ 
     <InsightDetailClient
       insight={insight as Parameters<typeof InsightDetailClient>[0]['insight']}
       isHousehold={insight.profile_id == null}
+      householdId={profile.household_id}
+      profileId={profile.id}
     />
   );
 }

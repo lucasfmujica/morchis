@@ -156,7 +156,7 @@ const CategoryDonutCard = memo(function CategoryDonutCard({
   spentByCategory: Record<string, number>;
   hideAmounts: boolean;
 }) {
-  // Build the donut once per data change instead of on every parent render.
+  // Build the donut + legend once per data change instead of on every render.
   const built = useMemo(() => {
     const catById = new Map(categories.map((c) => [c.id, c]));
     const rows = Object.entries(spentByCategory)
@@ -168,48 +168,59 @@ const CategoryDonutCard = memo(function CategoryDonutCard({
 
     const total = rows.reduce((s, r) => s + r.value, 0);
     const TOP = 6;
-    const top = rows.slice(0, TOP);
-    const restTotal = rows.slice(TOP).reduce((s, r) => s + r.value, 0);
-
-    const segments = top.map((r, i) => ({
+    const top = rows.slice(0, TOP).map((r, i) => ({
       id: r.cat!.id,
       label: r.cat!.name,
+      icon: r.cat!.icon,
       value: r.value,
       color: r.cat!.color || DONUT_PALETTE[i % DONUT_PALETTE.length],
     }));
-    const legend = [...segments] as { id?: string; label: string; value: number; color: string }[];
-    if (restTotal > 0) legend.push({ label: 'Otras', value: restTotal, color: '#C4B9AE' });
-    return { total, legend };
+    const restTotal = rows.slice(TOP).reduce((s, r) => s + r.value, 0);
+    // Donut overview: top + an "Otras" slice.
+    const segments = top.map((t) => ({ label: t.label, value: t.value, color: t.color }));
+    if (restTotal > 0) segments.push({ label: 'Otras', value: restTotal, color: '#C4B9AE' });
+    return { total, top, segments, hasMore: rows.length > TOP };
   }, [categories, spentByCategory]);
 
   if (!built) return null;
-  const { total, legend } = built;
+  const { total, top, segments, hasMore } = built;
 
   return (
-    <Link href="/analisis/categorias" className="mx-4 rounded-3xl p-5 mb-4 block" style={{ background: '#FFFFFF' }}>
+    <div className="mx-4 rounded-3xl p-5 mb-4" style={{ background: '#FFFFFF' }}>
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>
           Gastos por categoría
         </p>
-        <span className="text-xs" style={{ color: '#6B6459' }}>Ver detalle →</span>
+        <Link href="/analisis/categorias" className="text-xs" style={{ color: '#6B6459' }}>Ver detalle →</Link>
       </div>
       <div className="flex items-center gap-4">
-        <div className="shrink-0">
-          <DonutChart segments={legend} centerTop="Total" centerBottom={hideAmounts ? '••••' : formatARS(total)} />
-        </div>
-        <div className="flex-1 min-w-0 flex flex-col gap-2">
-          {legend.map((seg, i) => (
-            <div key={i} className="flex items-center gap-2">
+        <Link href="/analisis/categorias" className="shrink-0">
+          <DonutChart segments={segments} centerTop="Total" centerBottom={hideAmounts ? '••••' : formatARS(total)} />
+        </Link>
+        {/* Each category links to its own detail (projection + history) */}
+        <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+          {top.map((seg) => (
+            <Link key={seg.id} href={`/categorias/${seg.id}`} className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: seg.color }} />
-              <span className="text-xs flex-1 truncate" style={{ color: '#2D2D2D' }}>{seg.label}</span>
+              <span className="text-xs flex-1 truncate" style={{ color: '#2D2D2D' }}>{seg.icon} {seg.label}</span>
               <span className="text-xs font-semibold" style={{ color: '#6B6459' }}>
                 {Math.round((seg.value / total) * 100)}%
               </span>
-            </div>
+              <span className="text-[10px]" style={{ color: '#C4B9AE' }}>›</span>
+            </Link>
           ))}
         </div>
       </div>
-    </Link>
+      {hasMore && (
+        <Link
+          href="/analisis/categorias"
+          className="block w-full text-center text-xs font-bold mt-3 pt-3"
+          style={{ color: '#5BA886', borderTop: '1px solid #ECE5DC' }}
+        >
+          Ver todas las categorías →
+        </Link>
+      )}
+    </div>
   );
 });
 
