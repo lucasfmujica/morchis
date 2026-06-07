@@ -108,7 +108,11 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
   }, [txns, selectedMonth, toArs]);
 
   const GROUP_META: Record<string, { icon: string; color: string }> = {
-    comida: { icon: '🍎', color: '#7EC8A4' },
+    'frutas y verduras': { icon: '🥦', color: '#6FBF73' },
+    'carnes y fiambres': { icon: '🥩', color: '#D9776A' },
+    'lácteos y huevos': { icon: '🧀', color: '#F2C879' },
+    'almacén': { icon: '🥫', color: '#C9A86A' },
+    'panadería': { icon: '🍞', color: '#E0B080' },
     bebidas: { icon: '🥤', color: '#6FA8DC' },
     snacks: { icon: '🍫', color: '#F5A623' },
     limpieza: { icon: '🧼', color: '#5C9CE6' },
@@ -116,6 +120,8 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
     hogar: { icon: '🏠', color: '#B084CC' },
     mascotas: { icon: '🐾', color: '#A0855B' },
     otros: { icon: '🏷️', color: '#C4B9AE' },
+    // Legacy bucket from receipts scanned before the food split.
+    comida: { icon: '🍎', color: '#7EC8A4' },
   };
 
   const monthRows = useMemo(

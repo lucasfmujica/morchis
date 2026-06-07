@@ -36,9 +36,13 @@ interface Receipt {
   items: Item[];
 }
 
-const GROUPS = ['comida', 'bebidas', 'snacks', 'limpieza', 'cuidado personal', 'hogar', 'mascotas', 'otros'];
+const GROUPS = ['frutas y verduras', 'carnes y fiambres', 'lácteos y huevos', 'almacén', 'panadería', 'bebidas', 'snacks', 'limpieza', 'cuidado personal', 'hogar', 'mascotas', 'otros'];
 const GROUP_META: Record<string, { icon: string; color: string }> = {
-  comida: { icon: '🍎', color: '#7EC8A4' },
+  'frutas y verduras': { icon: '🥦', color: '#6FBF73' },
+  'carnes y fiambres': { icon: '🥩', color: '#D9776A' },
+  'lácteos y huevos': { icon: '🧀', color: '#F2C879' },
+  'almacén': { icon: '🥫', color: '#C9A86A' },
+  'panadería': { icon: '🍞', color: '#E0B080' },
   bebidas: { icon: '🥤', color: '#6FA8DC' },
   snacks: { icon: '🍫', color: '#F5A623' },
   limpieza: { icon: '🧼', color: '#5C9CE6' },
@@ -46,6 +50,9 @@ const GROUP_META: Record<string, { icon: string; color: string }> = {
   hogar: { icon: '🏠', color: '#B084CC' },
   mascotas: { icon: '🐾', color: '#A0855B' },
   otros: { icon: '🏷️', color: '#C4B9AE' },
+  // Legacy bucket from receipts scanned before the food split — kept so old
+  // items still render with a label/icon instead of falling back to "otros".
+  comida: { icon: '🍎', color: '#7EC8A4' },
 };
 
 export default function TicketClient({ profile }: { profile: Profile }) {

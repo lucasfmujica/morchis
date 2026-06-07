@@ -242,12 +242,12 @@ const TOOLS = [
   { name: 'get_recurring', description: 'Gastos fijos y suscripciones activas (con scope y dueño, equivalente mensual en ARS) e ingresos recurrentes.', input_schema: { type: 'object', properties: {}, required: [] } },
   {
     name: 'aggregate_items',
-    description: 'Analiza los ÍTEMS dentro de los tickets escaneados (qué se compró), agrupados por tipo (comida, bebidas, snacks, limpieza, cuidado personal, hogar, mascotas, otros) o por nombre de producto. Usala para "¿en qué se va el súper?", "¿cuánto gastamos en snacks/bebidas?", "¿qué compramos más?". Respeta el lens igual que aggregate_transactions.',
+    description: 'Analiza los ÍTEMS dentro de los tickets escaneados (qué se compró), agrupados por tipo (frutas y verduras, carnes y fiambres, lácteos y huevos, almacén, panadería, bebidas, snacks, limpieza, cuidado personal, hogar, mascotas, otros; los tickets viejos pueden tener "comida") o por nombre de producto. Usala para "¿en qué se va el súper?", "¿cuánto gastamos en snacks/bebidas?", "¿qué compramos más?". Respeta el lens igual que aggregate_transactions.',
     input_schema: {
       type: 'object',
       properties: {
         lens: { type: 'string', enum: ['mine', 'partner', 'household', 'everyone'], description: 'punto de vista (igual que en aggregate_transactions)' },
-        group: { type: 'string', description: 'filtrar por un tipo de ítem (ej. snacks, bebidas, limpieza)' },
+        group: { type: 'string', description: 'filtrar por un tipo de ítem (ej. snacks, bebidas, almacén, frutas y verduras)' },
         group_by: { type: 'string', enum: ['item_group', 'name'], description: 'agrupar por tipo de ítem (default) o por nombre de producto' },
         date_from: { type: 'string', description: 'desde inclusive YYYY-MM-DD' },
         date_to: { type: 'string', description: 'hasta inclusive YYYY-MM-DD' },
