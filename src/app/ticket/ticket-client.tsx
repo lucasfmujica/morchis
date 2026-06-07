@@ -95,23 +95,31 @@ export default function TicketClient({ profile }: { profile: Profile }) {
     return receipt?.currency === 'USD' ? formatUSD(n) : formatARS(n);
   }
 
-  async function handleFile(file: File) {
+  // Accepts one OR several files: a long ticket photographed in pieces is
+  // uploaded as multiple images, then sent together to the AI as a single
+  // continuous receipt (it merges items + total instead of returning 3 receipts).
+  async function handleFiles(files: File[]) {
     setStatus('working');
     try {
-      const ext = file.name.split('.').pop() || 'jpg';
-      const id = crypto.randomUUID();
-      const filePath = `${profile.household_id}/${id}.${ext}`;
-
-      const { error: upErr } = await supabase.storage
-        .from('statements')
-        .upload(filePath, file, { contentType: file.type, upsert: false });
-      if (upErr) throw upErr;
-
       const { data: { session } } = await supabase.auth.getSession();
+
+      // Upload every photo, collecting their storage paths in order.
+      const filePaths: string[] = [];
+      for (const file of files) {
+        const ext = file.name.split('.').pop() || 'jpg';
+        const id = crypto.randomUUID();
+        const filePath = `${profile.household_id}/${id}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from('statements')
+          .upload(filePath, file, { contentType: file.type, upsert: false });
+        if (upErr) throw upErr;
+        filePaths.push(filePath);
+      }
+
       const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/parse-receipt`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_path: filePath }),
+        body: JSON.stringify({ file_paths: filePaths }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'No se pudo leer el ticket');
@@ -206,11 +214,12 @@ export default function TicketClient({ profile }: { profile: Profile }) {
       <input
         ref={fileRef}
         type="file"
+        multiple
         accept="image/jpeg,image/png,image/heic,image/webp,application/pdf"
         className="hidden"
         onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) handleFile(f);
+          const files = Array.from(e.target.files ?? []).slice(0, 8);
+          if (files.length) handleFiles(files);
           e.target.value = '';
         }}
       />
@@ -224,6 +233,7 @@ export default function TicketClient({ profile }: { profile: Profile }) {
             <p className="text-sm mb-5" style={{ color: '#6B6459' }}>
               Sirve para tickets de súper, facturas o capturas de notificaciones del banco/billetera
               (DiDi, Mercado Pago, etc.). La IA lo categoriza y detecta la moneda.
+              ¿Ticket largo? Sacale varias fotos y subílas todas juntas: se leen como un único comprobante.
             </p>
             <div className="flex gap-3">
               <button

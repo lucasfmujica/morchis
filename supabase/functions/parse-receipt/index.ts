@@ -65,14 +65,29 @@ Reglas:
 - Cuando haya productos, la suma de los line_total debería aproximarse al total. Si no cuadra exacto, priorizá el total real del comprobante.
 - Devolvé SOLO el JSON, sin texto adicional ni markdown.`;
 
+interface ReceiptFile {
+  base64: string;
+  mimeType: string;
+}
+
 async function parseReceipt(
-  fileBase64: string,
-  mimeType: string,
+  files: ReceiptFile[],
   categories: string[],
 ): Promise<ParsedReceipt> {
-  const isPdf = mimeType === "application/pdf";
-  const mediaType = isPdf ? "application/pdf" : (mimeType as string);
   const today = new Date().toISOString().slice(0, 10);
+
+  // One block per file, in upload order. A long ticket split across several
+  // photos arrives here as multiple images that describe the SAME receipt.
+  const fileBlocks = files.map((f) => {
+    const isPdf = f.mimeType === "application/pdf";
+    return isPdf
+      ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: f.base64 } }
+      : { type: "image", source: { type: "base64", media_type: f.mimeType, data: f.base64 } };
+  });
+
+  const closing = files.length > 1
+    ? `Estas ${files.length} imágenes son fotos de UN MISMO comprobante largo, en orden. Leélas como un único ticket continuo: NO dupliques productos que aparezcan repetidos por el solapamiento entre fotos, y devolvé UN solo JSON con todos los productos y el total final del comprobante.`
+    : "Leé este comprobante (ticket o captura de notificación bancaria) y devolvé el JSON.";
 
   const messages = [
     {
@@ -83,10 +98,8 @@ async function parseReceipt(
           text: `${SYSTEM_PROMPT}\n\nCategorías de gasto disponibles (elegí suggested_category EXACTAMENTE de esta lista): ${categories.join(", ")}\n\nFecha de hoy: ${today}`,
           cache_control: { type: "ephemeral" },
         },
-        isPdf
-          ? { type: "document", source: { type: "base64", media_type: mediaType, data: fileBase64 } }
-          : { type: "image", source: { type: "base64", media_type: mediaType, data: fileBase64 } },
-        { type: "text", text: "Leé este comprobante (ticket o captura de notificación bancaria) y devolvé el JSON." },
+        ...fileBlocks,
+        { type: "text", text: closing },
       ],
     },
   ];
@@ -152,26 +165,32 @@ Deno.serve(async (req: Request) => {
       .from("profiles").select("household_id").eq("id", user.id).single();
     if (!profile?.household_id) return new Response(JSON.stringify({ error: "Sin hogar" }), { status: 400, headers: { ...CORS, "Content-Type": "application/json" } });
 
-    const { file_path } = await req.json();
-    if (!file_path) return new Response(JSON.stringify({ error: "file_path requerido" }), { status: 400, headers: { ...CORS, "Content-Type": "application/json" } });
+    const body = await req.json();
+    // Accept the new multi-photo shape (file_paths) and the legacy single one.
+    const filePaths: string[] = Array.isArray(body.file_paths)
+      ? body.file_paths.filter((p: unknown) => typeof p === "string")
+      : body.file_path ? [body.file_path] : [];
+    if (filePaths.length === 0) return new Response(JSON.stringify({ error: "file_path requerido" }), { status: 400, headers: { ...CORS, "Content-Type": "application/json" } });
 
-    const { data: fileData, error: dlErr } = await serviceClient.storage.from("statements").download(file_path);
-    if (dlErr || !fileData) throw new Error(`Error descargando archivo: ${dlErr?.message}`);
+    const files: ReceiptFile[] = [];
+    for (const fp of filePaths) {
+      const { data: fileData, error: dlErr } = await serviceClient.storage.from("statements").download(fp);
+      if (dlErr || !fileData) throw new Error(`Error descargando archivo: ${dlErr?.message}`);
 
-    const arrayBuffer = await fileData.arrayBuffer();
-    const bytes = new Uint8Array(arrayBuffer);
-    let binary = "";
-    for (let i = 0; i < bytes.length; i += 8192) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+      const arrayBuffer = await fileData.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = "";
+      for (let i = 0; i < bytes.length; i += 8192) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+      }
+      files.push({ base64: btoa(binary), mimeType: fileData.type || "image/jpeg" });
     }
-    const base64 = btoa(binary);
-    const mimeType = fileData.type || "image/jpeg";
 
     const { data: categories = [] } = await serviceClient
       .from("categories").select("name").eq("household_id", profile.household_id).eq("kind", "expense");
     const catNames = (categories ?? []).map((c: { name: string }) => c.name);
 
-    const parsed = await parseReceipt(base64, mimeType, catNames);
+    const parsed = await parseReceipt(files, catNames);
 
     return new Response(JSON.stringify({ ok: true, receipt: parsed }), { headers: { ...CORS, "Content-Type": "application/json" } });
   } catch (err: unknown) {
