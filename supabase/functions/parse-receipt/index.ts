@@ -9,7 +9,7 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, content-type",
 };
 
-const GROUPS = ["comida", "bebidas", "snacks", "limpieza", "cuidado personal", "hogar", "mascotas", "otros"];
+const GROUPS = ["frutas y verduras", "carnes y fiambres", "lácteos y huevos", "almacén", "panadería", "bebidas", "snacks", "limpieza", "cuidado personal", "hogar", "mascotas", "otros"];
 const CURRENCIES = ["ARS", "USD"];
 
 interface ReceiptItem {
@@ -50,14 +50,18 @@ Devolvé SIEMPRE este JSON:
         - qty: cantidad (número, 1 si no figura).
         - line_total: precio total de esa línea (unitario × cantidad), número positivo en la MISMA moneda que el total.
         - group: clasificá el producto en UNA de: ${GROUPS.join(", ")}.
-            · comida = alimentos básicos y para cocinar (lácteos, carnes, verduras, fideos, arroz, pan, huevos, aceite).
-            · bebidas = agua, jugos, gaseosas, bebidas alcohólicas.
-            · snacks = golosinas, papas fritas, chocolates, helados, antojos.
-            · limpieza = detergente, lavandina, esponjas, papel, artículos de limpieza del hogar.
-            · cuidado personal = shampoo, jabón, pasta dental, desodorante, higiene.
-            · hogar = pilas, lámparas, utensilios, cosas durables para la casa.
+            · frutas y verduras = frutas y verduras frescas (banana, manzana, tomate, papa, cebolla, lechuga, zanahoria, limón, etc.).
+            · carnes y fiambres = carnes (vaca, pollo, cerdo, pescado), fiambres y embutidos (jamón, salame, leberwurst, salchichas).
+            · lácteos y huevos = leche, quesos, yogur, manteca, crema, dulce de leche y huevos.
+            · almacén = secos y de despensa: arroz, fideos, harina, aceite, azúcar, sal, conservas, legumbres, salsas, condimentos, café, té, yerba, untables (hummus, pasta de maní) y mermeladas.
+            · panadería = pan, facturas, figacitas, tortillas, wraps y productos de panadería.
+            · bebidas = SOLO bebidas para tomar: agua, aguas saborizadas, jugos, gaseosas y bebidas alcohólicas (cerveza, vino, etc.). La leche va a "lácteos y huevos" y el café/té/yerba a "almacén".
+            · snacks = golosinas, papas fritas, chocolates, galletitas dulces, helados y antojos.
+            · limpieza = detergente, lavandina, esponjas, papel de cocina/higiénico y artículos de limpieza del hogar.
+            · cuidado personal = shampoo, jabón, pasta dental, desodorante e higiene personal.
+            · hogar = pilas, lámparas, utensilios y cosas durables para la casa.
             · mascotas = alimento o artículos para mascotas.
-            · otros = cualquier cosa que no encaje.
+            · otros = cualquier cosa que no encaje (incluye propinas, bolsas, etc.).
     * Si es un COMPROBANTE de un único cargo SIN detalle de productos (ej. una notificación de DiDi, una transferencia, un débito), devolvé items como un array VACÍO []. NO inventes productos ni los clasifiques en grupos de supermercado.
 
 Reglas:
@@ -132,12 +136,15 @@ async function parseReceipt(
   parsed.currency = CURRENCIES.includes(String(parsed.currency).toUpperCase())
     ? String(parsed.currency).toUpperCase()
     : "ARS";
-  parsed.items = (parsed.items ?? []).map((it) => ({
-    name: String(it.name ?? "").slice(0, 120),
-    qty: Number(it.qty) || 1,
-    line_total: round2(it.line_total),
-    group: GROUPS.includes(String(it.group)) ? String(it.group) : "otros",
-  }));
+  parsed.items = (parsed.items ?? []).map((it) => {
+    const group = String(it.group ?? "").toLowerCase().trim();
+    return {
+      name: String(it.name ?? "").slice(0, 120),
+      qty: Number(it.qty) || 1,
+      line_total: round2(it.line_total),
+      group: GROUPS.includes(group) ? group : "otros",
+    };
+  });
   if (!parsed.date || !/^\d{4}-\d{2}-\d{2}$/.test(parsed.date)) parsed.date = today;
   if (!parsed.merchant) parsed.merchant = "";
   return parsed;
