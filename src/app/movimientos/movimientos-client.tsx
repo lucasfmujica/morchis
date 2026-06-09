@@ -64,7 +64,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   const [editTx, setEditTx] = useState<Tx | null>(null);
   const [search, setSearch] = useState('');
-  const [filterScope, setFilterScope] = useState<'all' | 'personal' | 'household'>('personal');
+  const [filterScope, setFilterScope] = useState<'all' | 'personal' | 'household'>('all');
   const [filterShared, setFilterShared] = useState<boolean | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>('all');
   // Date range: defaults from the ?range= query param (e.g. Home's "Gastos de
