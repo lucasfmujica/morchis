@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -62,6 +62,12 @@ interface EditTx {
   // Whose movement it is. Optional because not every edit caller selects it;
   // when missing we treat it as mine.
   profile_id?: string | null;
+}
+
+interface SavedSplit {
+  amount: number;
+  payer_profile_id: string;
+  ower_profile_id: string;
 }
 
 export function AddTransactionSheet({
@@ -168,6 +174,22 @@ export function AddTransactionSheet({
   const [paidBy, setPaidBy] = useState<'me' | 'partner'>('me');
   // Percentage of a shared expense that *I* cover. Partner owes the rest.
   const [myShare, setMyShare] = useState(50);
+  // The split row saved in the DB for the movement being edited, loaded async.
+  // `splitLoaded` flips once the query resolved (even when there is no split),
+  // so the save path can tell "no split" apart from "didn't load yet".
+  const [savedSplit, setSavedSplit] = useState<SavedSplit | null>(null);
+  const [splitLoaded, setSplitLoaded] = useState(false);
+  // FX rate captured when the movement was originally saved (USD rows only).
+  const [editRateSnapshot, setEditRateSnapshot] = useState<number | null>(null);
+  // Whether the user actually touched the share control this session. While
+  // false, edits keep the saved split's exact ratio instead of re-deriving it
+  // from the (rounded) slider state — so fixing a typo in the description can
+  // never change who owes whom.
+  const splitDirtyRef = useRef(false);
+  function userSetShare(v: number) {
+    splitDirtyRef.current = true;
+    setMyShare(v);
+  }
   const [merchant, setMerchant] = useState('');
   const [date, setDate] = useState(todayISO());
   const [installments, setInstallments] = useState(1);
@@ -187,7 +209,9 @@ export function AddTransactionSheet({
         setRaw(String(editTx.amount).replace('.', ','));
         setTxType(editTx.type as 'expense' | 'income' | 'transfer');
         setCategoryId(editTx.category_id);
-        setAccountId(editTx.account_id);
+        // 'none' keeps an account-less movement account-less (null means "no
+        // choice yet" and falls back to the first visible account).
+        setAccountId(editTx.account_id ?? 'none');
         setToAccountId(editTx.transfer_account_id ?? null);
         setOwner(ownerOf(editTx));
         setIsShared(editTx.is_shared);
@@ -217,31 +241,50 @@ export function AddTransactionSheet({
       setCreatingCat(false);
       setNewCatName('');
       setNewCatIcon('🏷️');
+      setSavedSplit(null);
+      setSplitLoaded(!editTx); // nothing to load for a brand-new movement
+      setEditRateSnapshot(null);
+      splitDirtyRef.current = false;
     }
   }, [open, editTx, initialType]);
 
-  // When editing an already-shared expense, load the saved split so the
-  // percentage control reflects how it was actually divided.
+  // When editing, load the saved split (and the FX snapshot the row was stored
+  // with) so the percentage control reflects how it was actually divided and
+  // the save path can tell whether the split really needs rewriting.
   useEffect(() => {
-    if (!open || !editTx?.is_shared) return;
+    if (!open || !editTx) return;
     let cancelled = false;
     (async () => {
-      const { data: split } = await supabase
-        .from('splits')
-        .select('amount')
-        .eq('transaction_id', editTx.id)
+      const { data: row } = await supabase
+        .from('transactions')
+        .select('usd_rate_snapshot, splits(amount, payer_profile_id, ower_profile_id)')
+        .eq('id', editTx.id)
         .maybeSingle();
-      if (cancelled || !split || editTx.amount <= 0) return;
-      const arsTotal =
-        editTx.currency === 'USD' ? usdToArs(editTx.amount, arsPerUsd) : editTx.amount;
+      if (cancelled) return;
+      const split: SavedSplit | null = row?.splits?.[0] ?? null;
+      setSavedSplit(split);
+      setEditRateSnapshot(row?.usd_rate_snapshot != null ? Number(row.usd_rate_snapshot) : null);
+      setSplitLoaded(true);
+      if (!editTx.is_shared || editTx.amount <= 0 || splitDirtyRef.current) return;
+      // profile_id is the payer; if it's mine I paid, so my share is the
+      // remainder, otherwise the split amount is directly my (the ower's) share.
+      const iPaid = editTx.profile_id ? editTx.profile_id === profileId : ownerOf(editTx) !== 'partner';
+      if (!split) {
+        // Shared but never divided ("Yo todo" / "Pareja todo"): the payer
+        // covers 100%. Defaulting to 50 here used to re-create a phantom
+        // 50/50 split on the next save.
+        setMyShare(iPaid ? 100 : 0);
+        return;
+      }
+      // Convert with the rate the row was saved at, not today's — otherwise a
+      // USD expense reopened after a devaluation shows the wrong percentages.
+      const rate = row?.usd_rate_snapshot != null ? Number(row.usd_rate_snapshot) : arsPerUsd;
+      const arsTotal = editTx.currency === 'USD' ? usdToArs(editTx.amount, rate) : editTx.amount;
       if (arsTotal <= 0) return;
       // split.amount is what the OWER owes the payer. If I paid, the ower is my
       // partner so my share is the remainder; if my partner paid (the movement
       // is theirs), the ower is me so the split is directly my share.
       const owerPct = Math.round((split.amount / arsTotal) * 100);
-      // profile_id is the payer; if it's mine I paid, so my share is the
-      // remainder, otherwise the split amount is directly my (the ower's) share.
-      const iPaid = editTx.profile_id ? editTx.profile_id === profileId : ownerOf(editTx) !== 'partner';
       setMyShare(Math.min(100, Math.max(0, iPaid ? 100 - owerPct : owerPct)));
     })();
     return () => {
@@ -294,7 +337,10 @@ export function AddTransactionSheet({
 
   function addMonthsISO(iso: string, k: number) {
     const [y, m, d] = iso.split('-').map(Number);
-    const dt = new Date(y, m - 1 + k, d);
+    // Clamp to the target month's last day so a purchase on the 31st doesn't
+    // roll a cuota into the following month (Jan 31 + 1 month ≠ Mar 3).
+    const lastDay = new Date(y, m - 1 + k + 1, 0).getDate();
+    const dt = new Date(y, m - 1 + k, Math.min(d, lastDay));
     return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
   }
 
@@ -401,13 +447,18 @@ export function AddTransactionSheet({
     (a) => a.owner_profile_id == null || a.owner_profile_id === txProfileId,
   );
 
-  // If the selected account is no longer offered (e.g. switched back to Personal
-  // while a partner's account was picked), fall back to the first available one
-  // so we never silently save a hidden selection. Derived at render — no effect.
+  // 'none' is an explicit "Sin cuenta" choice. A real selection that's no
+  // longer offered (e.g. the payer changed, hiding their partner's accounts)
+  // also becomes "Sin cuenta" — silently debiting some other account would be
+  // worse. Only the "no choice yet" null falls back to the first visible one.
   const effectiveAccountId =
-    accountId && visibleAccounts.some((a) => a.id === accountId)
-      ? accountId
-      : (visibleAccounts[0]?.id ?? null);
+    accountId === 'none'
+      ? null
+      : accountId && visibleAccounts.some((a) => a.id === accountId)
+        ? accountId
+        : accountId
+          ? null
+          : (visibleAccounts[0]?.id ?? null);
 
   // Cuotas: only for new expenses. The entered amount is the TOTAL purchase,
   // split into N monthly charges.
@@ -421,7 +472,10 @@ export function AddTransactionSheet({
 
   // Shared split: I cover `myShare`% of the bill; the other person owes the
   // rest. We can only divide when we actually know who the partner is.
-  const canSplit = isShared && !!effectivePartnerId;
+  // Splitting only makes sense for expenses — a "shared income" would make the
+  // partner owe the receiver part of their salary, which is always a mis-tap.
+  const sharedEffective = isShared && txType === 'expense';
+  const canSplit = sharedEffective && !!effectivePartnerId;
   // The ower's percentage of the bill. myShare is always *my* percentage, so
   // the ower's cut is the complement when I paid, or my own cut when I owe.
   const owerPct = iAmPayer ? 100 - myShare : myShare;
@@ -496,7 +550,8 @@ export function AddTransactionSheet({
           const { error } = await supabase.from('transactions').update(transferPayload).eq('id', editTx.id);
           if (error) throw error;
           // If this row used to be a shared expense, drop any stale split.
-          await supabase.from('splits').delete().eq('transaction_id', editTx.id);
+          const { error: delErr } = await supabase.from('splits').delete().eq('transaction_id', editTx.id);
+          if (delErr) throw delErr;
         } else {
           const { error } = await supabase.from('transactions').insert(transferPayload);
           if (error) throw error;
@@ -520,29 +575,103 @@ export function AddTransactionSheet({
         merchant: merchant || null,
         occurred_on: date,
         scope,
-        is_shared: isShared,
+        is_shared: sharedEffective,
         source: 'manual' as const,
       };
 
       if (editTx) {
+        // Make sure we know the saved split before deciding whether to rewrite
+        // it (the async load may not have resolved if the user saved fast).
+        let currentSplit = savedSplit;
+        let rateSnap = editRateSnapshot;
+        if (!splitLoaded) {
+          const { data: row } = await supabase
+            .from('transactions')
+            .select('usd_rate_snapshot, splits(amount, payer_profile_id, ower_profile_id)')
+            .eq('id', editTx.id)
+            .maybeSingle();
+          currentSplit = row?.splits?.[0] ?? null;
+          rateSnap = row?.usd_rate_snapshot != null ? Number(row.usd_rate_snapshot) : null;
+        }
+
+        const amountChanged = nativeAmount !== Number(editTx.amount);
+        const currencyChanged = txCurrency !== editTx.currency;
+        // Preserve the historical FX snapshot on edits — a merchant-name fix
+        // must not re-price an old USD expense at today's rate. Only refresh it
+        // when the currency changed (the old snapshot belongs to the other
+        // currency) or the row never had one.
+        const updatePayload: Partial<typeof payload> = { ...payload };
+        if (!currencyChanged && rateSnap != null) {
+          delete updatePayload.usd_rate_snapshot;
+        }
+
         const { error } = await supabase
           .from('transactions')
-          .update(payload)
+          .update(updatePayload)
           .eq('id', editTx.id);
         if (error) throw error;
 
-        // Re-sync the split to match the current shared/percentage choice.
-        // (Editing previously never touched splits, so toggling "Compartido"
-        // on an existing movement silently did nothing.)
-        await supabase.from('splits').delete().eq('transaction_id', editTx.id);
-        const owed = owedArs(arsAmount);
-        if (canSplit && owed > 0) {
-          await supabase.from('splits').insert({
-            transaction_id: editTx.id,
-            payer_profile_id: payerId!,
-            ower_profile_id: owerId!,
-            amount: owed,
-          });
+        // Re-sync the split to match the current shared/percentage choice —
+        // but ONLY when something split-relevant actually changed. Editing an
+        // unrelated field must never rewrite who owes whom.
+        // When "Compartido" is on but the partner profile isn't known (yet),
+        // leave the existing split untouched rather than deleting it blind.
+        if (!(sharedEffective && !effectivePartnerId)) {
+          const payerChanged = (editTx.profile_id ?? profileId) !== txProfileId;
+          const sharedChanged = sharedEffective !== editTx.is_shared;
+          const needsRewrite =
+            splitDirtyRef.current || amountChanged || currencyChanged || sharedChanged || payerChanged;
+
+          if (needsRewrite) {
+            // Rate for ARS conversion of the split: keep the row's snapshot
+            // while the currency is unchanged, so the couple debt isn't
+            // silently re-priced.
+            const splitRate =
+              txCurrency === 'USD' && !currencyChanged && rateSnap ? rateSnap : arsPerUsd;
+            const arsForSplit = txCurrency === 'USD' ? usdToArs(nativeAmount, splitRate) : nativeAmount;
+
+            let owedNew = owedArs(arsForSplit);
+            if (!splitDirtyRef.current && currentSplit && editTx.is_shared) {
+              // The user didn't touch the slider: carry the saved split's
+              // EXACT ratio over to the new amount instead of the slider's
+              // integer-rounded percentage (33,333% must stay 33,333%).
+              const oldRate = rateSnap ?? arsPerUsd;
+              const oldArs =
+                editTx.currency === 'USD' ? usdToArs(Number(editTx.amount), oldRate) : Number(editTx.amount);
+              if (oldArs > 0) {
+                const oldFrac = Math.min(1, Math.max(0, currentSplit.amount / oldArs));
+                const frac = currentSplit.payer_profile_id === payerId ? oldFrac : 1 - oldFrac;
+                owedNew = roundMoney(arsForSplit * frac);
+              }
+            }
+
+            const desired =
+              canSplit && owedNew > 0
+                ? { amount: owedNew, payer_profile_id: payerId!, ower_profile_id: owerId! }
+                : null;
+            const unchanged =
+              (desired === null && currentSplit === null) ||
+              (desired !== null &&
+                currentSplit !== null &&
+                currentSplit.amount === desired.amount &&
+                currentSplit.payer_profile_id === desired.payer_profile_id &&
+                currentSplit.ower_profile_id === desired.ower_profile_id);
+
+            if (!unchanged) {
+              const { error: delErr } = await supabase
+                .from('splits')
+                .delete()
+                .eq('transaction_id', editTx.id);
+              if (delErr) throw delErr;
+              if (desired) {
+                const { error: insErr } = await supabase.from('splits').insert({
+                  transaction_id: editTx.id,
+                  ...desired,
+                });
+                if (insErr) throw insErr;
+              }
+            }
+          }
         }
       } else if (useInstallments) {
         // Split the total into N monthly charges (one transaction per cuota).
@@ -576,7 +705,10 @@ export function AddTransactionSheet({
               amount: owedArs(txCurrency === 'USD' ? usdToArs(t.amount, arsPerUsd) : t.amount),
             }))
             .filter((r) => r.amount > 0);
-          if (splitRows.length > 0) await supabase.from('splits').insert(splitRows);
+          if (splitRows.length > 0) {
+            const { error: splitErr } = await supabase.from('splits').insert(splitRows);
+            if (splitErr) throw splitErr;
+          }
         }
       } else {
         const { data: tx, error } = await supabase
@@ -588,12 +720,13 @@ export function AddTransactionSheet({
 
         const owed = owedArs(arsAmount);
         if (canSplit && tx && owed > 0) {
-          await supabase.from('splits').insert({
+          const { error: splitErr } = await supabase.from('splits').insert({
             transaction_id: tx.id,
             payer_profile_id: payerId!,
             ower_profile_id: owerId!,
             amount: owed,
           });
+          if (splitErr) throw splitErr;
         }
       }
 
@@ -902,7 +1035,8 @@ export function AddTransactionSheet({
           {/* Options row */}
           {!isTransfer && (
           <div className="flex gap-2 px-4 mt-3 flex-wrap">
-            {/* Shared */}
+            {/* Shared — expenses only; splitting an income makes no sense. */}
+            {txType === 'expense' && (
             <button
               onClick={() => setIsShared((v) => !v)}
               className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold border"
@@ -914,12 +1048,13 @@ export function AddTransactionSheet({
             >
               {isShared ? '🤝 Compartido' : '🤝 Dividir'}
             </button>
+            )}
 
             {/* Account */}
             {visibleAccounts.length > 0 && (
               <select
                 value={effectiveAccountId ?? ''}
-                onChange={(e) => setAccountId(e.target.value || null)}
+                onChange={(e) => setAccountId(e.target.value || 'none')}
                 className="px-3 py-2 rounded-xl text-xs font-bold border bg-white"
                 style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
               >
@@ -944,7 +1079,7 @@ export function AddTransactionSheet({
           )}
 
           {/* Split percentage — only when "Compartido" is on */}
-          {!isTransfer && isShared && (
+          {txType === 'expense' && isShared && (
             <div className="px-4 mt-3">
               {effectivePartnerId ? (
                 <div className="rounded-2xl p-3 border" style={{ background: '#FFFFFF', borderColor: '#ECE5DC' }}>
@@ -958,7 +1093,7 @@ export function AddTransactionSheet({
                       ].map((p) => (
                         <button
                           key={p.label}
-                          onClick={() => setMyShare(p.v)}
+                          onClick={() => userSetShare(p.v)}
                           className="px-2 py-1 rounded-lg text-[11px] font-bold border"
                           style={{
                             background: myShare === p.v ? '#FFE7E2' : '#FFFFFF',
@@ -977,7 +1112,7 @@ export function AddTransactionSheet({
                     max={100}
                     step={5}
                     value={myShare}
-                    onChange={(e) => setMyShare(parseInt(e.target.value, 10))}
+                    onChange={(e) => userSetShare(parseInt(e.target.value, 10))}
                     className="w-full"
                     style={{ accentColor: '#FF7F6B' }}
                   />
