@@ -89,14 +89,26 @@ export async function recordSettlement({
   toProfileId,
   amount,
   note,
+  occurredOn,
+  fromAccountId,
+  toAccountId,
 }: {
   householdId: string;
   fromProfileId: string;
   toProfileId: string;
   amount: number;
   note?: string;
+  /** Payment date. Defaults to today. */
+  occurredOn?: string;
+  /** Payer's account the money leaves from. Set together with toAccountId to
+   *  also record the real money movement between the partners' accounts. */
+  fromAccountId?: string | null;
+  /** Receiver's account the money arrives in. */
+  toAccountId?: string | null;
 }) {
   const supabase = createClient();
+  const date = occurredOn || todayISO();
+
   // Settlements are kept as a ledger and netted against the unsettled splits in
   // useCoupleBalance, so partial payments work and nothing double-counts. (We
   // deliberately do NOT flip splits.settled here — that would subtract the debt
@@ -107,7 +119,31 @@ export async function recordSettlement({
     to_profile: toProfileId,
     amount,
     note: note || null,
-    occurred_on: todayISO(),
+    occurred_on: date,
   });
   if (error) throw error;
+
+  // When the payment moved real money between the partners' accounts, also
+  // record it as a transfer so both balances react (the payer's account drops,
+  // the receiver's rises). Transfers are ignored by income/expense analytics, so
+  // this only touches balances — it never double-counts the settlement. It
+  // belongs to the payer (their account took the hit) and is ARS, matching the
+  // couple-balance ledger.
+  if (fromAccountId && toAccountId) {
+    const { error: txErr } = await supabase.from('transactions').insert({
+      household_id: householdId,
+      profile_id: fromProfileId,
+      type: 'transfer',
+      amount,
+      currency: 'ARS',
+      account_id: fromAccountId,
+      transfer_account_id: toAccountId,
+      merchant: note || 'Pago a la pareja',
+      occurred_on: date,
+      scope: 'personal',
+      is_shared: false,
+      source: 'manual',
+    });
+    if (txErr) throw txErr;
+  }
 }

@@ -9,6 +9,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { InvitePartnerModal } from '@/components/InvitePartnerModal';
 import { formatARS, parseMoney } from '@/lib/format';
+import { todayISO } from '@/lib/date';
 import { toast } from 'sonner';
 import Link from 'next/link';
 
@@ -24,6 +25,14 @@ interface Partner {
   name: string;
 }
 
+interface SettleAccount {
+  id: string;
+  name: string;
+  type: string;
+  currency: string;
+  owner_profile_id?: string | null;
+}
+
 function SettleUpSheet({
   open,
   onClose,
@@ -33,6 +42,7 @@ function SettleUpSheet({
   householdId,
   myProfileId,
   partnerProfileId,
+  accounts,
   fmt,
 }: {
   open: boolean;
@@ -43,26 +53,61 @@ function SettleUpSheet({
   householdId: string;
   myProfileId: string;
   partnerProfileId: string;
+  accounts: SettleAccount[];
   fmt: (n: number) => string;
 }) {
   const qc = useQueryClient();
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   // Amount being settled, in ARS. Defaults to the full balance but can be a
-  // partial payment. Kept as a string so the field can be cleared while typing.
+  // partial payment — or larger than the balance, which flips who owes whom.
+  // Kept as a string so the field can be cleared while typing.
   const [amountStr, setAmountStr] = useState('');
+  const [date, setDate] = useState(todayISO());
+  // When on, the payment also moves real money between the partners' accounts
+  // (a transfer), not just the abstract couple balance. Off = cash / external.
+  const [moveMoney, setMoveMoney] = useState(true);
+  const [fromAccountId, setFromAccountId] = useState<string | null>(null);
+  const [toAccountId, setToAccountId] = useState<string | null>(null);
 
   // Who owes whom
   // net > 0 → partner owes me → partner pays me
   // net < 0 → I owe partner → I pay partner
   const absNet = Math.round(Math.abs(net));
   const iOwe = net < 0;
-  const amount = amountStr === '' ? absNet : Math.min(Math.round(parseMoney(amountStr)), absNet);
+  // No upper cap: paying more than you owe is valid and flips the balance.
+  const amount = amountStr === '' ? absNet : Math.round(parseMoney(amountStr));
   const isPartial = amount > 0 && amount < absNet;
+  const isOverpay = amount > absNet;
 
-  // Reset the amount to the full balance whenever the sheet (re)opens.
+  // The payer is whoever owes; the receiver is the other. Money legs are filtered
+  // to each side's own non-credit ARS accounts (the couple ledger is in ARS).
+  const payerProfileId = iOwe ? myProfileId : partnerProfileId;
+  const receiverProfileId = iOwe ? partnerProfileId : myProfileId;
+  const payerName = iOwe ? myName : partnerName;
+  const receiverName = iOwe ? partnerName : myName;
+  const eligible = (ownerId: string) =>
+    accounts.filter(
+      (a) => a.type !== 'credit' && a.currency === 'ARS' && (a.owner_profile_id == null || a.owner_profile_id === ownerId),
+    );
+  const fromAccounts = eligible(payerProfileId);
+  const toAccounts = eligible(receiverProfileId);
+  const canMoveMoney = fromAccounts.length > 0 && toAccounts.length > 0;
+  const effectiveFromId =
+    fromAccountId && fromAccounts.some((a) => a.id === fromAccountId) ? fromAccountId : (fromAccounts[0]?.id ?? null);
+  const effectiveToId =
+    toAccountId && toAccounts.some((a) => a.id === toAccountId) ? toAccountId : (toAccounts[0]?.id ?? null);
+  const willMoveMoney = moveMoney && canMoveMoney && !!effectiveFromId && !!effectiveToId;
+
+  // Reset the form whenever the sheet (re)opens.
   useEffect(() => {
-    if (open) setAmountStr('');
+    if (open) {
+      setAmountStr('');
+      setDate(todayISO());
+      setMoveMoney(true);
+      setFromAccountId(null);
+      setToAccountId(null);
+    }
   }, [open, absNet]);
 
   if (!open) return null;
@@ -73,18 +118,33 @@ function SettleUpSheet({
     try {
       await recordSettlement({
         householdId,
-        fromProfileId: iOwe ? myProfileId : partnerProfileId,
-        toProfileId: iOwe ? partnerProfileId : myProfileId,
+        fromProfileId: payerProfileId,
+        toProfileId: receiverProfileId,
         amount,
         note,
+        occurredOn: date,
+        fromAccountId: willMoveMoney ? effectiveFromId : null,
+        toAccountId: willMoveMoney ? effectiveToId : null,
       });
-      await qc.invalidateQueries({ queryKey: ['couple-balance'] });
-      await qc.invalidateQueries({ queryKey: ['couple-transactions'] });
+      // Invalidate the couple balance plus everything a money movement touches,
+      // so account balances and net worth refresh when this also moved money.
+      await Promise.all(
+        ['couple-balance', 'couple-transactions', 'transactions', 'account-tx', 'summary', 'projection'].map((key) =>
+          qc.invalidateQueries({ queryKey: [key] }),
+        ),
+      );
       const remaining = absNet - amount;
+      // remaining < 0 means the payer overpaid, so the balance flips: whoever
+      // received the money now owes the difference back.
+      const flipMsg = iOwe
+        ? `Pago registrado. Ahora ${partnerName} te debe ${fmt(-remaining)} ✓`
+        : `Pago registrado. Ahora le debés ${fmt(-remaining)} a ${partnerName} ✓`;
       toast.success(
-        remaining <= 0
-          ? '¡Saldo saldado! Balance en cero ✓'
-          : `Pago parcial registrado. Queda ${fmt(remaining)} ✓`,
+        remaining < 0
+          ? flipMsg
+          : remaining === 0
+            ? '¡Saldo saldado! Balance en cero ✓'
+            : `Pago parcial registrado. Queda ${fmt(remaining)} ✓`,
       );
       onClose();
       setNote('');
@@ -150,15 +210,92 @@ function SettleUpSheet({
             Pago parcial — quedará un saldo de {fmt(absNet - amount)}.
           </p>
         )}
+        {isOverpay && (
+          <p className="text-xs mb-3" style={{ color: '#5BA886' }}>
+            Pagás de más — el balance se da vuelta:{' '}
+            {iOwe
+              ? `${partnerName} te quedará debiendo ${fmt(amount - absNet)}.`
+              : `le quedarás debiendo ${fmt(amount - absNet)} a ${partnerName}.`}
+          </p>
+        )}
 
-        <input
-          type="text"
-          placeholder="Nota (opcional)"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          className="w-full px-4 py-3 rounded-2xl text-sm border bg-white outline-none mb-4"
-          style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
-        />
+        {/* Real money movement — record the transfer between accounts, not just
+            the couple balance. Off = cash or settled outside the app. */}
+        <div className="rounded-2xl p-3 mb-3 border" style={{ background: '#FFFFFF', borderColor: '#ECE5DC' }}>
+          <button
+            onClick={() => setMoveMoney((v) => !v)}
+            disabled={!canMoveMoney}
+            className="w-full flex items-center justify-between disabled:opacity-50"
+          >
+            <span className="text-xs font-bold" style={{ color: '#2D2D2D' }}>
+              💸 Mover plata entre cuentas
+            </span>
+            <span
+              className="text-[11px] font-bold px-2 py-1 rounded-full"
+              style={{
+                background: willMoveMoney ? '#E4F2EA' : '#ECE5DC',
+                color: willMoveMoney ? '#5BA886' : '#6B6459',
+              }}
+            >
+              {willMoveMoney ? 'Sí' : 'No'}
+            </span>
+          </button>
+          {!canMoveMoney ? (
+            <p className="text-[11px] mt-2" style={{ color: '#6B6459' }}>
+              Hace falta una cuenta en pesos (no tarjeta) de cada uno para registrar el movimiento.
+            </p>
+          ) : (
+            willMoveMoney && (
+              <div className="flex items-center gap-2 mt-2">
+                <div className="flex-1">
+                  <p className="text-[11px] font-bold mb-1" style={{ color: '#6B6459' }}>Desde · {payerName}</p>
+                  <select
+                    value={effectiveFromId ?? ''}
+                    onChange={(e) => setFromAccountId(e.target.value || null)}
+                    className="w-full px-3 py-2 rounded-xl text-xs font-bold border bg-white"
+                    style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+                  >
+                    {fromAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <span className="text-lg mt-4" style={{ color: '#5B8DEF' }}>→</span>
+                <div className="flex-1">
+                  <p className="text-[11px] font-bold mb-1" style={{ color: '#6B6459' }}>Hacia · {receiverName}</p>
+                  <select
+                    value={effectiveToId ?? ''}
+                    onChange={(e) => setToAccountId(e.target.value || null)}
+                    className="w-full px-3 py-2 rounded-xl text-xs font-bold border bg-white"
+                    style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+                  >
+                    {toAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 mb-4">
+          <input
+            type="text"
+            placeholder="Nota (opcional)"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            className="flex-1 px-4 py-3 rounded-2xl text-sm border bg-white outline-none"
+            style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+          />
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="px-3 py-3 rounded-2xl text-xs font-bold border bg-white"
+            style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+          />
+        </div>
 
         <button
           onClick={handleSettle}
@@ -166,7 +303,7 @@ function SettleUpSheet({
           className="w-full py-4 rounded-2xl text-lg font-black text-white disabled:opacity-40"
           style={{ background: '#FF7F6B' }}
         >
-          {saving ? 'Guardando…' : isPartial ? 'Registrar pago parcial' : 'Confirmar pago'}
+          {saving ? 'Guardando…' : isPartial ? 'Registrar pago parcial' : isOverpay ? 'Registrar pago' : 'Confirmar pago'}
         </button>
       </div>
     </div>
@@ -207,7 +344,7 @@ export default function ParejaClient({
   const { data: accounts = [] } = useQuery({
     queryKey: ['accounts', profile.household_id],
     queryFn: async () => {
-      const { data } = await supabase.from('accounts').select('id, name, type, owner_profile_id').eq('household_id', profile.household_id).eq('archived', false).order('name');
+      const { data } = await supabase.from('accounts').select('id, name, type, currency, owner_profile_id').eq('household_id', profile.household_id).eq('archived', false).order('name');
       return data ?? [];
     },
   });
@@ -432,6 +569,7 @@ export default function ParejaClient({
           householdId={profile.household_id}
           myProfileId={profile.id}
           partnerProfileId={partner.id}
+          accounts={accounts}
           fmt={f}
         />
       )}
