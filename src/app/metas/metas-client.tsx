@@ -300,7 +300,7 @@ export default function MetasClient({ profile }: { profile: Profile }) {
   const router = useRouter();
   const { inflatedTarget, latestMonthlyPct, latestMonth } = useInflation();
   const [fabOpen, setFabOpen] = useState(false);
-  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
+  const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
   const [goalSheetOpen, setGoalSheetOpen] = useState(false);
   const [editing, setEditing] = useState<Goal | null>(null);
   const [tab, setTab] = useState<'personal' | 'household'>('personal');

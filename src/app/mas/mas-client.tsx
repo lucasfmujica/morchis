@@ -20,7 +20,7 @@ export default function MasClient({ profile }: { profile: Profile }) {
   const supabase = createClient();
   const router = useRouter();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
+  const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
   const [inviteOpen, setInviteOpen] = useState(false);
 
   const { data: categories = [] } = useQuery({

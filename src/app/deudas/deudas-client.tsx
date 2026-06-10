@@ -320,7 +320,7 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
   const supabase = createClient();
   const qc = useQueryClient();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
+  const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
   const [showForm, setShowForm] = useState(false);
   const [editDebt, setEditDebt] = useState<Debt | null>(null);
   const [partialDebt, setPartialDebt] = useState<Debt | null>(null);

@@ -48,7 +48,7 @@ export default function ExtractosClient({
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
+  const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
   const [uploading, setUploading] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState<string>(accounts[0]?.id ?? '');
 

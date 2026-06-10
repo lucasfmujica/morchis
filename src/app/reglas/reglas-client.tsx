@@ -554,7 +554,7 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
   const supabase = createClient();
   const qc = useQueryClient();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
+  const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
   const [showForm, setShowForm] = useState(false);
   const [editRule, setEditRule] = useState<Rule | null>(null);
   const [confirmDeleteRule, setConfirmDeleteRule] = useState<Rule | null>(null);

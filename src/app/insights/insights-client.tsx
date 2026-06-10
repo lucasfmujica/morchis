@@ -30,7 +30,7 @@ export default function InsightsClient({ householdId, profileId }: { householdId
   const qc = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
+  const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
 
   const { data: insights = [], isLoading } = useQuery<Insight[]>({
     queryKey: ['insights', householdId],

@@ -301,7 +301,7 @@ export default function HomeClient({
   // Bank-style mask: when the ojito is on, every money value renders as dots.
   const mask = (s: string) => (hideAmounts ? '••••••' : s);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
+  const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
   usePushSubscription(profile.id);
   // Re-check budget thresholds once per app open: cron-posted recurring
   // expenses and statement imports move budgets without any client save, so
@@ -315,7 +315,7 @@ export default function HomeClient({
   const [scope, setScope] = useState<'all' | 'me' | 'partner'>('me');
   const name = profile.nickname || profile.display_name || 'Morch';
 
-  const handleFab = useCallback((type: 'expense' | 'income') => {
+  const handleFab = useCallback((type: 'expense' | 'income' | 'transfer') => {
     setFabType(type);
     setSheetOpen(true);
   }, []);

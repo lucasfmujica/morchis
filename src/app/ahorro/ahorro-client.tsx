@@ -44,7 +44,7 @@ export default function AhorroClient({
   const { arsPerUsd } = useFx();
   const { rates: inflationRates } = useInflation();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
+  const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
   const [pendingPct, setPendingPct] = useState<number | null>(null);
   // scope: 'me' (Mío) | 'all' (Nuestro) | 'partner' — default to "Mío"
   const [scope, setScope] = useState<'me' | 'all' | 'partner'>('me');

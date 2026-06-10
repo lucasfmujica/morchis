@@ -448,7 +448,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   const { arsPerUsd } = useFx();
   const [tab, setTab] = useState<'personal' | 'household'>('personal');
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
+  const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
   const [editing, setEditing] = useState<Budget | null>(null);
   const [budgetSheetOpen, setBudgetSheetOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);

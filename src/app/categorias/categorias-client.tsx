@@ -46,7 +46,7 @@ export default function CategoriasClient({
   const [kind, setKind] = useState<'expense' | 'income'>('expense');
   const [saving, setSaving] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
+  const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],

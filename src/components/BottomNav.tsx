@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { createClient } from '@/lib/supabase';
 
 interface BottomNavProps {
-  onFab: (type: 'expense' | 'income') => void;
+  onFab: (type: 'expense' | 'income' | 'transfer') => void;
 }
 
 // All the screens that used to live behind the "Más" page, surfaced directly in
@@ -53,7 +53,7 @@ export function BottomNav({ onFab }: BottomNavProps) {
     );
   }
 
-  function pick(type: 'expense' | 'income') {
+  function pick(type: 'expense' | 'income' | 'transfer') {
     setMenuOpen(false);
     onFab(type);
   }
@@ -110,6 +110,13 @@ export function BottomNav({ onFab }: BottomNavProps) {
             style={{ background: '#FF7F6B' }}
           >
             <span className="text-lg">💸</span> Gasto
+          </button>
+          <button
+            onClick={() => pick('transfer')}
+            className="flex items-center gap-2 pl-4 pr-5 py-3 rounded-full text-sm font-black text-white shadow-lg"
+            style={{ background: '#5B8DEF' }}
+          >
+            <span className="text-lg">🔄</span> Transferencia
           </button>
         </div>
       )}

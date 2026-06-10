@@ -10,6 +10,7 @@ import { SingleBars, lastSixMonths } from '@/components/MonthlyBars';
 import { EmptyState } from '@/components/EmptyState';
 import { formatARS } from '@/lib/format';
 import { toLocalISO } from '@/lib/date';
+import { myShareArs, type SplitRow } from '@/lib/budgets';
 import Link from 'next/link';
 
 interface Profile {
@@ -39,11 +40,24 @@ type Tx = {
   scope: string;
   is_shared: boolean;
   profile_id: string | null;
+  splits: SplitRow[] | null;
   // Receipt item breakdown, fetched in the same query as a nested relation.
   items: { item_group: string; line_total: number }[] | null;
 };
 
-export default function CategoryDetailClient({ profile, category }: { profile: Profile; category: Category }) {
+export default function CategoryDetailClient({
+  profile,
+  category,
+  partnerProfileId,
+  partnerName,
+  initialScope = 'all',
+}: {
+  profile: Profile;
+  category: Category;
+  partnerProfileId?: string;
+  partnerName?: string;
+  initialScope?: 'me' | 'all' | 'partner';
+}) {
   const supabase = createClient();
   const { format, arsPerUsd } = useFx();
   const toArs = useCallback(
@@ -53,6 +67,26 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
   );
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editTx, setEditTx] = useState<Tx | null>(null);
+  // Whose movements to show, mirroring the "Gastos por categoría" breakdown so
+  // opening a category from "Mío" keeps it personal. "all" = the whole household.
+  const [scope, setScope] = useState<'me' | 'all' | 'partner'>(initialScope);
+  const scopeProfileId = scope === 'me' ? profile.id : scope === 'partner' ? partnerProfileId : undefined;
+  const scopeTabs = [
+    { key: 'me' as const, label: 'Mío' },
+    { key: 'all' as const, label: 'Nuestro' },
+    ...(partnerProfileId ? [{ key: 'partner' as const, label: partnerName || 'Pareja' }] : []),
+  ];
+  // How much of a movement counts for the active scope, in ARS. "all" → the
+  // full amount (household view); a person → their solo movements in full plus
+  // their share of any shared expense (matches the breakdown / budgets math).
+  const shareOf = useCallback(
+    (t: Tx, pid: string | undefined): number => {
+      if (!pid) return toArs(t.amount, t.currency);
+      if (!t.is_shared) return t.profile_id === pid ? toArs(t.amount, t.currency) : 0;
+      return myShareArs({ ...t, profile_id: t.profile_id ?? '' }, pid, arsPerUsd);
+    },
+    [toArs, arsPerUsd],
+  );
 
   const months = useMemo(() => lastSixMonths(new Date()), []);
   const currentKey = months[months.length - 1].key;
@@ -73,7 +107,7 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('id, amount, type, currency, category_id, account_id, merchant, occurred_on, scope, is_shared, profile_id, items:transaction_items(item_group, line_total)')
+        .select('id, amount, type, currency, category_id, account_id, merchant, occurred_on, scope, is_shared, profile_id, splits(payer_profile_id, ower_profile_id, amount), items:transaction_items(item_group, line_total)')
         .eq('household_id', profile.household_id)
         .eq('category_id', category.id)
         .gte('occurred_on', rangeStart)
@@ -113,13 +147,15 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
     const map = new Map<string, number>();
     for (const t of txns) {
       if (!t.occurred_on.startsWith(selectedMonth)) continue;
+      // Only count receipts that belong to the active scope.
+      if (shareOf(t, scopeProfileId) <= 0) continue;
       for (const it of t.items ?? []) {
         map.set(it.item_group, (map.get(it.item_group) ?? 0) + toArs(it.line_total, t.currency));
       }
     }
     const total = [...map.values()].reduce((a, b) => a + b, 0);
     return { rows: [...map.entries()].map(([g, v]) => ({ g, v, pct: total > 0 ? v / total : 0 })).sort((a, b) => b.v - a.v), total };
-  }, [txns, selectedMonth, toArs]);
+  }, [txns, selectedMonth, toArs, shareOf, scopeProfileId]);
 
   const GROUP_META: Record<string, { icon: string; color: string }> = {
     comida: { icon: '🍎', color: '#7EC8A4' },
@@ -137,9 +173,11 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
       months.map((m) => ({
         key: m.key,
         label: m.label,
-        value: txns.filter((t) => t.occurred_on.startsWith(m.key)).reduce((s, t) => s + toArs(t.amount, t.currency), 0),
+        value: txns
+          .filter((t) => t.occurred_on.startsWith(m.key))
+          .reduce((s, t) => s + shareOf(t, scopeProfileId), 0),
       })),
-    [months, txns, toArs],
+    [months, txns, shareOf, scopeProfileId],
   );
   const thisMonth = monthRows[monthRows.length - 1].value;
   // Average over completed months only — the in-progress current month (shown
@@ -149,7 +187,9 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
   const pct = budget > 0 ? thisMonth / budget : 0;
   const barCol = pct >= 1 ? '#FF7F6B' : pct >= 0.8 ? '#F5A623' : accent;
 
-  const selectedMonthTx = txns.filter((t) => t.occurred_on.startsWith(selectedMonth));
+  const selectedMonthTx = txns.filter(
+    (t) => t.occurred_on.startsWith(selectedMonth) && shareOf(t, scopeProfileId) > 0,
+  );
   const selectedMonthLabel = months.find((m) => m.key === selectedMonth)?.label ?? '';
   const isCurrentMonth = selectedMonth === currentKey;
 
@@ -165,6 +205,25 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
           <span>{category.icon}</span> {category.name}
         </h1>
       </header>
+
+      {/* Scope toggle: Mío / Nuestro / pareja — only useful with a partner. */}
+      {partnerProfileId && (
+        <div className="mx-4 mb-3 flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#ECE5DC' }}>
+          {scopeTabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setScope(tab.key)}
+              className="flex-1 py-1.5 text-xs font-bold rounded-xl transition-colors"
+              style={{
+                background: scope === tab.key ? '#FFFFFF' : 'transparent',
+                color: scope === tab.key ? '#2D2D2D' : '#6B6459',
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="px-4 flex flex-col gap-4">
         {/* Summary */}
@@ -243,7 +302,7 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
                     <p className="text-xs" style={{ color: '#6B6459' }}>{fmtDate(tx.occurred_on)}{tx.is_shared ? ' · compartido' : ''}</p>
                   </div>
                   <p className="text-base font-black" style={{ color: tx.type === 'expense' ? '#FF7F6B' : '#7EC8A4' }}>
-                    {tx.type === 'expense' ? '-' : '+'}{format(toArs(tx.amount, tx.currency))}
+                    {tx.type === 'expense' ? '-' : '+'}{format(shareOf(tx, scopeProfileId))}
                   </p>
                 </button>
               ))}

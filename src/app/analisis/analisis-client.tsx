@@ -45,7 +45,7 @@ export default function AnalisisClient({
   const { arsPerUsd } = useFx();
   const { rates: inflationRates } = useInflation();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
+  const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
   const [refreshing, setRefreshing] = useState(false);
   // Trend chart controls: period (6M/12M) and nominal vs constant pesos.
   const [trendRange, setTrendRange] = useState<'6M' | '12M'>('6M');

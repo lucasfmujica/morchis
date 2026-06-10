@@ -345,7 +345,7 @@ export default function ParejaClient({
   const qc = useQueryClient();
   const { format, showUSD, arsPerUsd, toggle } = useFx();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
+  const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
   const [settleOpen, setSettleOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
 

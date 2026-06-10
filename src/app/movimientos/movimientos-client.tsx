@@ -67,7 +67,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     [arsPerUsd],
   );
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
+  const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
   const [editTx, setEditTx] = useState<Tx | null>(null);
   const [search, setSearch] = useState('');
   // Debounced copy of the search box (~250ms): filtering — and the widened

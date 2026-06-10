@@ -186,7 +186,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
   const [dueDate, setDueDate] = useState('');
   const [saving, setSaving] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
+  const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
   // Account whose movements are shown in the drill-down sheet (tap a card).
   const [detailAccountId, setDetailAccountId] = useState<string | null>(null);
   // Movement tapped in the drill-down, opened in the edit sheet.

@@ -43,7 +43,7 @@ interface AddTransactionSheetProps {
   categories: Category[];
   accounts: Account[];
   editTx?: EditTx | null;
-  initialType?: 'expense' | 'income';
+  initialType?: 'expense' | 'income' | 'transfer';
 }
 
 interface EditTx {

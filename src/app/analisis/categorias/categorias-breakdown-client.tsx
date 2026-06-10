@@ -45,7 +45,7 @@ export default function CategoriasBreakdownClient({
   const supabase = createClient();
   const { arsPerUsd } = useFx();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
+  const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
   // Default to "Mío" so the breakdown is personal, consistent with the rest.
   const [scope, setScope] = useState<'me' | 'all' | 'partner'>('me');
   const scopeProfileId = scope === 'me' ? profile.id : scope === 'partner' ? partnerProfileId : undefined;
@@ -186,7 +186,7 @@ export default function CategoriasBreakdownClient({
                 return (
                   <Link
                     key={r.id}
-                    href={`/categorias/${r.id}`}
+                    href={`/categorias/${r.id}?scope=${scope}`}
                     className="block px-4 py-3.5"
                     style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}
                   >

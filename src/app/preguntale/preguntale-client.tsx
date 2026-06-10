@@ -33,7 +33,7 @@ export default function PreguntaleClient({ householdId, profileId }: { household
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
+  const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
