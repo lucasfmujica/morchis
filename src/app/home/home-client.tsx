@@ -8,6 +8,7 @@ import { usePrivacyStore } from '@/store/privacy';
 import { usePushSubscription } from '@/hooks/usePushSubscription';
 import {
   spentForBudget,
+  myShareArs,
   toArs as budgetToArs,
   BUDGET_EXPENSE_SELECT,
   type BudgetExpenseRow,
@@ -358,36 +359,42 @@ export default function HomeClient({
     },
   });
 
-  // Load all transactions for current month
-  const { data: transactions = [] } = useQuery({
-    queryKey: ['transactions', profile.household_id, 'month'],
-    queryFn: async () => {
-      const now = new Date();
-      const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-      const { data } = await supabase
-        .from('transactions')
-        .select('amount, type, occurred_on, profile_id, category_id, currency')
-        .eq('household_id', profile.household_id)
-        .gte('occurred_on', `${month}-01`)
-        // Cap at month end so a future-month installment cuota doesn't leak into
-        // this month's "Gastos" tile, donut and projection.
-        .lte('occurred_on', `${month}-${String(lastDay).padStart(2, '0')}`);
-      return data ?? [];
-    },
-  });
-
-  // Load budgets for current month summary
+  // Month + week windows. The week (Mon–Sun) can straddle a month edge, so the
+  // transaction fetch spans both and each aggregation filters its own window —
+  // otherwise the week card silently dropped the days from the previous month.
   const now0 = new Date();
   const monthStart = `${now0.getFullYear()}-${String(now0.getMonth() + 1).padStart(2, '0')}-01`;
   const monthEnd = `${now0.getFullYear()}-${String(now0.getMonth() + 1).padStart(2, '0')}-${String(new Date(now0.getFullYear(), now0.getMonth() + 1, 0).getDate()).padStart(2, '0')}`;
+  const week = useMemo(() => weekRange(new Date()), []);
+  const rowsStart = week.start < monthStart ? week.start : monthStart;
+  const rowsEnd = week.end > monthEnd ? week.end : monthEnd;
+
+  // Load transactions for the current month (plus the week's overhang). Splits
+  // ride along so the Mío/Pareja views can count each person's real share of a
+  // shared expense instead of charging whoever happened to pay.
+  const { data: transactions = [] } = useQuery({
+    queryKey: ['transactions', profile.household_id, 'month', rowsStart, rowsEnd],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('transactions')
+        .select(
+          'amount, type, occurred_on, profile_id, category_id, currency, scope, is_shared, splits(payer_profile_id, ower_profile_id, amount)',
+        )
+        .eq('household_id', profile.household_id)
+        .gte('occurred_on', rowsStart)
+        // Cap at month end so a future-month installment cuota doesn't leak into
+        // this month's "Gastos" tile, donut and projection.
+        .lte('occurred_on', rowsEnd);
+      return data ?? [];
+    },
+  });
 
   const { data: budgets = [] } = useQuery({
     queryKey: ['budgets', profile.household_id],
     queryFn: async () => {
       const { data } = await supabase
         .from('budgets')
-        .select('id, category_id, scope, amount, currency, profile_id')
+        .select('id, category_id, scope, amount, currency, profile_id, period')
         .eq('household_id', profile.household_id)
         .eq('active', true);
       return data ?? [];
@@ -397,15 +404,15 @@ export default function HomeClient({
   // Expense rows (with splits) for accurate per-budget spend — used by the
   // budget alerts below so shared expenses count each person's real share.
   const { data: budgetRows = [] } = useQuery<BudgetExpenseRow[]>({
-    queryKey: ['budget-expense-rows', profile.household_id, monthStart],
+    queryKey: ['budget-expense-rows', profile.household_id, rowsStart, rowsEnd],
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
         .select(BUDGET_EXPENSE_SELECT)
         .eq('household_id', profile.household_id)
         .eq('type', 'expense')
-        .gte('occurred_on', monthStart)
-        .lte('occurred_on', monthEnd);
+        .gte('occurred_on', rowsStart)
+        .lte('occurred_on', rowsEnd);
       return (data ?? []) as BudgetExpenseRow[];
     },
   });
@@ -508,33 +515,49 @@ export default function HomeClient({
 
   // Scope-aware expense aggregations (respect the Nuestro/Mío/Pareja toggle) for
   // the donut, the "Gastos" tile and the week card — computed once per change.
-  const week = useMemo(() => weekRange(new Date()), []);
+  // In Mío/Pareja a shared expense counts as that person's SHARE (via the
+  // split), no matter who fronted the money — the same rule the budget cards
+  // and the budgets page use. "Nuestro" counts every expense once, in full.
   const { monthExpenseTotal, weekExpenseTotal, scopedSpentByCategory } = useMemo(() => {
-    const scopedExpenses = txArs.filter(
-      (t) => t.type === 'expense' && (!scopeProfileId || t.profile_id === scopeProfileId),
-    );
-    return {
-      monthExpenseTotal: scopedExpenses.reduce((s, t) => s + t.amount, 0),
-      weekExpenseTotal: scopedExpenses
-        .filter((t) => t.occurred_on >= week.start && t.occurred_on <= week.end)
-        .reduce((s, t) => s + t.amount, 0),
-      scopedSpentByCategory: scopedExpenses.reduce<Record<string, number>>((map, t) => {
-        if (t.category_id) map[t.category_id] = (map[t.category_id] ?? 0) + t.amount;
-        return map;
-      }, {}),
+    const shareOf = (t: (typeof transactions)[number]): number => {
+      if (!scopeProfileId) return toArs(t.amount, t.currency as string | null);
+      const row = t as unknown as BudgetExpenseRow;
+      if (row.is_shared) return myShareArs(row, scopeProfileId, arsPerUsd);
+      return t.profile_id === scopeProfileId ? toArs(t.amount, t.currency as string | null) : 0;
     };
-  }, [txArs, scopeProfileId, week]);
-  const savingsRate = incomeSoFar > 0 ? Math.round(((incomeSoFar - expensesSoFar) / incomeSoFar) * 100) : null;
+    let monthTotal = 0;
+    let weekTotal = 0;
+    const byCat: Record<string, number> = {};
+    for (const t of transactions) {
+      if (t.type !== 'expense') continue;
+      const amt = shareOf(t);
+      if (amt <= 0) continue;
+      if (t.occurred_on >= monthStart && t.occurred_on <= monthEnd) {
+        monthTotal += amt;
+        if (t.category_id) byCat[t.category_id] = (byCat[t.category_id] ?? 0) + amt;
+      }
+      if (t.occurred_on >= week.start && t.occurred_on <= week.end) weekTotal += amt;
+    }
+    return { monthExpenseTotal: monthTotal, weekExpenseTotal: weekTotal, scopedSpentByCategory: byCat };
+  }, [transactions, scopeProfileId, week, toArs, arsPerUsd, monthStart, monthEnd]);
+  // Savings rate: my income vs MY SHARE of the month's expenses (consistent
+  // with the tiles above and the Ahorro page), not just what I fronted.
+  const savingsRate = incomeSoFar > 0 ? Math.round(((incomeSoFar - monthExpenseTotal) / incomeSoFar) * 100) : null;
 
   // Per-budget spend with shared expenses counted as each person's real share.
   // Only my budgets matter on my home: household ones + my own personal ones
   // (never the partner's personal budgets). Each reduced to ARS.
   const relevantBudgets = useMemo(() => {
     const catById = Object.fromEntries(categories.map((c) => [c.id, c]));
+    // A weekly budget only counts Mon–Sun of the current week; a monthly one
+    // the whole month — same windows as the budgets page, so the home alerts
+    // can't claim 350% on a weekly budget that page shows at 60%.
+    const monthRows = budgetRows.filter((r) => r.occurred_on != null && r.occurred_on >= monthStart && r.occurred_on <= monthEnd);
+    const weekRows = budgetRows.filter((r) => r.occurred_on != null && r.occurred_on >= week.start && r.occurred_on <= week.end);
     return budgets
       .filter((b) => b.scope === 'household' || b.profile_id === profile.id)
       .map((b) => {
-        const spent = spentForBudget(b, budgetRows, profile.id, arsPerUsd);
+        const spent = spentForBudget(b, b.period === 'weekly' ? weekRows : monthRows, profile.id, arsPerUsd);
         const limit = budgetToArs(b.amount, b.currency, arsPerUsd);
         const cat = catById[b.category_id];
         return {
@@ -546,7 +569,7 @@ export default function HomeClient({
           pct: limit > 0 ? spent / limit : 0,
         };
       });
-  }, [budgets, budgetRows, categories, profile.id, arsPerUsd]);
+  }, [budgets, budgetRows, categories, profile.id, arsPerUsd, monthStart, monthEnd, week]);
   // Only categories near or over their limit, worst first.
   const budgetAlerts = useMemo(
     () => relevantBudgets.filter((a) => a.pct >= 0.8).sort((a, b) => b.pct - a.pct),
@@ -764,8 +787,8 @@ export default function HomeClient({
         <span className="text-xs flex-shrink-0" style={{ color: '#C4B9AE' }}>›</span>
       </Link>
 
-      {/* Income of the month + savings rate */}
-      <IncomeCard incomeSoFar={incomeSoFar} expensesSoFar={expensesSoFar} incomeRules={incomeRules} fmt={(n) => mask(format(n))} />
+      {/* Income of the month + savings rate (expenses = my share, like the tiles) */}
+      <IncomeCard incomeSoFar={incomeSoFar} expensesSoFar={monthExpenseTotal} incomeRules={incomeRules} fmt={(n) => mask(format(n))} />
 
       {/* Couple balance chip */}
       <CoupleBalanceChip
