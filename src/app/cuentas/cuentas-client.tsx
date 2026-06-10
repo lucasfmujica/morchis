@@ -59,6 +59,85 @@ interface Profile {
   display_name: string | null;
 }
 
+// One line in the account drill-down sheet: a movement and its signed amount
+// (in its own currency) — negative leaves the account, positive arrives.
+interface AccountMovement {
+  id: string;
+  label: string;
+  icon: string;
+  occurred_on: string;
+  currency: string;
+  amount: number;
+}
+
+function fmtMovementDate(iso: string): string {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
+}
+
+// Bottom sheet listing every movement of one account, mirroring the budget
+// drill-down on the Presupuestos screen.
+function AccountMovementsSheet({
+  title,
+  icon,
+  rows,
+  onClose,
+}: {
+  title: string;
+  icon: string;
+  rows: AccountMovement[];
+  onClose: () => void;
+}) {
+  const fmt = (amount: number, currency: string) =>
+    currency === 'USD' ? formatUSD(amount) : formatARS(amount);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
+      <div
+        className="w-full rounded-t-3xl p-6 flex flex-col"
+        style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))', maxHeight: '80vh' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="w-10 h-1 rounded-full mx-auto mb-5 shrink-0" style={{ background: '#ECE5DC' }} />
+        <div className="flex items-center gap-2 mb-1 shrink-0 min-w-0">
+          <span className="text-2xl">{icon}</span>
+          <h2 className="text-lg font-black truncate" style={{ color: '#2D2D2D' }}>{title}</h2>
+        </div>
+        <p className="text-xs mb-4 shrink-0" style={{ color: '#6B6459' }}>
+          {rows.length} {rows.length === 1 ? 'movimiento' : 'movimientos'}
+        </p>
+
+        {rows.length === 0 ? (
+          <p className="text-sm py-8 text-center" style={{ color: '#6B6459' }}>
+            Esta cuenta todavía no tiene movimientos.
+          </p>
+        ) : (
+          <div className="rounded-2xl overflow-y-auto" style={{ background: '#F9F5F0' }}>
+            {rows.map((r, i) => (
+              <div
+                key={r.id}
+                className="flex items-center gap-3 px-4 py-3.5"
+                style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}
+              >
+                <span className="text-xl shrink-0">{r.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{r.label}</p>
+                  <p className="text-xs" style={{ color: '#6B6459' }}>{fmtMovementDate(r.occurred_on)}</p>
+                </div>
+                <p
+                  className="text-base font-black shrink-0"
+                  style={{ color: r.amount < 0 ? '#FF7F6B' : '#5BA886', fontVariantNumeric: 'tabular-nums' }}
+                >
+                  {r.amount < 0 ? '-' : '+'}{fmt(Math.abs(r.amount), r.currency)}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function CuentasClient({ profile }: { profile: Profile }) {
   const supabase = createClient();
   const qc = useQueryClient();
@@ -76,6 +155,8 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
   const [saving, setSaving] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
+  // Account whose movements are shown in the drill-down sheet (tap a card).
+  const [detailAccountId, setDetailAccountId] = useState<string | null>(null);
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],
@@ -102,13 +183,14 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
     },
   });
 
-  // All transactions with an account, to compute live balances / card spend.
+  // All transactions with an account, to compute live balances / card spend
+  // and to list the movements behind each account when its card is tapped.
   const { data: accountTx = [] } = useQuery({
     queryKey: ['account-tx', profile.household_id],
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('account_id, transfer_account_id, type, amount, occurred_on')
+        .select('id, account_id, transfer_account_id, type, amount, currency, occurred_on, merchant, category_id')
         .eq('household_id', profile.household_id)
         .not('account_id', 'is', null);
       return data ?? [];
@@ -170,6 +252,33 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
       }
     }
     return Math.max(0, charges - credits);
+  }
+
+  const catMap = Object.fromEntries(categories.map((c) => [c.id, c]));
+
+  // Movements tied to an account, newest first. Each row carries a signed amount
+  // in its own currency: money leaving the account is negative (expense, or a
+  // transfer out), money arriving is positive (income, or a transfer in).
+  function movementsForAccount(accountId: string): AccountMovement[] {
+    return accountTx
+      .filter((t) => t.account_id === accountId || (t.type === 'transfer' && t.transfer_account_id === accountId))
+      .map((t) => {
+        const incoming = t.transfer_account_id === accountId && t.type === 'transfer';
+        const sign = incoming || t.type === 'income' ? 1 : -1;
+        const cat = t.category_id ? catMap[t.category_id] : null;
+        const label = t.merchant
+          || (incoming ? 'Transferencia recibida' : t.type === 'transfer' ? 'Transferencia' : cat?.name)
+          || (t.type === 'income' ? 'Ingreso' : 'Gasto');
+        return {
+          id: t.id,
+          label,
+          icon: incoming || t.type === 'transfer' ? '🔁' : (cat?.icon ?? (t.type === 'income' ? '💰' : '🛒')),
+          occurred_on: t.occurred_on,
+          currency: t.currency ?? 'ARS',
+          amount: sign * t.amount,
+        };
+      })
+      .sort((a, b) => b.occurred_on.localeCompare(a.occurred_on));
   }
 
   function openNew() {
@@ -386,7 +495,10 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
         {accounts.map((a) => (
           <div
             key={a.id}
-            className="rounded-3xl px-5 py-4 flex items-center gap-3"
+            onClick={() => setDetailAccountId(a.id)}
+            role="button"
+            tabIndex={0}
+            className="rounded-3xl px-5 py-4 flex items-center gap-3 cursor-pointer"
             style={{ background: '#FFFFFF', opacity: a.archived ? 0.5 : 1 }}
           >
             <span className="text-2xl">{a.type === 'cash' ? '💵' : a.type === 'credit' ? '💳' : '🏦'}</span>
@@ -443,7 +555,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
             <div className="flex gap-2 flex-shrink-0">
               {!a.archived && (
                 <button
-                  onClick={() => openEdit(a)}
+                  onClick={(e) => { e.stopPropagation(); openEdit(a); }}
                   className="text-xs font-bold px-3 py-1.5 rounded-xl border"
                   style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
                 >
@@ -451,7 +563,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
                 </button>
               )}
               <button
-                onClick={() => handleArchive(a.id, a.archived)}
+                onClick={(e) => { e.stopPropagation(); handleArchive(a.id, a.archived); }}
                 className="text-xs font-bold px-3 py-1.5 rounded-xl border"
                 style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
               >
@@ -472,6 +584,19 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
         categories={categories}
         accounts={accounts.filter((a) => !a.archived)}
       />
+
+      {detailAccountId && (() => {
+        const acc = accounts.find((a) => a.id === detailAccountId);
+        if (!acc) return null;
+        return (
+          <AccountMovementsSheet
+            title={acc.name}
+            icon={acc.type === 'cash' ? '💵' : acc.type === 'credit' ? '💳' : '🏦'}
+            rows={movementsForAccount(acc.id)}
+            onClose={() => setDetailAccountId(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
