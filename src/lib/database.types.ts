@@ -222,6 +222,7 @@ export type Database = {
           household_id: string
           id: string
           note: string | null
+          paid_amount: number
           profile_id: string
           settled: boolean
           transaction_id: string | null
@@ -235,6 +236,7 @@ export type Database = {
           household_id: string
           id?: string
           note?: string | null
+          paid_amount?: number
           profile_id: string
           settled?: boolean
           transaction_id?: string | null
@@ -248,6 +250,7 @@ export type Database = {
           household_id?: string
           id?: string
           note?: string | null
+          paid_amount?: number
           profile_id?: string
           settled?: boolean
           transaction_id?: string | null
@@ -469,6 +472,7 @@ export type Database = {
           fx_source: string
           id: string
           name: string
+          split_mode: string
         }
         Insert: {
           base_currency?: string
@@ -476,6 +480,7 @@ export type Database = {
           fx_source?: string
           id?: string
           name: string
+          split_mode?: string
         }
         Update: {
           base_currency?: string
@@ -483,6 +488,7 @@ export type Database = {
           fx_source?: string
           id?: string
           name?: string
+          split_mode?: string
         }
         Relationships: []
       }
@@ -607,6 +613,7 @@ export type Database = {
           household_id: string | null
           id: string
           nickname: string | null
+          notification_prefs: Json
           push_token: string | null
         }
         Insert: {
@@ -616,6 +623,7 @@ export type Database = {
           household_id?: string | null
           id: string
           nickname?: string | null
+          notification_prefs?: Json
           push_token?: string | null
         }
         Update: {
@@ -625,6 +633,7 @@ export type Database = {
           household_id?: string | null
           id?: string
           nickname?: string | null
+          notification_prefs?: Json
           push_token?: string | null
         }
         Relationships: [
@@ -682,6 +691,7 @@ export type Database = {
           category_id: string | null
           currency: string
           direction: string
+          goal_id: string | null
           household_id: string
           id: string
           is_variable: boolean
@@ -699,6 +709,7 @@ export type Database = {
           category_id?: string | null
           currency?: string
           direction: string
+          goal_id?: string | null
           household_id: string
           id?: string
           is_variable?: boolean
@@ -716,6 +727,7 @@ export type Database = {
           category_id?: string | null
           currency?: string
           direction?: string
+          goal_id?: string | null
           household_id?: string
           id?: string
           is_variable?: boolean
