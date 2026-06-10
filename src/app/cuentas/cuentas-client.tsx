@@ -28,6 +28,17 @@ function daysUntil(dateISO: string): number {
   return Math.round((d.getTime() - today.getTime()) / 86400000);
 }
 
+// Step a monthly anchor date by `delta` months, clamping to the target month's
+// last day. Plain `new Date(y, m+1, d)` overflows for d=29–31 (Jan 31 → Mar 3)
+// and the drifted day would be reused forever; keeping the original anchor day
+// lets a 31st come back on 31-day months after clamping to Feb 28.
+function stepMonthly(dt: Date, delta: number, anchorDay: number): Date {
+  const y = dt.getFullYear();
+  const m = dt.getMonth() + delta;
+  const last = new Date(y, m + 1, 0).getDate();
+  return new Date(y, m, Math.min(anchorDay, last));
+}
+
 // Roll a stored monthly date (closing/due) forward one month at a time until it
 // is today or later, so a card whose due date already passed shows the *next*
 // due date instead of "vencido hace 40 días" forever.
@@ -38,7 +49,7 @@ function rollMonthlyForward(dateISO: string): string {
   today.setHours(0, 0, 0, 0);
   let guard = 0;
   while (dt < today && guard < 60) {
-    dt = new Date(dt.getFullYear(), dt.getMonth() + 1, dt.getDate());
+    dt = stepMonthly(dt, 1, d);
     guard += 1;
   }
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
@@ -59,14 +70,32 @@ interface Profile {
   display_name: string | null;
 }
 
-// One line in the account drill-down sheet: a movement and its signed amount
-// (in its own currency) — negative leaves the account, positive arrives.
-interface AccountMovement {
+// A transaction tied to an account, with the fields needed to both list it and
+// reopen it in the edit sheet. `categories` is the embedded category (name/icon).
+interface AccountTx {
   id: string;
+  account_id: string | null;
+  transfer_account_id: string | null;
+  type: string;
+  amount: number;
+  currency: string;
+  occurred_on: string;
+  merchant: string | null;
+  description: string | null;
+  category_id: string | null;
+  scope: string;
+  is_shared: boolean;
+  installment_total: number | null;
+  profile_id: string | null;
+  categories: { name: string; icon: string } | null;
+}
+
+// One line in the account drill-down sheet: the transaction plus its signed
+// amount (in its own currency) — negative leaves the account, positive arrives.
+interface AccountMovement {
+  tx: AccountTx;
   label: string;
   icon: string;
-  occurred_on: string;
-  currency: string;
   amount: number;
 }
 
@@ -75,16 +104,18 @@ function fmtMovementDate(iso: string): string {
 }
 
 // Bottom sheet listing every movement of one account, mirroring the budget
-// drill-down on the Presupuestos screen.
+// drill-down on the Presupuestos screen. Tapping a row opens it for editing.
 function AccountMovementsSheet({
   title,
   icon,
   rows,
+  onSelect,
   onClose,
 }: {
   title: string;
   icon: string;
   rows: AccountMovement[];
+  onSelect: (tx: AccountTx) => void;
   onClose: () => void;
 }) {
   const fmt = (amount: number, currency: string) =>
@@ -103,7 +134,7 @@ function AccountMovementsSheet({
           <h2 className="text-lg font-black truncate" style={{ color: '#2D2D2D' }}>{title}</h2>
         </div>
         <p className="text-xs mb-4 shrink-0" style={{ color: '#6B6459' }}>
-          {rows.length} {rows.length === 1 ? 'movimiento' : 'movimientos'}
+          {rows.length} {rows.length === 1 ? 'movimiento' : 'movimientos'} · tocá para editar
         </p>
 
         {rows.length === 0 ? (
@@ -113,23 +144,24 @@ function AccountMovementsSheet({
         ) : (
           <div className="rounded-2xl overflow-y-auto" style={{ background: '#F9F5F0' }}>
             {rows.map((r, i) => (
-              <div
-                key={r.id}
-                className="flex items-center gap-3 px-4 py-3.5"
+              <button
+                key={r.tx.id}
+                onClick={() => onSelect(r.tx)}
+                className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
                 style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}
               >
                 <span className="text-xl shrink-0">{r.icon}</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{r.label}</p>
-                  <p className="text-xs" style={{ color: '#6B6459' }}>{fmtMovementDate(r.occurred_on)}</p>
+                  <p className="text-xs" style={{ color: '#6B6459' }}>{fmtMovementDate(r.tx.occurred_on)}</p>
                 </div>
                 <p
                   className="text-base font-black shrink-0"
                   style={{ color: r.amount < 0 ? '#FF7F6B' : '#5BA886', fontVariantNumeric: 'tabular-nums' }}
                 >
-                  {r.amount < 0 ? '-' : '+'}{fmt(Math.abs(r.amount), r.currency)}
+                  {r.amount < 0 ? '-' : '+'}{fmt(Math.abs(r.amount), r.tx.currency)}
                 </p>
-              </div>
+              </button>
             ))}
           </div>
         )}
@@ -157,6 +189,8 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   // Account whose movements are shown in the drill-down sheet (tap a card).
   const [detailAccountId, setDetailAccountId] = useState<string | null>(null);
+  // Movement tapped in the drill-down, opened in the edit sheet.
+  const [editTx, setEditTx] = useState<AccountTx | null>(null);
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],
@@ -185,15 +219,17 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
 
   // All transactions with an account, to compute live balances / card spend
   // and to list the movements behind each account when its card is tapped.
-  const { data: accountTx = [] } = useQuery({
+  // Carries the full row (scope, splits, installments…) so tapping a movement
+  // can open the edit sheet directly.
+  const { data: accountTx = [] } = useQuery<AccountTx[]>({
     queryKey: ['account-tx', profile.household_id],
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('id, account_id, transfer_account_id, type, amount, currency, occurred_on, merchant, category_id')
+        .select('id, account_id, transfer_account_id, type, amount, currency, occurred_on, merchant, description, category_id, scope, is_shared, installment_total, profile_id, categories:category_id(name, icon)')
         .eq('household_id', profile.household_id)
         .not('account_id', 'is', null);
-      return data ?? [];
+      return (data as AccountTx[]) ?? [];
     },
   });
 
@@ -224,12 +260,13 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
     const [y, m, d] = closingISO.split('-').map(Number);
     let close = new Date(y, m - 1, d);
     const today = new Date(todayStr + 'T00:00:00');
-    // Step the monthly closing date until it's the last one on/before today.
+    // Step the monthly closing date until it's the last one on/before today,
+    // clamping to each month's last day so a 31st never drifts (Jan 31 → Mar 3).
     let guard = 0;
-    while (close > today && guard < 120) { close = new Date(close.getFullYear(), close.getMonth() - 1, close.getDate()); guard += 1; }
+    while (close > today && guard < 120) { close = stepMonthly(close, -1, d); guard += 1; }
     guard = 0;
-    while (new Date(close.getFullYear(), close.getMonth() + 1, close.getDate()) <= today && guard < 120) {
-      close = new Date(close.getFullYear(), close.getMonth() + 1, close.getDate()); guard += 1;
+    while (stepMonthly(close, 1, d) <= today && guard < 120) {
+      close = stepMonthly(close, 1, d); guard += 1;
     }
     // Cycle opens the day after the last close.
     const next = new Date(close.getFullYear(), close.getMonth(), close.getDate() + 1);
@@ -254,31 +291,29 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
     return Math.max(0, charges - credits);
   }
 
-  const catMap = Object.fromEntries(categories.map((c) => [c.id, c]));
-
   // Movements tied to an account, newest first. Each row carries a signed amount
   // in its own currency: money leaving the account is negative (expense, or a
-  // transfer out), money arriving is positive (income, or a transfer in).
+  // transfer out), money arriving is positive (income, or a transfer in). The
+  // label prefers the movement's own name (merchant, then description) and falls
+  // back to its category before a generic word.
   function movementsForAccount(accountId: string): AccountMovement[] {
     return accountTx
       .filter((t) => t.account_id === accountId || (t.type === 'transfer' && t.transfer_account_id === accountId))
       .map((t) => {
         const incoming = t.transfer_account_id === accountId && t.type === 'transfer';
         const sign = incoming || t.type === 'income' ? 1 : -1;
-        const cat = t.category_id ? catMap[t.category_id] : null;
         const label = t.merchant
-          || (incoming ? 'Transferencia recibida' : t.type === 'transfer' ? 'Transferencia' : cat?.name)
+          || t.description
+          || (incoming ? 'Transferencia recibida' : t.type === 'transfer' ? 'Transferencia' : t.categories?.name)
           || (t.type === 'income' ? 'Ingreso' : 'Gasto');
         return {
-          id: t.id,
+          tx: t,
           label,
-          icon: incoming || t.type === 'transfer' ? '🔁' : (cat?.icon ?? (t.type === 'income' ? '💰' : '🛒')),
-          occurred_on: t.occurred_on,
-          currency: t.currency ?? 'ARS',
+          icon: incoming || t.type === 'transfer' ? '🔁' : (t.categories?.icon ?? (t.type === 'income' ? '💰' : '🛒')),
           amount: sign * t.amount,
         };
       })
-      .sort((a, b) => b.occurred_on.localeCompare(a.occurred_on));
+      .sort((a, b) => b.tx.occurred_on.localeCompare(a.tx.occurred_on));
   }
 
   function openNew() {
@@ -574,15 +609,16 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
         ))}
       </div>
 
-      <BottomNav onFab={(type) => { setFabType(type); setSheetOpen(true); }} />
+      <BottomNav onFab={(type) => { setEditTx(null); setFabType(type); setSheetOpen(true); }} />
       <AddTransactionSheet
         open={sheetOpen}
         initialType={fabType}
-        onClose={() => setSheetOpen(false)}
+        onClose={() => { setSheetOpen(false); setEditTx(null); }}
         householdId={profile.household_id}
         profileId={profile.id}
         categories={categories}
         accounts={accounts.filter((a) => !a.archived)}
+        editTx={editTx}
       />
 
       {detailAccountId && (() => {
@@ -593,6 +629,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
             title={acc.name}
             icon={acc.type === 'cash' ? '💵' : acc.type === 'credit' ? '💳' : '🏦'}
             rows={movementsForAccount(acc.id)}
+            onSelect={(tx) => { setDetailAccountId(null); setEditTx(tx); setSheetOpen(true); }}
             onClose={() => setDetailAccountId(null)}
           />
         );
