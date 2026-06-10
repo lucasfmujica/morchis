@@ -69,23 +69,29 @@ function SettleUpSheet({
   const [moveMoney, setMoveMoney] = useState(true);
   const [fromAccountId, setFromAccountId] = useState<string | null>(null);
   const [toAccountId, setToAccountId] = useState<string | null>(null);
+  // Payment direction, chosen explicitly. Either person can pay the other
+  // regardless of who currently owes — paying against the balance just shifts
+  // it the other way. Defaults to the direction that settles the debt.
+  const [iPay, setIPay] = useState(net < 0);
 
-  // Who owes whom
-  // net > 0 → partner owes me → partner pays me
-  // net < 0 → I owe partner → I pay partner
+  // net > 0 → partner owes me; net < 0 → I owe partner.
   const absNet = Math.round(Math.abs(net));
-  const iOwe = net < 0;
-  // No upper cap: paying more than you owe is valid and flips the balance.
+  // No upper cap: paying any amount is valid; the resulting balance is derived.
   const amount = amountStr === '' ? absNet : Math.round(parseMoney(amountStr));
-  const isPartial = amount > 0 && amount < absNet;
-  const isOverpay = amount > absNet;
 
-  // The payer is whoever owes; the receiver is the other. Money legs are filtered
-  // to each side's own non-credit ARS accounts (the couple ledger is in ARS).
-  const payerProfileId = iOwe ? myProfileId : partnerProfileId;
-  const receiverProfileId = iOwe ? partnerProfileId : myProfileId;
-  const payerName = iOwe ? myName : partnerName;
-  const receiverName = iOwe ? partnerName : myName;
+  // The payer is whoever the direction toggle says; the receiver is the other.
+  // Money legs are filtered to each side's own non-credit ARS accounts (the
+  // couple ledger is in ARS).
+  const payerProfileId = iPay ? myProfileId : partnerProfileId;
+  const receiverProfileId = iPay ? partnerProfileId : myProfileId;
+  const payerName = iPay ? myName : partnerName;
+  const receiverName = iPay ? partnerName : myName;
+
+  // Resulting couple balance from my perspective: paying my partner pushes the
+  // balance toward "partner owes me" (+); the partner paying me pushes it the
+  // other way (−). Drives every preview/toast message, in any direction.
+  const newNet = net + (iPay ? amount : -amount);
+  const settledExactly = Math.abs(newNet) < 1;
   const eligible = (ownerId: string) =>
     accounts.filter(
       (a) => a.type !== 'credit' && a.currency === 'ARS' && (a.owner_profile_id == null || a.owner_profile_id === ownerId),
@@ -107,8 +113,10 @@ function SettleUpSheet({
       setMoveMoney(true);
       setFromAccountId(null);
       setToAccountId(null);
+      // Default to the direction that settles the current balance.
+      setIPay(net < 0);
     }
-  }, [open, absNet]);
+  }, [open, absNet, net]);
 
   if (!open) return null;
 
@@ -133,18 +141,12 @@ function SettleUpSheet({
           qc.invalidateQueries({ queryKey: [key] }),
         ),
       );
-      const remaining = absNet - amount;
-      // remaining < 0 means the payer overpaid, so the balance flips: whoever
-      // received the money now owes the difference back.
-      const flipMsg = iOwe
-        ? `Pago registrado. Ahora ${partnerName} te debe ${fmt(-remaining)} ✓`
-        : `Pago registrado. Ahora le debés ${fmt(-remaining)} a ${partnerName} ✓`;
       toast.success(
-        remaining < 0
-          ? flipMsg
-          : remaining === 0
-            ? '¡Saldo saldado! Balance en cero ✓'
-            : `Pago parcial registrado. Queda ${fmt(remaining)} ✓`,
+        settledExactly
+          ? '¡Quedaron a mano! Balance en cero ✓'
+          : newNet > 0
+            ? `Pago registrado. ${partnerName} te debe ${fmt(newNet)} ✓`
+            : `Pago registrado. Le debés ${fmt(-newNet)} a ${partnerName} ✓`,
       );
       onClose();
       setNote('');
@@ -166,27 +168,50 @@ function SettleUpSheet({
           <div className="w-10 h-1 rounded-full" style={{ background: '#ECE5DC' }} />
         </div>
 
-        <h2 className="text-xl font-black mb-1" style={{ color: '#2D2D2D' }}>Saldar deuda</h2>
-        <p className="text-sm mb-5" style={{ color: '#6B6459' }}>
-          {iOwe
-            ? `Le pagás a ${partnerName} (debés ${fmt(absNet)})`
-            : `${partnerName} te paga (te debe ${fmt(absNet)})`}
+        <h2 className="text-xl font-black mb-1" style={{ color: '#2D2D2D' }}>Registrar pago</h2>
+        <p className="text-sm mb-4" style={{ color: '#6B6459' }}>
+          {absNet < 1
+            ? 'Están a mano.'
+            : net > 0
+              ? `${partnerName} te debe ${fmt(absNet)}`
+              : `Le debés ${fmt(absNet)} a ${partnerName}`}
         </p>
+
+        {/* Direction — either person can pay the other, regardless of who owes. */}
+        <p className="text-xs font-bold mb-1.5" style={{ color: '#6B6459' }}>¿Quién le paga a quién?</p>
+        <div className="flex rounded-2xl overflow-hidden p-1 gap-1 mb-4" style={{ background: '#ECE5DC' }}>
+          {([
+            { key: true, label: `👤 ${myName} → ${partnerName}` },
+            { key: false, label: `👥 ${partnerName} → ${myName}` },
+          ] as const).map((o) => {
+            const active = iPay === o.key;
+            return (
+              <button
+                key={String(o.key)}
+                onClick={() => setIPay(o.key)}
+                className="flex-1 py-2 text-xs font-bold rounded-xl transition-colors"
+                style={{ background: active ? '#FFFFFF' : 'transparent', color: active ? '#2D2D2D' : '#6B6459' }}
+              >
+                {o.label}
+              </button>
+            );
+          })}
+        </div>
 
         <div
           className="rounded-2xl p-4 mb-4 text-center"
-          style={{ background: iOwe ? '#FFE7E2' : '#E4F2EA' }}
+          style={{ background: iPay ? '#FFE7E2' : '#E4F2EA' }}
         >
-          <p className="text-3xl font-black" style={{ color: iOwe ? '#E5604C' : '#5BA886' }}>
+          <p className="text-3xl font-black" style={{ color: iPay ? '#E5604C' : '#5BA886' }}>
             {fmt(amount)}
           </p>
-          <p className="text-xs mt-1" style={{ color: iOwe ? '#E5604C' : '#5BA886', opacity: 0.75 }}>
-            {iOwe ? `${myName} → ${partnerName}` : `${partnerName} → ${myName}`}
+          <p className="text-xs mt-1" style={{ color: iPay ? '#E5604C' : '#5BA886', opacity: 0.75 }}>
+            {payerName} → {receiverName}
           </p>
         </div>
 
-        {/* Amount — defaults to the full balance; lower it for a partial payment */}
-        <p className="text-xs font-bold mb-1.5" style={{ color: '#6B6459' }}>¿Cuánto pagás? (ARS)</p>
+        {/* Amount — defaults to the current balance; type any amount you want. */}
+        <p className="text-xs font-bold mb-1.5" style={{ color: '#6B6459' }}>¿Cuánto paga? (ARS)</p>
         <div className="flex items-center gap-2 mb-2">
           <input
             type="text"
@@ -197,25 +222,23 @@ function SettleUpSheet({
             className="flex-1 px-4 py-3 rounded-2xl text-sm border bg-white outline-none"
             style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
           />
-          <button
-            onClick={() => setAmountStr('')}
-            className="px-3 py-3 rounded-2xl text-xs font-bold border"
-            style={{ borderColor: '#ECE5DC', color: '#6B6459', background: '#FFFFFF' }}
-          >
-            Todo
-          </button>
+          {absNet >= 1 && (
+            <button
+              onClick={() => setAmountStr('')}
+              className="px-3 py-3 rounded-2xl text-xs font-bold border"
+              style={{ borderColor: '#ECE5DC', color: '#6B6459', background: '#FFFFFF' }}
+            >
+              Saldo
+            </button>
+          )}
         </div>
-        {isPartial && (
-          <p className="text-xs mb-3" style={{ color: '#6B6459' }}>
-            Pago parcial — quedará un saldo de {fmt(absNet - amount)}.
-          </p>
-        )}
-        {isOverpay && (
-          <p className="text-xs mb-3" style={{ color: '#5BA886' }}>
-            Pagás de más — el balance se da vuelta:{' '}
-            {iOwe
-              ? `${partnerName} te quedará debiendo ${fmt(amount - absNet)}.`
-              : `le quedarás debiendo ${fmt(amount - absNet)} a ${partnerName}.`}
+        {amount > 0 && (
+          <p className="text-xs mb-3" style={{ color: settledExactly ? '#5BA886' : '#6B6459' }}>
+            {settledExactly
+              ? 'Después de esto quedan a mano. 🤝'
+              : newNet > 0
+                ? `Después de esto, ${partnerName} te debe ${fmt(newNet)}.`
+                : `Después de esto, le debés ${fmt(-newNet)} a ${partnerName}.`}
           </p>
         )}
 
@@ -303,7 +326,7 @@ function SettleUpSheet({
           className="w-full py-4 rounded-2xl text-lg font-black text-white disabled:opacity-40"
           style={{ background: '#FF7F6B' }}
         >
-          {saving ? 'Guardando…' : isPartial ? 'Registrar pago parcial' : isOverpay ? 'Registrar pago' : 'Confirmar pago'}
+          {saving ? 'Guardando…' : settledExactly ? 'Saldar y quedar a mano' : 'Registrar pago'}
         </button>
       </div>
     </div>
