@@ -131,8 +131,11 @@ Deno.serve(async (req) => {
       .in("budget_id", activeBudgets.map((b) => b.id).length ? activeBudgets.map((b) => b.id) : ["00000000-0000-0000-0000-000000000000"]);
     const priorLevel = new Map<string, number>((prior ?? []).map((p) => [p.budget_id as string, p.level as number]));
 
-    const { data: members } = await admin.from("profiles").select("id").eq("household_id", householdId);
-    const memberIds = (members ?? []).map((m) => m.id as string);
+    // Members who haven't turned budget alerts off (absent pref = enabled).
+    const { data: members } = await admin.from("profiles").select("id, notification_prefs").eq("household_id", householdId);
+    const memberIds = (members ?? [])
+      .filter((m) => ((m.notification_prefs as Record<string, boolean> | null)?.budget_alerts) !== false)
+      .map((m) => m.id as string);
 
     const { data: cats } = await admin.from("categories").select("id, name").eq("household_id", householdId);
     const catName = new Map<string, string>((cats ?? []).map((c) => [c.id as string, c.name as string]));
@@ -154,7 +157,9 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const targets = b.scope === "household" ? memberIds : b.profile_id ? [b.profile_id] : [];
+      // Personal-budget pushes also go through the pref filter (memberIds
+      // only contains people who keep budget alerts on).
+      const targets = b.scope === "household" ? memberIds : b.profile_id ? memberIds.filter((id) => id === b.profile_id) : [];
       const name = catName.get(b.category_id) ?? "tu presupuesto";
       const over = level === 100;
       const payload = JSON.stringify({

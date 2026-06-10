@@ -54,7 +54,7 @@ function jwtPayload(token:string):Record<string,unknown>|null{
 }
 
 /* ── types ───────────────────────────────────────────────────────────────── */
-interface Profile{id:string;nickname:string|null;display_name:string|null;}
+interface Profile{id:string;nickname:string|null;display_name:string|null;notification_prefs:Record<string,boolean>|null;}
 interface InsightCard{title:string;body:string;severity:string;kind:string;}
 interface PushSub{endpoint:string;p256dh:string;auth_key:string;profile_id:string;}
 interface Fact{kind:string;severity:'info'|'positive'|'warning';weight:number;text:string;}
@@ -102,11 +102,13 @@ async function fetchAll(admin:SupabaseClient,hid:string):Promise<Data>{
     admin.from('transactions').select(expSel).eq('household_id',hid).eq('type','expense').gte('occurred_on',m0).lt('occurred_on',m1),
     admin.from('transactions').select(expSel).eq('household_id',hid).eq('type','expense').gte('occurred_on',m3).lt('occurred_on',m0),
     admin.from('transactions').select('amount,currency,usd_rate_snapshot').eq('household_id',hid).eq('type','income').gte('occurred_on',m0).lt('occurred_on',m1),
-    admin.from('recurring_rules').select('label,amount,currency,cadence,scope,profile_id,categories(name)').eq('household_id',hid).eq('active',true).eq('direction','expense'),
+    // goal_id is null filters out goal auto-contributions — they're committed
+    // savings, not fixed expenses.
+    admin.from('recurring_rules').select('label,amount,currency,cadence,scope,profile_id,categories(name)').eq('household_id',hid).eq('active',true).eq('direction','expense').is('goal_id',null),
     admin.from('budgets').select('amount,currency,scope,profile_id,categories(name)').eq('household_id',hid).eq('active',true),
     admin.from('goals').select('name,target_amount,current_amount,target_currency,deadline,scope,profile_id').eq('household_id',hid).eq('archived',false),
     admin.from('savings_goals').select('target_pct').order('month',{ascending:false}).limit(1).maybeSingle(),
-    admin.from('profiles').select('id,nickname,display_name').eq('household_id',hid),
+    admin.from('profiles').select('id,nickname,display_name,notification_prefs').eq('household_id',hid),
     // Linked friend-debts net out of the expense's real cost regardless of
     // settled: the friend paying their part back doesn't make the expense
     // cost more (the repayment is never recorded as income).
@@ -277,7 +279,9 @@ async function generateFor(anthropic:Anthropic,admin:SupabaseClient,hid:string,a
   if(vPub&&vPriv){
     const noti=(ins as {severity:string;title:string;body:string}[]).filter(i=>i.severity==='warning'||i.severity==='positive');
     if(noti.length){
-      const targetIds=aud.id===null?d.profiles.map(p=>p.id):[aud.id];
+      // Honor the per-person "insights" notification preference (absent = on).
+      const enabled=d.profiles.filter(p=>(p.notification_prefs?.insights)!==false).map(p=>p.id);
+      const targetIds=(aud.id===null?enabled:enabled.filter(id=>id===aud.id));
       const{data:subs}=await admin.from('push_subscriptions').select('endpoint,p256dh,auth_key,profile_id').in('profile_id',targetIds);
       if(subs?.length){const top=noti[0];for(const sub of subs as PushSub[])try{await sendWebPush(sub,{title:top.title,body:top.body,url:'/home'},vPub,vPriv);}catch(e){console.error('Push err',e);}}
     }

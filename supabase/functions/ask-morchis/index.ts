@@ -164,7 +164,8 @@ async function getDebts(ctx: Ctx) {
 }
 
 async function getRecurring(ctx: Ctx) {
-  const { data } = await ctx.admin.from('recurring_rules').select('label,amount,currency,cadence,direction,scope,profile_id,categories(name)').eq('household_id', ctx.hid).eq('active', true);
+  // goal_id is null: goal auto-contributions are savings, not fixed expenses.
+  const { data } = await ctx.admin.from('recurring_rules').select('label,amount,currency,cadence,direction,scope,profile_id,categories(name)').eq('household_id', ctx.hid).eq('active', true).is('goal_id', null);
   const rows = ((data ?? []) as { label: string; amount: number; currency: string; cadence: string; direction: string; scope: string; profile_id: string; categories: { name: string } | null }[]).map(r => ({
     label: r.label, direction: r.direction, category: r.categories?.name ?? null, scope: r.scope, owner: ctx.pm[r.profile_id] ?? null,
     monthly_ars: Math.round((r.currency === 'USD' ? r.amount * ctx.blue : r.amount) * (MONTHLY[r.cadence] ?? 1)), cadence: r.cadence,

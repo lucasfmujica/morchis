@@ -9,7 +9,7 @@ import { useFx } from '@/hooks/useFx';
 import { createClient } from '@/lib/supabase';
 import { formatARS, formatUSD, usdToArs, arsToUsd, parseMoney, roundMoney, formatTypedAmount } from '@/lib/format';
 import { PrimaryButton } from '@/components/PrimaryButton';
-import { todayISO } from '@/lib/date';
+import { todayISO, toLocalISO } from '@/lib/date';
 import { triggerBudgetAlerts } from '@/lib/notifyBudgets';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -143,6 +143,44 @@ export function AddTransactionSheet({
     },
   });
 
+  // Default split suggestion: when the household divides "según ingresos"
+  // (households.split_mode), a new shared expense starts at each person's
+  // share of the previous closed month's income instead of 50/50. The user
+  // can always override with the slider; null = keep the 50/50 default.
+  const { data: suggestedShare = null } = useQuery({
+    queryKey: ['split-suggestion', householdId, profileId],
+    enabled: !!householdId && open,
+    staleTime: 1000 * 60 * 30,
+    queryFn: async () => {
+      const { data: hh } = await supabase
+        .from('households')
+        .select('split_mode')
+        .eq('id', householdId)
+        .maybeSingle();
+      if (hh?.split_mode !== 'income') return null;
+      const now = new Date();
+      const start = toLocalISO(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+      const end = toLocalISO(new Date(now.getFullYear(), now.getMonth(), 0));
+      const { data: rows } = await supabase
+        .from('transactions')
+        .select('amount, currency, usd_rate_snapshot, profile_id')
+        .eq('household_id', householdId)
+        .eq('type', 'income')
+        .gte('occurred_on', start)
+        .lte('occurred_on', end);
+      let mine = 0;
+      let total = 0;
+      for (const r of rows ?? []) {
+        const ars = r.currency === 'USD' ? r.amount * (Number(r.usd_rate_snapshot) || arsPerUsd) : r.amount;
+        total += ars;
+        if (r.profile_id === profileId) mine += ars;
+      }
+      if (total <= 0) return null;
+      // Snap to the slider's step of 5 so the control reflects the suggestion.
+      return Math.min(95, Math.max(5, Math.round((mine / total) * 20) * 5));
+    },
+  });
+
   const effectivePartnerId = partnerProfileId ?? resolvedPartner?.id ?? null;
   const effectivePartnerName =
     partnerName ?? resolvedPartner?.nickname ?? resolvedPartner?.display_name ?? 'Tu pareja';
@@ -235,7 +273,9 @@ export function AddTransactionSheet({
         setMerchant('');
         setDate(todayISO());
         setInputUSD(false);
-        setMyShare(50);
+        // Income-proportional default when the household uses that mode and
+        // the suggestion already resolved; plain 50/50 otherwise.
+        setMyShare(suggestedShare ?? 50);
       }
       setInstallments(1);
       setCreatingCat(false);
@@ -246,7 +286,18 @@ export function AddTransactionSheet({
       setEditRateSnapshot(null);
       splitDirtyRef.current = false;
     }
+    // suggestedShare intentionally omitted: it's only read as the initial
+    // value at open; the late-resolve case is handled by the effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editTx, initialType]);
+
+  // If the split suggestion resolves AFTER the sheet opened (first use, cold
+  // cache), apply it — but never over a value the user already touched.
+  useEffect(() => {
+    if (!open || editTx || suggestedShare == null || splitDirtyRef.current) return;
+    setMyShare(suggestedShare);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editTx, suggestedShare]);
 
   // When editing, load the saved split (and the FX snapshot the row was stored
   // with) so the percentage control reflects how it was actually divided and

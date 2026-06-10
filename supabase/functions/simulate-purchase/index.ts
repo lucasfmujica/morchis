@@ -102,7 +102,9 @@ Deno.serve(async (req: Request) => {
 
   const [txR, rulesR, goalsR, budgetsR, catsR, fxR] = await Promise.all([
     admin.from('transactions').select('type,amount,occurred_on,category_id,currency,usd_rate_snapshot').eq('household_id',hid).gte('occurred_on',ms).lte('occurred_on',me),
-    admin.from('recurring_rules').select('direction,amount,next_run,active,cadence,currency').eq('household_id',hid).eq('active',true),
+    // goal_id is null: goal auto-contributions are virtual (no transaction),
+    // so they must not count as upcoming cash outflow.
+    admin.from('recurring_rules').select('direction,amount,next_run,active,cadence,currency').eq('household_id',hid).eq('active',true).is('goal_id',null),
     admin.from('goals').select('id,name,icon,target_amount,current_amount,deadline,target_currency').eq('household_id',hid).eq('archived',false),
     admin.from('budgets').select('category_id,amount,currency').eq('household_id',hid).eq('active',true),
     admin.from('categories').select('id,name').eq('household_id',hid),
