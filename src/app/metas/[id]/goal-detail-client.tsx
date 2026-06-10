@@ -34,6 +34,13 @@ interface Goal {
   created_at?: string;
 }
 
+// Parse a 'YYYY-MM-DD' calendar date as *local* midnight. new Date('YYYY-MM-DD')
+// is UTC midnight, which in Argentina (UTC-3) renders a day early.
+function parseLocalDate(iso: string): Date {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
 interface Contribution {
   id: string;
   goal_id: string;
@@ -285,7 +292,9 @@ export default function GoalDetailClient({ goalId, profile }: { goalId: string; 
   const { arsPerUsd } = useFx();
   const [aportarOpen, setAportarOpen] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
-  const prevDoneRef = useRef(false);
+  // null until the first goal query resolves, so an already-completed goal
+  // doesn't fire confetti on load — only a real false→true transition does.
+  const prevDoneRef = useRef<boolean | null>(null);
 
   const { data: goal } = useQuery<Goal | null>({
     queryKey: ['goal', goalId],
@@ -313,7 +322,7 @@ export default function GoalDetailClient({ goalId, profile }: { goalId: string; 
     // Progress is in the goal's own currency, so completion is a plain compare
     // (no FX) — the confetti no longer fires/unfires as the blue rate moves.
     const done = goal.target_amount > 0 && goal.current_amount >= goal.target_amount;
-    if (done && !prevDoneRef.current) {
+    if (done && prevDoneRef.current === false) {
       setShowConfetti(true);
     }
     prevDoneRef.current = done;
@@ -351,7 +360,7 @@ export default function GoalDetailClient({ goalId, profile }: { goalId: string; 
   // On-track logic
   const now = new Date();
   const created = new Date(goal.created_at ?? now);
-  const deadline = new Date(goal.deadline);
+  const deadline = parseLocalDate(goal.deadline);
   const totalDays = Math.max(1, (deadline.getTime() - created.getTime()) / 86400000);
   const elapsed = Math.max(0, (now.getTime() - created.getTime()) / 86400000);
   const expectedPct = elapsed / totalDays;
@@ -470,7 +479,7 @@ export default function GoalDetailClient({ goalId, profile }: { goalId: string; 
               <div key={c.id} className="rounded-2xl px-4 py-3 flex items-center justify-between" style={{ background: '#FFFFFF' }}>
                 <div>
                   <p className="text-sm font-bold" style={{ color: '#2D2D2D' }}>
-                    {new Date(c.occurred_on).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    {parseLocalDate(c.occurred_on).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })}
                   </p>
                   {c.note && (
                     <p className="text-xs" style={{ color: '#6B6459' }}>{c.note}</p>

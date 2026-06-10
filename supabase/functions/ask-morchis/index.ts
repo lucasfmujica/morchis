@@ -322,7 +322,9 @@ Deno.serve(async (req: Request) => {
   const [{ data: fxRow }, { data: profs }, { data: debtRows }, { data: cats }] = await Promise.all([
     admin.from('fx_rates').select('ars_per_usd').eq('source', 'blue').order('date', { ascending: false }).limit(1).maybeSingle(),
     admin.from('profiles').select('id,nickname,display_name').eq('household_id', hid),
-    admin.from('debts').select('transaction_id,direction,amount,currency').eq('household_id', hid).eq('settled', false).not('transaction_id', 'is', null),
+    // Linked friend-debts net out of the expense's real cost regardless of
+    // settled — the friend paying back doesn't make the expense cost more.
+    admin.from('debts').select('transaction_id,direction,amount,currency').eq('household_id', hid).not('transaction_id', 'is', null),
     admin.from('categories').select('name').eq('household_id', hid).eq('kind', 'expense'),
   ]);
   const blue = Number(fxRow?.ars_per_usd ?? 1200);

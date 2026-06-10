@@ -164,6 +164,11 @@ export default function TicketClient({ profile }: { profile: Profile }) {
           occurred_on: receipt.date,
           description: summary || null,
           source: 'receipt',
+          // Explicit personal scope: the DB defaults scope to 'household', which
+          // would silently count every scanned receipt 100% against couple budgets.
+          // Match the manual sheet's default of "Mío".
+          scope: 'personal',
+          is_shared: false,
         })
         .select('id')
         .single();

@@ -33,7 +33,15 @@ export const usePinStore = create<PinState>()(
       lock: () => set({ locked: true }),
       unlock: () => set({ locked: false }),
     }),
-    { name: 'morchis-pin' },
+    {
+      name: 'morchis-pin',
+      // Don't persist `locked` — a stale persisted `false` would keep the app
+      // unlocked forever. Instead, start locked on every load when a PIN is set.
+      partialize: (state) => ({ pin: state.pin }),
+      onRehydrateStorage: () => (state) => {
+        if (state?.pin) state.lock();
+      },
+    },
   ),
 );
 

@@ -75,14 +75,34 @@ function weekdayOccurrencesInMonth(weekday: number, year: number, month: number)
 
 // Normalize any cadence to the actual amount for the current month so totals
 // reflect the real number of occurrences (e.g. a weekly expense on Thursdays
-// counts the exact number of Thursdays in this month, not an average of 4.33).
-function monthlyEquivalent(amount: number, cadence: string, anchorDay: number | null): number {
+// counts the exact number of Thursdays in this month, not an average of 4.33;
+// a biweekly one counts its actual 14-day cycle dates, which can be 1–3).
+function monthlyEquivalent(amount: number, cadence: string, anchorDay: number | null, nextRun: string | null): number {
   if (cadence === 'weekly') {
     const now = new Date();
     const weekday = anchorDay != null ? ((anchorDay % 7) + 7) % 7 : now.getDay();
     return amount * weekdayOccurrencesInMonth(weekday, now.getFullYear(), now.getMonth());
   }
-  if (cadence === 'biweekly') return amount * 2;
+  if (cadence === 'biweekly') {
+    // Walk the 14-day cycle anchored at next_run and count the occurrences
+    // landing in the current month — same exact-count idea as the weekly case.
+    // (ms arithmetic is safe: Argentina has no DST, so days are always 24h.)
+    if (!nextRun) return amount * 2;
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const step = 14 * 86400000;
+    const monthStart = new Date(year, month, 1).getTime();
+    let t = new Date(nextRun + 'T00:00:00').getTime();
+    // Align to the first cycle date on/after the start of this month.
+    while (t - step >= monthStart) t -= step;
+    while (t < monthStart) t += step;
+    let count = 0;
+    for (let d = new Date(t); d.getFullYear() === year && d.getMonth() === month; d = new Date(d.getTime() + step)) {
+      count++;
+    }
+    return amount * count;
+  }
   return amount;
 }
 
@@ -156,10 +176,10 @@ function FixedSummaryCard({ rules }: { rules: Rule[] }) {
   // Everything is normalized to ARS so USD and ARS rules can be summed together.
   const incomeMonthly = active
     .filter((r) => r.direction === 'income')
-    .reduce((s, r) => s + monthlyEquivalent(toArs(r.amount, r.currency, arsPerUsd), r.cadence, r.anchor_day), 0);
+    .reduce((s, r) => s + monthlyEquivalent(toArs(r.amount, r.currency, arsPerUsd), r.cadence, r.anchor_day, r.next_run), 0);
   const expenseMonthly = active
     .filter((r) => r.direction === 'expense')
-    .reduce((s, r) => s + monthlyEquivalent(toArs(r.amount, r.currency, arsPerUsd), r.cadence, r.anchor_day), 0);
+    .reduce((s, r) => s + monthlyEquivalent(toArs(r.amount, r.currency, arsPerUsd), r.cadence, r.anchor_day, r.next_run), 0);
   const margin = incomeMonthly - expenseMonthly;
   const savingsRate = incomeMonthly > 0 ? margin / incomeMonthly : null;
   const marginPositive = margin >= 0;
@@ -215,26 +235,30 @@ function FixedSummaryCard({ rules }: { rules: Rule[] }) {
 }
 
 function nextRunFromAnchor(cadence: string, anchorDay: number): string {
+  // Compare against start-of-today so a rule created ON its anchor day gets
+  // next_run = today: the cron posts rules with next_run <= current_date, so
+  // it still materializes today instead of silently skipping a whole cycle.
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
   const year = today.getFullYear();
   const month = today.getMonth();
 
   if (cadence === 'monthly') {
     let d = new Date(year, month, anchorDay);
-    if (d <= today) d = new Date(year, month + 1, anchorDay);
+    if (d < today) d = new Date(year, month + 1, anchorDay);
     return toLocalISO(d);
   }
   if (cadence === 'weekly') {
-    // next occurrence of weekday (anchorDay 0=Sun..6=Sat)
+    // next occurrence of weekday (anchorDay 0=Sun..6=Sat), today included
     const d = new Date(today);
-    d.setDate(d.getDate() + ((anchorDay - d.getDay() + 7) % 7 || 7));
+    d.setDate(d.getDate() + ((anchorDay - d.getDay() + 7) % 7));
     return toLocalISO(d);
   }
   if (cadence === 'biweekly') {
     // Use anchor_day as day-of-month for first occurrence; second 14 days later
     let d = new Date(year, month, anchorDay);
-    if (d <= today) d = new Date(d.getTime() + 14 * 86400000);
-    if (d <= today) d = new Date(year, month + 1, anchorDay);
+    if (d < today) d = new Date(d.getTime() + 14 * 86400000);
+    if (d < today) d = new Date(year, month + 1, anchorDay);
     return toLocalISO(d);
   }
   return toLocalISO(today);
@@ -273,7 +297,16 @@ function RuleForm({
       toast.error('Completá el nombre y el monto.');
       return;
     }
-    const anchor = parseInt(anchorDay, 10) || 1;
+    // Clamp to the valid range: weekday 0..6 for weekly, day-of-month 1..28
+    // otherwise. The input advertises max 28 but accepts any typed value, and
+    // days 29-31 overflow nextRunFromAnchor's Date math and drift in the cron.
+    const parsed = parseInt(anchorDay, 10);
+    const minAnchor = cadence === 'weekly' ? 0 : 1;
+    const maxAnchor = cadence === 'weekly' ? 6 : 28;
+    const anchor = Math.min(maxAnchor, Math.max(minAnchor, Number.isNaN(parsed) ? minAnchor : parsed));
+    if (!Number.isNaN(parsed) && anchor !== parsed) {
+      toast(`Día ajustado a ${anchor} (el rango válido es ${minAnchor}–${maxAnchor}).`);
+    }
     // Only recompute the next run when the schedule actually changed. Editing
     // just the amount/label of an existing rule should keep its current cycle
     // (otherwise the date jumped forward and the projection shifted).

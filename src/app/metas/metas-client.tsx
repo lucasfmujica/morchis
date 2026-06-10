@@ -256,9 +256,16 @@ function GoalSheet({
   );
 }
 
+// Parse a 'YYYY-MM-DD' calendar date as *local* midnight. new Date('YYYY-MM-DD')
+// is UTC midnight, which in Argentina (UTC-3) renders a day early.
+function parseLocalDate(iso: string): Date {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
 function monthsUntil(deadline: string): number {
   const now = new Date();
-  const d = new Date(deadline);
+  const d = parseLocalDate(deadline);
   return (d.getFullYear() - now.getFullYear()) * 12 + (d.getMonth() - now.getMonth());
 }
 
@@ -268,7 +275,7 @@ function onTrackTag(
 ): { label: string; ok: boolean } {
   const now = new Date();
   const created = new Date(goal.created_at ?? now);
-  const deadline = new Date(goal.deadline);
+  const deadline = parseLocalDate(goal.deadline);
 
   // current_amount and target_amount are both stored in the goal's own currency,
   // so the progress ratio needs no FX conversion. Only an ARS target gets an
@@ -460,7 +467,7 @@ export default function MetasClient({ profile }: { profile: Profile }) {
                       </p>
                     )}
                     <p className="text-xs mt-0.5" style={{ color: '#6B6459' }}>
-                      Vence {new Date(g.deadline).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      Vence {parseLocalDate(g.deadline).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </p>
                     {!done && g.deadline >= todayISO() && !contributedGoalIds.has(g.id) && (
                       <p className="text-[11px] font-bold mt-1 inline-block px-2 py-0.5 rounded-full" style={{ background: '#FBF1D8', color: '#B8860B' }}>

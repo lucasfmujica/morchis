@@ -20,7 +20,8 @@ interface SimResult {
   parsed: { item: string; amount_ars: number; currency_input: 'ARS' | 'USD'; installments: number | null };
   projection: { current: number; new: number };
   monthly_cost: number;
-  savings_rate: { current: number; new: number };
+  // null when there's no income this month (a rate would be meaningless)
+  savings_rate: { current: number | null; new: number | null };
   goal_delays: { name: string; icon: string; slip_months: number; is_past_deadline: boolean }[];
   budget_overflows: { category: string; budget: number; current_spend: number; after_purchase: number }[];
   fx_rate: number;
@@ -99,12 +100,16 @@ export default function SimuladorClient({ profile }: { profile: Profile }) {
     }
   }
 
-  function pct(r: number) {
-    if (!Number.isFinite(r)) return '—';
+  function pct(r: number | null) {
+    if (r === null || !Number.isFinite(r)) return '—';
     return `${r >= 0 ? '+' : ''}${Math.round(r * 100)}%`;
   }
 
   const name = profile.nickname ?? profile.display_name ?? 'Morch';
+  const srCurrent = result?.savings_rate.current ?? null;
+  const srNew = result?.savings_rate.new ?? null;
+  const srWorse = srCurrent !== null && srNew !== null && srNew < srCurrent;
+  const srDelta = srCurrent !== null && srNew !== null ? srNew - srCurrent : null;
 
   return (
     <div className="min-h-screen pb-28" style={{ background: CREAM }}>
@@ -227,17 +232,17 @@ export default function SimuladorClient({ profile }: { profile: Profile }) {
               </p>
               <div className="flex items-center gap-3">
                 <span className="text-xl font-black" style={{ color: SAGE }}>
-                  {pct(result.savings_rate.current)}
+                  {pct(srCurrent)}
                 </span>
                 <span style={{ color: MUTED }}>→</span>
                 <span
                   className="text-xl font-black"
-                  style={{ color: result.savings_rate.new < result.savings_rate.current ? CORAL : SAGE }}
+                  style={{ color: srWorse ? CORAL : SAGE }}
                 >
-                  {pct(result.savings_rate.new)}
+                  {pct(srNew)}
                 </span>
-                <span className="text-sm ml-1" style={{ color: result.savings_rate.new < result.savings_rate.current ? CORAL : SAGE }}>
-                  ({pct(result.savings_rate.new - result.savings_rate.current)})
+                <span className="text-sm ml-1" style={{ color: srWorse ? CORAL : SAGE }}>
+                  ({pct(srDelta)})
                 </span>
               </div>
             </div>

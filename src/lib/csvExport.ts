@@ -39,7 +39,10 @@ export function exportTransactionsToCSV(transactions: TxRow[], filename: string)
     .map((row) =>
       row
         .map((cell) => {
-          const s = String(cell);
+          let s = String(cell);
+          // Neutralize spreadsheet formula injection: a merchant named
+          // "=HYPERLINK(...)" must open as text in Excel, not execute.
+          if (/^[=+@\t\r]/.test(s)) s = `'${s}`;
           return s.includes(',') || s.includes('"') || s.includes('\n')
             ? `"${s.replace(/"/g, '""')}"`
             : s;

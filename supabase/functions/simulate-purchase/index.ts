@@ -6,23 +6,53 @@ const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 // ── inline projection (mirrors src/lib/projection.ts) ───────────────────────
 // All amounts handed in here are already normalised to ARS (see toArs below).
 interface PTx { type: string; amount: number; occurred_on: string; }
-interface PRule { direction: string; amount: number; next_run: string | null; active: boolean; }
+interface PRule { direction: string; amount: number; next_run: string | null; active: boolean; cadence?: string | null; }
+
+// "now" in Argentina (UTC-3, no DST) — the server clock is UTC and would
+// roll to tomorrow / next month after 21:00 local. Use with getUTC* getters.
+const artNow = () => new Date(Date.now() - 3 * 60 * 60 * 1000);
+
+/** Every occurrence date of a rule in (fromExclusive, toInclusive], expanding
+ *  weekly/biweekly so a rule that fires more than once in the rest of the month
+ *  is counted that many times (ported from src/lib/projection.ts; the old code
+ *  only counted next_run once). */
+function occurrencesInRange(rule: PRule, fromExclusiveISO: string, toInclusiveISO: string): string[] {
+  if (!rule.next_run) return [];
+  const cadence = rule.cadence ?? 'monthly';
+  const dates: string[] = [];
+  const [y, m, d] = rule.next_run.split('-').map(Number);
+  let cur = new Date(Date.UTC(y, m - 1, d));
+  const iso = (dt: Date) =>
+    `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+  let guard = 0;
+  while (guard < 60) {
+    const curISO = iso(cur);
+    if (curISO > toInclusiveISO) break;
+    if (curISO > fromExclusiveISO) dates.push(curISO);
+    if (cadence === 'weekly') cur = new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth(), cur.getUTCDate() + 7));
+    else if (cadence === 'biweekly') cur = new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth(), cur.getUTCDate() + 14));
+    else cur = new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth() + 1, cur.getUTCDate()));
+    guard += 1;
+  }
+  return dates;
+}
+
 function computeProjection(txs: PTx[], rules: PRule[], today: Date) {
-  const year = today.getFullYear();
-  const month = today.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const dayOfMonth = today.getDate();
+  const year = today.getUTCFullYear();
+  const month = today.getUTCMonth();
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const dayOfMonth = today.getUTCDate();
   const daysElapsed = Math.max(1, dayOfMonth);
   const daysRemaining = daysInMonth - dayOfMonth;
   const ms = `${year}-${String(month+1).padStart(2,'0')}-01`;
   const me = `${year}-${String(month+1).padStart(2,'0')}-${String(daysInMonth).padStart(2,'0')}`;
-  const todayStr = today.toISOString().split('T')[0];
+  const todayStr = `${year}-${String(month+1).padStart(2,'0')}-${String(dayOfMonth).padStart(2,'0')}`;
   const thisMonth = txs.filter(t => t.occurred_on >= ms && t.occurred_on <= me);
   const incomeSoFar = thisMonth.filter(t => t.type==='income').reduce((s,t) => s+t.amount, 0);
   const expensesSoFar = thisMonth.filter(t => t.type==='expense').reduce((s,t) => s+t.amount, 0);
   const currentBalance = incomeSoFar - expensesSoFar;
-  const remainingIncome = rules.filter(r => r.active && r.direction==='income' && r.next_run && r.next_run > todayStr && r.next_run <= me).reduce((s,r) => s+r.amount, 0);
-  const remainingFixed = rules.filter(r => r.active && r.direction==='expense' && r.next_run && r.next_run > todayStr && r.next_run <= me).reduce((s,r) => s+r.amount, 0);
+  const remainingIncome = rules.filter(r => r.active && r.direction==='income').reduce((s,r) => s + r.amount * occurrencesInRange(r, todayStr, me).length, 0);
+  const remainingFixed = rules.filter(r => r.active && r.direction==='expense').reduce((s,r) => s + r.amount * occurrencesInRange(r, todayStr, me).length, 0);
   const dailyRate = expensesSoFar / daysElapsed;
   const projectedVariableSpend = Math.round(dailyRate * daysRemaining);
   const projectedBalance = currentBalance + remainingIncome - remainingFixed - projectedVariableSpend;
@@ -64,15 +94,15 @@ Deno.serve(async (req: Request) => {
   if (!text?.trim()) return new Response(JSON.stringify({ error: 'text requerido' }), { status: 400 });
 
   // ── 1. Fetch all data in parallel ────────────────────────────────────────
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = today.getMonth();
+  const today = artNow();
+  const year = today.getUTCFullYear();
+  const month = today.getUTCMonth();
   const ms = `${year}-${String(month+1).padStart(2,'0')}-01`;
-  const me = `${year}-${String(month+1).padStart(2,'0')}-${String(new Date(year,month+1,0).getDate()).padStart(2,'0')}`;
+  const me = `${year}-${String(month+1).padStart(2,'0')}-${String(new Date(Date.UTC(year,month+1,0)).getUTCDate()).padStart(2,'0')}`;
 
   const [txR, rulesR, goalsR, budgetsR, catsR, fxR] = await Promise.all([
     admin.from('transactions').select('type,amount,occurred_on,category_id,currency,usd_rate_snapshot').eq('household_id',hid).gte('occurred_on',ms).lte('occurred_on',me),
-    admin.from('recurring_rules').select('direction,amount,next_run,active,currency').eq('household_id',hid).eq('active',true),
+    admin.from('recurring_rules').select('direction,amount,next_run,active,cadence,currency').eq('household_id',hid).eq('active',true),
     admin.from('goals').select('id,name,icon,target_amount,current_amount,deadline,target_currency').eq('household_id',hid).eq('archived',false),
     admin.from('budgets').select('category_id,amount,currency').eq('household_id',hid).eq('active',true),
     admin.from('categories').select('id,name').eq('household_id',hid),
@@ -87,8 +117,8 @@ Deno.serve(async (req: Request) => {
 
   const rawTx = (txR.data ?? []) as { type:string; amount:number; occurred_on:string; category_id:string|null; currency:string|null; usd_rate_snapshot:number|null }[];
   const txs = rawTx.map(t => ({ type:t.type, occurred_on:t.occurred_on, category_id:t.category_id, amount: toArs(t.amount, t.currency, t.usd_rate_snapshot) }));
-  const rules = ((rulesR.data ?? []) as { direction:string; amount:number; next_run:string|null; active:boolean; currency:string|null }[])
-    .map(r => ({ direction:r.direction, next_run:r.next_run, active:r.active, amount: toArs(r.amount, r.currency) }));
+  const rules = ((rulesR.data ?? []) as { direction:string; amount:number; next_run:string|null; active:boolean; cadence:string|null; currency:string|null }[])
+    .map(r => ({ direction:r.direction, next_run:r.next_run, active:r.active, cadence:r.cadence, amount: toArs(r.amount, r.currency) }));
   const goals = (goalsR.data ?? []) as { id:string; name:string; icon:string|null; target_amount:number; current_amount:number; deadline:string|null; target_currency:string }[];
   const budgets = ((budgetsR.data ?? []) as { category_id:string; amount:number; currency:string|null }[])
     .map(b => ({ category_id:b.category_id, amount: toArs(b.amount, b.currency) }));
@@ -139,9 +169,11 @@ Deno.serve(async (req: Request) => {
   const proj = computeProjection(txs, rules, today);
   const new_projected_balance = proj.projectedBalance - monthly_cost;
 
-  const totalIncome = proj.totalIncome || 1;
-  const savings_rate_current = proj.projectedBalance / totalIncome;
-  const savings_rate_new = new_projected_balance / totalIncome;
+  // No income this month → a rate would be meaningless (e.g. -15000000%);
+  // send null and let the client render "—".
+  const totalIncome = proj.totalIncome;
+  const savings_rate_current = totalIncome > 0 ? proj.projectedBalance / totalIncome : null;
+  const savings_rate_new = totalIncome > 0 ? new_projected_balance / totalIncome : null;
 
   // ── 5. Goal delays ────────────────────────────────────────────────────────
   const monthly_net = proj.projectedBalance;

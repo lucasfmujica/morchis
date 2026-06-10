@@ -9,6 +9,7 @@ import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { toast } from 'sonner';
 import { formatARS } from '@/lib/format';
 import { monthKey } from '@/lib/date';
+import { BUDGET_EXPENSE_SELECT, myShareArs, toArs, type BudgetExpenseRow } from '@/lib/budgets';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { SecondaryButton } from '@/components/SecondaryButton';
 import Link from 'next/link';
@@ -70,14 +71,12 @@ export default function CategoriasClient({
   // can be re-sliced by scope (Mío / Nuestro / Pareja) without refetching.
   // Own key (not the Home's 'spent-by-category', which is expenses-only) so the
   // two don't overwrite each other's cache.
-  const { data: monthRows = [] } = useQuery<
-    { category_id: string | null; amount: number; currency: string | null; profile_id: string | null }[]
-  >({
+  const { data: monthRows = [] } = useQuery<BudgetExpenseRow[]>({
     queryKey: ['category-month-totals', profile.household_id, monthStart],
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('category_id, amount, currency, profile_id')
+        .select(BUDGET_EXPENSE_SELECT)
         .eq('household_id', profile.household_id)
         .gte('occurred_on', monthStart)
         .lte('occurred_on', monthEnd);
@@ -85,38 +84,59 @@ export default function CategoriasClient({
     },
   });
 
-  // Per-category totals for the active scope. "Mío"/"Pareja" only count that
-  // person's movements; "Nuestro" counts the whole household.
+  // Per-category totals for the active scope. "Nuestro" counts every movement
+  // once, in full; "Mío"/"Pareja" count that person's share of shared expenses
+  // (whoever paid) plus their own solo movements — same attribution as the
+  // budgets math, so a shared expense never lands 100% on whoever fronted it.
   const monthByCategory = useMemo<Record<string, number>>(() => {
     const map: Record<string, number> = {};
     for (const t of monthRows) {
       if (!t.category_id) continue;
-      if (scopeProfileId && t.profile_id !== scopeProfileId) continue;
-      const amt = t.currency === 'USD' && arsPerUsd > 0 ? Math.round(t.amount * arsPerUsd) : t.amount;
+      const amt = !scopeProfileId
+        ? toArs(t.amount, t.currency, arsPerUsd)
+        : t.is_shared
+          ? myShareArs(t, scopeProfileId, arsPerUsd)
+          : t.profile_id === scopeProfileId
+            ? toArs(t.amount, t.currency, arsPerUsd)
+            : 0;
+      if (amt <= 0) continue;
       map[t.category_id] = (map[t.category_id] ?? 0) + amt;
     }
     return map;
   }, [monthRows, scopeProfileId, arsPerUsd]);
 
-  // Active budget amount per category (summed across scopes), normalized to ARS
-  // so a USD budget is compared against the ARS-normalized spend above instead
-  // of being read as pesos (which marked any USD budget "Excedido" instantly).
-  const { data: budgetByCategory = {} } = useQuery<Record<string, number>>({
-    queryKey: ['budgets', profile.household_id, arsPerUsd],
+  // Active budgets, kept raw so the per-category limit can follow the active
+  // tab without refetching (and so 'budgets' invalidations refresh it too).
+  const { data: budgetRows = [] } = useQuery<
+    { category_id: string; amount: number; currency: string | null; scope: string; profile_id: string | null }[]
+  >({
+    queryKey: ['budgets', profile.household_id, 'rows'],
     queryFn: async () => {
       const { data } = await supabase
         .from('budgets')
-        .select('category_id, amount, currency')
+        .select('category_id, amount, currency, scope, profile_id')
         .eq('household_id', profile.household_id)
         .eq('active', true);
-      const map: Record<string, number> = {};
-      for (const b of data ?? []) {
-        const amt = b.currency === 'USD' && arsPerUsd > 0 ? Math.round(b.amount * arsPerUsd) : b.amount;
-        map[b.category_id] = (map[b.category_id] ?? 0) + amt;
-      }
-      return map;
+      return data ?? [];
     },
   });
+
+  // Budget amount per category for the active tab only: "Nuestro" compares
+  // against household budgets, "Mío"/"Pareja" against that person's personal
+  // ones — summing every scope inflated the limit and broke the % / "Excedido".
+  // Normalized to ARS so a USD budget is compared against the ARS-normalized
+  // spend above instead of being read as pesos.
+  const budgetByCategory = useMemo<Record<string, number>>(() => {
+    const map: Record<string, number> = {};
+    for (const b of budgetRows) {
+      const matchesTab = scopeProfileId
+        ? b.scope === 'personal' && b.profile_id === scopeProfileId
+        : b.scope === 'household';
+      if (!matchesTab) continue;
+      map[b.category_id] = (map[b.category_id] ?? 0) + toArs(b.amount, b.currency, arsPerUsd);
+    }
+    return map;
+  }, [budgetRows, scopeProfileId, arsPerUsd]);
 
   function openNew() {
     setEditId(null);

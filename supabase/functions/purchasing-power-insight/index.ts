@@ -45,45 +45,55 @@ Deno.serve(async (req: Request) => {
   const toArs = (amount: number, currency: string | null, snap: number | null): number =>
     currency === 'USD' ? Math.round(amount * (Number(snap) || fxRate)) : amount;
 
-  // Income for current month and previous month (columns are amount/occurred_on;
-  // the old code queried non-existent amount_ars/date and silently no-op'd).
-  const now = new Date();
-  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-  const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10);
-  const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().slice(0, 10);
+  // Compare the previous CLOSED month against the month before it. Comparing
+  // the partial current month vs a full previous month produced false
+  // "Perdiste poder adquisitivo" warnings most of the month — and the
+  // inflation data is for closed months too. (Columns are amount/occurred_on;
+  // the old code queried non-existent amount_ars/date and silently no-op'd.)
+  // "now" in Argentina (UTC-3, no DST) — the server clock is UTC and would
+  // roll to tomorrow / next month after 21:00 local.
+  const artNow = () => new Date(Date.now() - 3 * 60 * 60 * 1000);
+  const isoUTC = (y: number, m: number, d: number) => new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10);
+  const now = artNow();
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const lastMonthStart = isoUTC(y, m - 1, 1);
+  const lastMonthEnd = isoUTC(y, m, 0);
+  const baseMonthStart = isoUTC(y, m - 2, 1);
+  const baseMonthEnd = isoUTC(y, m - 1, 0);
 
   const incomeSel = 'amount, currency, usd_rate_snapshot';
-  const [{ data: thisIncome }, { data: prevIncome }] = await Promise.all([
-    supabase.from('transactions').select(incomeSel).eq('household_id', householdId).eq('type', 'income').gte('occurred_on', thisMonthStart),
-    supabase.from('transactions').select(incomeSel).eq('household_id', householdId).eq('type', 'income').gte('occurred_on', prevMonthStart).lte('occurred_on', prevMonthEnd),
+  const [{ data: lastIncome }, { data: baseIncome }] = await Promise.all([
+    supabase.from('transactions').select(incomeSel).eq('household_id', householdId).eq('type', 'income').gte('occurred_on', lastMonthStart).lte('occurred_on', lastMonthEnd),
+    supabase.from('transactions').select(incomeSel).eq('household_id', householdId).eq('type', 'income').gte('occurred_on', baseMonthStart).lte('occurred_on', baseMonthEnd),
   ]);
 
   type IncomeRow = { amount: number; currency: string | null; usd_rate_snapshot: number | null };
   const sumArs = (rows: IncomeRow[] | null) => (rows ?? []).reduce((s, r) => s + toArs(r.amount, r.currency, r.usd_rate_snapshot), 0);
-  const thisTotal = sumArs(thisIncome as IncomeRow[] | null);
-  const prevTotal = sumArs(prevIncome as IncomeRow[] | null);
+  const lastTotal = sumArs(lastIncome as IncomeRow[] | null);
+  const baseTotal = sumArs(baseIncome as IncomeRow[] | null);
 
-  if (prevTotal === 0) {
-    return new Response(JSON.stringify({ ok: false, reason: 'no prev month income' }), {
+  if (baseTotal === 0) {
+    return new Response(JSON.stringify({ ok: false, reason: 'no base month income' }), {
       headers: { 'Content-Type': 'application/json' },
     });
   }
 
-  const incomePct = Math.round(((thisTotal - prevTotal) / prevTotal) * 10000) / 100;
+  const incomePct = Math.round(((lastTotal - baseTotal) / baseTotal) * 10000) / 100;
   const diff = Math.round((incomePct - inflationPct) * 100) / 100;
   const gained = incomePct >= inflationPct;
 
   const monthNames = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-  const mIdx = now.getMonth(); // current month label
+  const lastMonthDate = new Date(Date.UTC(y, m - 1, 1)); // previous (closed) month label
   // Keep this period label distinct from generate-insights' "YYYY-MM" so its
   // period-scoped delete never wipes this purchasing-power card.
-  const period = monthNames[mIdx] + ' ' + now.getFullYear();
+  const period = monthNames[lastMonthDate.getUTCMonth()] + ' ' + lastMonthDate.getUTCFullYear();
 
   const title = gained
     ? `Ganaste poder adquisitivo en ${period}`
     : `Perdiste poder adquisitivo en ${period}`;
 
-  const body = `Tus ingresos ${incomePct >= 0 ? 'subieron' : 'bajaron'} ${Math.abs(incomePct)}% este mes. La inflación fue ${inflationPct}% (${inflDate}). ${gained ? 'Ganaste' : 'Perdiste'} ${Math.abs(diff)}% de poder adquisitivo.`;
+  const body = `Tus ingresos ${incomePct >= 0 ? 'subieron' : 'bajaron'} ${Math.abs(incomePct)}% en ${period} vs el mes anterior. La inflación fue ${inflationPct}% (${inflDate}). ${gained ? 'Ganaste' : 'Perdiste'} ${Math.abs(diff)}% de poder adquisitivo.`;
 
   const severity = gained ? 'positive' : 'warning';
 
@@ -105,7 +115,7 @@ Deno.serve(async (req: Request) => {
     seen: false,
   });
 
-  return new Response(JSON.stringify({ ok: true, incomePct, inflationPct, diff, gained, thisTotal, prevTotal }), {
+  return new Response(JSON.stringify({ ok: true, incomePct, inflationPct, diff, gained, lastTotal, baseTotal }), {
     headers: { 'Content-Type': 'application/json' },
   });
 });

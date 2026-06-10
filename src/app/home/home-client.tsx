@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback, memo } from 'react';
+import { useState, useMemo, useCallback, useEffect, memo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
@@ -22,6 +22,7 @@ import { computeProjection } from '@/lib/projection';
 import { netWorthAt, type AccountRow, type AccountTx } from '@/lib/accounts';
 import { todayISO, weekRange, shortDM } from '@/lib/date';
 import { formatARS } from '@/lib/format';
+import { triggerBudgetAlerts } from '@/lib/notifyBudgets';
 
 interface Profile {
   id: string;
@@ -302,6 +303,14 @@ export default function HomeClient({
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   usePushSubscription(profile.id);
+  // Re-check budget thresholds once per app open: cron-posted recurring
+  // expenses and statement imports move budgets without any client save, so
+  // without this their 80%/100% alerts would only fire on the next manual
+  // expense. Server-side dedup makes the repeat call harmless.
+  useEffect(() => {
+    triggerBudgetAlerts(supabase);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // scope: 'all' | 'me' | 'partner' — default to "Mío"
   const [scope, setScope] = useState<'all' | 'me' | 'partner'>('me');
   const name = profile.nickname || profile.display_name || 'Morch';

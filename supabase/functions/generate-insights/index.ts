@@ -65,7 +65,10 @@ interface Debt{transaction_id:string|null;direction:string;amount:number;currenc
 interface Aud{id:string|null;name:string;}
 
 const fmt=(n:number):string=>'$'+Math.round(n).toLocaleString('es-AR');
-function iso(y:number,m:number,d:number){return new Date(y,m,d).toISOString().slice(0,10);}
+// "now" in Argentina (UTC-3, no DST) — the server clock is UTC and would
+// roll to tomorrow / next month after 21:00 local.
+const artNow=()=>new Date(Date.now()-3*60*60*1000);
+function iso(y:number,m:number,d:number){return new Date(Date.UTC(y,m,d)).toISOString().slice(0,10);}
 function monthsBetween(a:Date,b:Date){return (b.getFullYear()-a.getFullYear())*12+(b.getMonth()-a.getMonth());}
 const MONTHLY:Record<string,number>={weekly:4.345,biweekly:2.17,monthly:1};
 const toArs=(a:number,cur:string,snap:number|null,blue:number)=>cur==='USD'?a*(Number(snap)||blue):a;
@@ -91,8 +94,8 @@ interface Data{
 }
 
 async function fetchAll(admin:SupabaseClient,hid:string):Promise<Data>{
-  const now=new Date();
-  const y=now.getFullYear(),m=now.getMonth();
+  const now=artNow();
+  const y=now.getUTCFullYear(),m=now.getUTCMonth();
   const m0=iso(y,m,1),m1=iso(y,m+1,1),m3=iso(y,m-3,1);
   const expSel='id,category_id,categories(name),profile_id,scope,is_shared,amount,currency,usd_rate_snapshot,merchant,occurred_on,splits(payer_profile_id,ower_profile_id,amount)';
   const [cr,hr,ir,recR,budR,goalR,savR,prR,debtR,fxR]=await Promise.all([
@@ -104,7 +107,10 @@ async function fetchAll(admin:SupabaseClient,hid:string):Promise<Data>{
     admin.from('goals').select('name,target_amount,current_amount,target_currency,deadline,scope,profile_id').eq('household_id',hid).eq('archived',false),
     admin.from('savings_goals').select('target_pct').order('month',{ascending:false}).limit(1).maybeSingle(),
     admin.from('profiles').select('id,nickname,display_name').eq('household_id',hid),
-    admin.from('debts').select('transaction_id,direction,amount,currency').eq('household_id',hid).eq('settled',false).not('transaction_id','is',null),
+    // Linked friend-debts net out of the expense's real cost regardless of
+    // settled: the friend paying their part back doesn't make the expense
+    // cost more (the repayment is never recorded as income).
+    admin.from('debts').select('transaction_id,direction,amount,currency').eq('household_id',hid).not('transaction_id','is',null),
     admin.from('fx_rates').select('ars_per_usd').eq('source','blue').order('date',{ascending:false}).limit(1).maybeSingle(),
   ]);
   const debtByTx:Record<string,Debt[]>={};
@@ -149,9 +155,9 @@ function shareFor(t:Exp,audId:string|null,blue:number,debtByTx:Record<string,Deb
 }
 
 function buildFacts(aud:Aud,d:Data):{facts:Fact[];expense:number}{
-  const now=new Date();
-  const dim=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
-  const day=now.getDate();
+  const now=artNow();
+  const dim=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()+1,0)).getUTCDate();
+  const day=now.getUTCDate();
   const isHH=aud.id===null;
   const facts:Fact[]=[];
 
@@ -171,8 +177,10 @@ function buildFacts(aud:Aud,d:Data):{facts:Fact[];expense:number}{
     const net=income-totalExp;
     if(income>0){
       const rate=Math.round(net/income*100);
-      if(rate>=d.targetPct) facts.push({kind:'saving',severity:'positive',weight:6,text:`Tasa de ahorro del hogar: ${rate}% (ahorran ${fmt(net)} de ${fmt(income)} de ingresos). Meta: ${d.targetPct}%. Van por encima.`});
-      else facts.push({kind:'saving',severity:'warning',weight:9,text:`Tasa de ahorro del hogar: ${rate}% (ahorran ${fmt(net)} de ${fmt(income)}), por debajo de la meta de ${d.targetPct}%. Falta recortar ${fmt(income*d.targetPct/100-net)}.`});
+      if(rate>=d.targetPct) facts.push({kind:'saving',severity:'positive',weight:6,text:`Tasa de ahorro del hogar al día ${day} del mes (mes incompleto): ${rate}% (ahorran ${fmt(net)} de ${fmt(income)} de ingresos). Meta: ${d.targetPct}%. Van por encima.`});
+      // A negative rate early in the month usually just means salaries haven't
+      // landed yet — skip the alarmist fact until day 20.
+      else if(rate>=0||day>=20) facts.push({kind:'saving',severity:'warning',weight:9,text:`Tasa de ahorro del hogar al día ${day} del mes (mes incompleto, puede faltar ingresar sueldos): ${rate}% (ahorran ${fmt(net)} de ${fmt(income)}), por debajo de la meta de ${d.targetPct}%. Falta recortar ${fmt(income*d.targetPct/100-net)}.`});
     }
   }else{
     // money a friend will repay this person (already netted out of the figures)
@@ -181,9 +189,12 @@ function buildFacts(aud:Aud,d:Data):{facts:Fact[];expense:number}{
     if(owed>=3000) facts.push({kind:'debt',severity:'info',weight:5,text:`Te van a devolver ${fmt(owed)} de tus gastos (ya descontado de estos números).`});
   }
 
-  // 2. category spikes vs 3-month average
+  // 2. category spikes vs the average of the months that actually have data
+  // (a young household with 1 month of history shouldn't see a "+200%" spike
+  // just because we divided by 3).
+  const histMonths=Math.max(1,new Set(d.hist.map(t=>t.occurred_on.slice(0,7))).size);
   for(const [name,v] of Object.entries(catCur)){
-    const avg=(catHist[name]??0)/3;
+    const avg=(catHist[name]??0)/histMonths;
     if(avg>0){const pct=Math.round((v.total-avg)/avg*100);
       if(pct>=25&&(v.total-avg)>=20000) facts.push({kind:'spike',severity:'warning',weight:8,text:`${name}: ${fmt(v.total)} este mes vs ${fmt(avg)} de promedio (${pct>0?'+':''}${pct}%). ${fmt(v.total-avg)} más de lo habitual.`});
     }else if(v.total>=40000){ facts.push({kind:'spike',severity:'info',weight:5,text:`${name}: ${fmt(v.total)} este mes, categoría nueva (sin historial).`}); }
@@ -204,7 +215,7 @@ function buildFacts(aud:Aud,d:Data):{facts:Fact[];expense:number}{
     const subsTotal=monthly.reduce((s,r)=>s+r.m,0);
     const pctOfExp=expense>0?Math.round(subsTotal/expense*100):0;
     const top=[...monthly].sort((a,b)=>b.m-a.m).slice(0,3).map(r=>`${r.label} ${fmt(r.m)}`).join(', ');
-    facts.push({kind:'subscription',severity:'info',weight:6,text:`Gastos fijos: ${fmt(subsTotal)}/mes en ${recAud.length} (${top}${monthly.length>3?'…':''})${pctOfExp?`, ${pctOfExp}% de los gastos`:''}.`});
+    facts.push({kind:'subscription',severity:'info',weight:6,text:`Gastos fijos: ${fmt(subsTotal)}/mes en ${recAud.length} (${top}${monthly.length>3?'…':''})${pctOfExp?`, ${pctOfExp}% de los gastos al día ${day} (mes incompleto)`:''}.`});
     const byCat:Record<string,number>={}; for(const r of monthly)byCat[r.name]=(byCat[r.name]??0)+1;
     for(const [name,n] of Object.entries(byCat)) if(n>=2) facts.push({kind:'subscription',severity:'warning',weight:8,text:`${n} suscripciones en ${name}. Cancelando una recortás el gasto fijo.`});
   }
@@ -240,7 +251,7 @@ function buildPrompt(aud:Aud,facts:Fact[],mode:string):string{
   return `${who}\nHechos ya calculados (números EXACTOS, usalos tal cual, no recalcules):\n${lines.join('\n')}\n\nElegí los ${n} más importantes y accionables y convertilos en cards.`;
 }
 
-const SYSTEM='Sos el coach financiero de Morchis, una app para una pareja argentina (Lucas y Sofi). Hablás en español rioplatense, cercano y motivador. Te paso HECHOS ya calculados (los montos son exactos). Elegí los más importantes y convertilos en cards breves y ACCIONABLES — cada una sugiere UNA cosa concreta para gastar menos, ahorrar más o evitar un problema. Reglas: (1) Usá SOLO números que aparezcan en los hechos, nunca inventes ni recalcules. (2) Priorizá ahorro y alertas por encima de lo descriptivo. (3) Respondé SOLO con un array JSON sin markdown. Cada item: {"title":string(≤7 palabras),"body":string(1-2 oraciones con el número del hecho + una acción concreta, ≤30 palabras),"severity":"info"|"positive"|"warning","kind":"saving"|"spike"|"anthill"|"duplicate"|"subscription"|"budget"|"goal"|"debt"|"summary"}.';
+const SYSTEM='Sos el coach financiero de Morchis, una app para una pareja argentina (Lucas y Sofi). Hablás en español rioplatense, cercano y motivador. Te paso HECHOS ya calculados (los montos son exactos). Elegí los más importantes y convertilos en cards breves y ACCIONABLES — cada una sugiere UNA cosa concreta para gastar menos, ahorrar más o evitar un problema. Reglas: (1) Usá SOLO números que aparezcan en los hechos, nunca inventes ni recalcules. (2) Priorizá ahorro y alertas por encima de lo descriptivo. (3) Si un hecho aclara que el mes está incompleto (ej: "al día N del mes"), presentalo como parcial — nunca como resultado final del mes ni como pérdida confirmada; una tasa de ahorro negativa a mitad de mes suele ser que faltan ingresar sueldos. (4) Respondé SOLO con un array JSON sin markdown. Cada item: {"title":string(≤7 palabras),"body":string(1-2 oraciones con el número del hecho + una acción concreta, ≤30 palabras),"severity":"info"|"positive"|"warning","kind":"saving"|"spike"|"anthill"|"duplicate"|"subscription"|"budget"|"goal"|"debt"|"summary"}.';
 
 async function generateFor(anthropic:Anthropic,admin:SupabaseClient,hid:string,aud:Aud,d:Data,mode:string,period:string,vPub:string,vPriv:string):Promise<number>{
   const {facts}=buildFacts(aud,d);
@@ -278,8 +289,8 @@ async function processHousehold(admin:SupabaseClient,hid:string,mode:string,apiK
   const d=await fetchAll(admin,hid);
   if(d.curr.length===0&&d.income.length===0){console.log('No data',hid);return 0;}
   const auds:Aud[]=[{id:null,name:'Hogar'},...d.profiles.map(p=>({id:p.id,name:p.nickname??p.display_name??'Usuario'}))];
-  const now=new Date();
-  const period=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const now=artNow();
+  const period=`${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,'0')}`;
   const anthropic=new Anthropic({apiKey});
   let total=0;
   for(const aud of auds){

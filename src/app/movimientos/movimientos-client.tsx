@@ -9,7 +9,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { EmptyState } from '@/components/EmptyState';
 import { exportTransactionsToCSV } from '@/lib/csvExport';
 import { formatARS } from '@/lib/format';
-import { todayISO, weekRange, shortDM } from '@/lib/date';
+import { todayISO, toLocalISO, weekRange, shortDM } from '@/lib/date';
 import {
   BarChart,
   Bar,
@@ -109,16 +109,26 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     },
   });
 
+  // Bound the fetch by date, not by row count: the month card, the
+  // current-vs-previous chart and the per-category breakdown all need the full
+  // current + previous month, and a plain row limit silently undercounted busy
+  // months. First-of-previous-month also covers the week filter (weekRange can
+  // start in the previous month). "Histórico" is the only view that needs
+  // older rows, so only then do we drop the date bound; the high limit stays
+  // as a backstop, never as the primary cutoff.
+  const prevMonthStart = toLocalISO(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1));
   const { data: transactions = [] } = useQuery<Tx[]>({
-    queryKey: ['transactions', profile.household_id],
+    queryKey: ['transactions', profile.household_id, filterRange === 'all' ? 'all' : 'recent'],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from('transactions')
         .select('id, amount, type, currency, category_id, account_id, transfer_account_id, scope, is_shared, merchant, occurred_on, profile_id, installment_number, installment_total, categories:category_id(name, icon)')
-        .eq('household_id', profile.household_id)
+        .eq('household_id', profile.household_id);
+      if (filterRange !== 'all') query = query.gte('occurred_on', prevMonthStart);
+      const { data } = await query
         .order('occurred_on', { ascending: false })
         .order('created_at', { ascending: false })
-        .limit(200);
+        .limit(1000);
       return (data as Tx[]) ?? [];
     },
   });
@@ -250,16 +260,17 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
         </div>
       </header>
 
-      {/* Month summary */}
+      {/* Month summary — always current-month numbers, so say so explicitly
+          (the Semana/Histórico filters don't change this card). */}
       <div className="mx-4 mb-4 rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
         <div className="flex justify-between">
           <div>
-            <p className="text-xs font-semibold" style={{ color: '#6B6459' }}>Gastos</p>
+            <p className="text-xs font-semibold" style={{ color: '#6B6459' }}>Gastos · este mes</p>
             <p className="text-xl font-black" style={{ color: '#FF7F6B' }}>{format(monthSummary.expenses)}</p>
             <p className="text-xs" style={{ color: '#6B6459' }}>{secondary(monthSummary.expenses)}</p>
           </div>
           <div className="text-right">
-            <p className="text-xs font-semibold" style={{ color: '#6B6459' }}>Ingresos</p>
+            <p className="text-xs font-semibold" style={{ color: '#6B6459' }}>Ingresos · este mes</p>
             <p className="text-xl font-black" style={{ color: '#7EC8A4' }}>{format(monthSummary.income)}</p>
             <p className="text-xs" style={{ color: '#6B6459' }}>{secondary(monthSummary.income)}</p>
           </div>

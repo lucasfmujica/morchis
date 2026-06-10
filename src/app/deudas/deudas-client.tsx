@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { formatARS, formatUSD, parseMoney } from '@/lib/format';
+import { toLocalISO } from '@/lib/date';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { SecondaryButton } from '@/components/SecondaryButton';
@@ -23,6 +24,9 @@ interface Profile {
 
 interface Debt {
   id: string;
+  // Whose debt this is. The list shows the whole household, so cards and
+  // totals need to distinguish the viewer's debts from the partner's.
+  profile_id: string;
   counterparty: string;
   direction: 'owe' | 'owed';
   amount: number;
@@ -54,7 +58,8 @@ function DebtForm({
 }: {
   initial?: Partial<Debt>;
   expenses: LinkableExpense[];
-  onSave: (data: Omit<Debt, 'id'>) => void;
+  // profile_id is set by the caller on create and never changed on edit.
+  onSave: (data: Omit<Debt, 'id' | 'profile_id'>) => void;
   onCancel: () => void;
 }) {
   const [direction, setDirection] = useState<'owe' | 'owed'>(initial?.direction ?? 'owe');
@@ -202,12 +207,19 @@ function DebtForm({
   );
 }
 
-function TotalsCard({ debts }: { debts: Debt[] }) {
-  const owe = totalsByCurrency(debts, 'owe');
-  const owed = totalsByCurrency(debts, 'owed');
+function TotalsCard({ debts, viewerId, partnerName }: { debts: Debt[]; viewerId: string; partnerName: string }) {
+  // "Yo debo / Me deben" only sums the viewer's own debts; the partner's
+  // household debts get a separate muted line so the totals never mix people.
+  const mine = debts.filter((d) => d.profile_id === viewerId);
+  const partners = debts.filter((d) => d.profile_id !== viewerId);
+  const owe = totalsByCurrency(mine, 'owe');
+  const owed = totalsByCurrency(mine, 'owed');
+  const pOwe = totalsByCurrency(partners, 'owe');
+  const pOwed = totalsByCurrency(partners, 'owed');
   const hasOwe = owe.usd > 0 || owe.ars > 0;
   const hasOwed = owed.usd > 0 || owed.ars > 0;
-  if (!hasOwe && !hasOwed) return null;
+  const hasPartner = pOwe.usd > 0 || pOwe.ars > 0 || pOwed.usd > 0 || pOwed.ars > 0;
+  if (!hasOwe && !hasOwed && !hasPartner) return null;
 
   function amounts(t: { usd: number; ars: number }) {
     const parts = [t.usd ? formatUSD(t.usd) : null, t.ars ? formatARS(t.ars) : null].filter(Boolean);
@@ -233,6 +245,11 @@ function TotalsCard({ debts }: { debts: Debt[] }) {
           </p>
         </div>
       </div>
+      {hasPartner && (
+        <p className="text-xs mt-3" style={{ color: '#6B6459' }}>
+          {partnerName}: debe {amounts(pOwe)} · le deben {amounts(pOwed)}
+        </p>
+      )}
     </div>
   );
 }
@@ -262,12 +279,30 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
     },
   });
 
+  // Household profiles, to name the partner on debts that aren't the viewer's
+  // (the list is household-wide but each debt belongs to one person).
+  const { data: householdProfiles = [] } = useQuery({
+    queryKey: ['household-profiles', profile.household_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, nickname, display_name')
+        .eq('household_id', profile.household_id);
+      return data ?? [];
+    },
+  });
+  const nameOf = (profileId: string) => {
+    const p = householdProfiles.find((p) => p.id === profileId);
+    return p?.nickname || p?.display_name || 'Pareja';
+  };
+  const partnerName = nameOf(householdProfiles.find((p) => p.id !== profile.id)?.id ?? '');
+
   const { data: debts = [], isLoading } = useQuery({
     queryKey: ['debts', profile.household_id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('debts')
-        .select('id, counterparty, direction, amount, currency, note, settled, transaction_id')
+        .select('id, profile_id, counterparty, direction, amount, currency, note, settled, transaction_id')
         .eq('household_id', profile.household_id)
         .order('settled')
         .order('created_at', { ascending: false });
@@ -281,7 +316,8 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
   const { data: linkableExpenses = [] } = useQuery<LinkableExpense[]>({
     queryKey: ['linkable-expenses', profile.household_id],
     queryFn: async () => {
-      const since = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+      // toLocalISO, not toISOString: the UTC date lands a day off in Argentina.
+      const since = toLocalISO(new Date(Date.now() - 90 * 86400000));
       const { data } = await supabase
         .from('transactions')
         .select('id, merchant, amount, currency, occurred_on, categories(name)')
@@ -302,7 +338,7 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
   const invalidate = () => qc.invalidateQueries({ queryKey: ['debts'] });
 
   const createMutation = useMutation({
-    mutationFn: async (data: Omit<Debt, 'id'>) => {
+    mutationFn: async (data: Omit<Debt, 'id' | 'profile_id'>) => {
       const { error } = await supabase.from('debts').insert({
         ...data,
         household_id: profile.household_id,
@@ -315,7 +351,7 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Omit<Debt, 'id'> }) => {
+    mutationFn: async ({ id, data }: { id: string; data: Omit<Debt, 'id' | 'profile_id'> }) => {
       const { error } = await supabase.from('debts').update(data).eq('id', id);
       if (error) throw error;
     },
@@ -345,6 +381,17 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
   const settled = debts.filter((d) => d.settled);
 
   function DebtCard({ debt }: { debt: Debt }) {
+    // Cards for the partner's debts are phrased in third person — "Le debo a
+    // Franco" would wrongly read as the viewer's debt.
+    const isMine = debt.profile_id === profile.id;
+    const ownerName = isMine ? null : nameOf(debt.profile_id);
+    const title = isMine
+      ? debt.direction === 'owe'
+        ? `Le debo a ${debt.counterparty}`
+        : `${debt.counterparty} me debe`
+      : debt.direction === 'owe'
+        ? `${ownerName} le debe a ${debt.counterparty}`
+        : `${debt.counterparty} le debe a ${ownerName}`;
     return (
       <div className="flex items-center gap-3 px-5 py-4" style={{ borderTop: '1px solid #ECE5DC' }}>
         <div
@@ -355,7 +402,7 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-bold text-sm truncate" style={{ color: '#2D2D2D' }}>
-            {debt.direction === 'owe' ? `Le debo a ${debt.counterparty}` : `${debt.counterparty} me debe`}
+            {title}
           </p>
           <p className="text-xs" style={{ color: '#6B6459' }}>
             {debt.settled ? 'Saldada' : 'Pendiente'}{debt.note ? ` · ${debt.note}` : ''}{debt.transaction_id ? ' · 🔗 gasto' : ''}
@@ -403,7 +450,9 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
       </header>
 
       <div className="px-4 flex flex-col gap-4">
-        {!showForm && !editDebt && debts.length > 0 && <TotalsCard debts={debts} />}
+        {!showForm && !editDebt && debts.length > 0 && (
+          <TotalsCard debts={debts} viewerId={profile.id} partnerName={partnerName} />
+        )}
 
         {showForm && !editDebt && (
           <DebtForm

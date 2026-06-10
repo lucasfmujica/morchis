@@ -8,6 +8,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { MoneyInput } from '@/components/MoneyInput';
 import { formatARS, parseMoney } from '@/lib/format';
 import { useFx } from '@/hooks/useFx';
+import { triggerBudgetAlerts } from '@/lib/notifyBudgets';
 import { toast } from 'sonner';
 
 interface Profile {
@@ -165,12 +166,14 @@ function EditDraftModal({
 function DraftCard({
   draft,
   categories,
+  pending,
   onAccept,
   onReject,
   onEdit,
 }: {
   draft: Draft;
   categories: Category[];
+  pending: boolean;
   onAccept: () => void;
   onReject: () => void;
   onEdit: () => void;
@@ -196,8 +199,12 @@ function DraftCard({
   }
 
   function onTouchEnd() {
-    if (swipeX > 80) onAccept();
-    else if (swipeX < -80) onReject();
+    // Ignore swipe completion while an accept is in flight — a swipe followed
+    // by a tap (or vice versa) must not fire the action twice.
+    if (!pending) {
+      if (swipeX > 80) onAccept();
+      else if (swipeX < -80) onReject();
+    }
     setSwipeX(0);
     setSwiping(false);
     touchStartX.current = null;
@@ -262,28 +269,31 @@ function DraftCard({
           </div>
         </div>
 
-        {/* Action buttons */}
+        {/* Action buttons — disabled while this draft's accept is in flight */}
         <div className="flex gap-2 mt-3">
           <button
             onClick={onReject}
-            className="flex-1 py-2 rounded-2xl text-xs font-bold"
+            disabled={pending}
+            className="flex-1 py-2 rounded-2xl text-xs font-bold disabled:opacity-50"
             style={{ background: '#FFE7E2', color: '#FF7F6B' }}
           >
             ✗ Rechazar
           </button>
           <button
             onClick={onEdit}
-            className="py-2 px-4 rounded-2xl text-xs font-bold"
+            disabled={pending}
+            className="py-2 px-4 rounded-2xl text-xs font-bold disabled:opacity-50"
             style={{ background: '#ECE5DC', color: '#6B6459' }}
           >
             ✏️ Editar
           </button>
           <button
             onClick={onAccept}
-            className="flex-1 py-2 rounded-2xl text-xs font-bold"
+            disabled={pending}
+            className="flex-1 py-2 rounded-2xl text-xs font-bold disabled:opacity-50"
             style={{ background: '#E4F2EA', color: '#5BA886' }}
           >
-            ✓ Aceptar
+            {pending ? '…' : '✓ Aceptar'}
           </button>
         </div>
       </div>
@@ -309,6 +319,38 @@ export default function ReviewClient({
   const [editingDraft, setEditingDraft] = useState<Draft | null>(null);
   const [accepting, setAccepting] = useState(false);
 
+  // Draft ids with an accept in flight. The ref is the source of truth for the
+  // re-entry guard (a double tap lands before a state update would re-render);
+  // the state mirror exists only so the buttons re-render as disabled.
+  const inFlightRef = useRef<Set<string>>(new Set());
+  const [inFlight, setInFlight] = useState<Set<string>>(new Set());
+  function markInFlight(ids: string[]) {
+    for (const id of ids) inFlightRef.current.add(id);
+    setInFlight(new Set(inFlightRef.current));
+  }
+  function clearInFlight(ids: string[]) {
+    for (const id of ids) inFlightRef.current.delete(id);
+    setInFlight(new Set(inFlightRef.current));
+  }
+
+  // The server-rendered `statement` prop never refreshes, so a statement opened
+  // mid-parse would spin forever. Poll the row while it says 'parsing' so the
+  // spinner clears on its own once the parser finishes (or fails).
+  const { data: liveStatement = statement } = useQuery<Statement>({
+    queryKey: ['statement', statement.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('statements')
+        .select('id, status, created_at, account_id')
+        .eq('id', statement.id)
+        .single();
+      return (data as Statement) ?? statement;
+    },
+    initialData: statement,
+    refetchInterval: (query) => (query.state.data?.status === 'parsing' ? 3000 : false),
+  });
+  const statementStatus = liveStatement.status;
+
   const { data: drafts = [], isLoading } = useQuery<Draft[]>({
     queryKey: ['drafts', statement.id],
     queryFn: async () => {
@@ -323,7 +365,7 @@ export default function ReviewClient({
         payload: d.payload as unknown as DraftPayload,
       })) as Draft[];
     },
-    refetchInterval: statement.status === 'parsing' ? 3000 : false,
+    refetchInterval: statementStatus === 'parsing' ? 3000 : false,
   });
 
   async function getFxRate() {
@@ -373,13 +415,26 @@ export default function ReviewClient({
   }
 
   async function handleAccept(draft: Draft) {
-    const ok = await acceptDraft(draft);
-    if (ok) {
-      await qc.invalidateQueries({ queryKey: ['drafts', statement.id] });
-      await qc.invalidateQueries({ queryKey: ['transactions'] });
-      await qc.invalidateQueries({ queryKey: ['account-tx'] });
-      await qc.invalidateQueries({ queryKey: ['spent-by-category'] });
-      toast.success('Movimiento aceptado');
+    // Insert-then-update isn't atomic, so a double tap (or swipe + tap) would
+    // insert the transaction twice before the draft flips to 'accepted'.
+    // Guard re-entry instead of reordering: flipping the draft first could
+    // lose the movement if the insert then fails.
+    if (inFlightRef.current.has(draft.id)) return;
+    markInFlight([draft.id]);
+    try {
+      const ok = await acceptDraft(draft);
+      if (ok) {
+        await qc.invalidateQueries({ queryKey: ['drafts', statement.id] });
+        await qc.invalidateQueries({ queryKey: ['transactions'] });
+        await qc.invalidateQueries({ queryKey: ['account-tx'] });
+        await qc.invalidateQueries({ queryKey: ['spent-by-category'] });
+        // An imported expense can push a budget past 80%/100% just like a
+        // manual one — best-effort push, dedup handled server-side.
+        triggerBudgetAlerts(supabase);
+        toast.success('Movimiento aceptado');
+      }
+    } finally {
+      clearInFlight([draft.id]);
     }
   }
 
@@ -410,45 +465,61 @@ export default function ReviewClient({
   }
 
   async function handleBulkAccept() {
-    const highConf = drafts.filter((d) => (d.payload.confidence ?? d.confidence ?? 0) >= 0.85);
+    // Skip drafts already being accepted individually (or by a previous bulk
+    // tap still in flight) and anything no longer pending, so a swipe + bulk
+    // tap can't insert the same transaction twice.
+    const highConf = drafts.filter(
+      (d) =>
+        d.status === 'pending' &&
+        !inFlightRef.current.has(d.id) &&
+        (d.payload.confidence ?? d.confidence ?? 0) >= 0.85,
+    );
     if (highConf.length === 0) { toast('No hay movimientos de alta confianza'); return; }
+    const ids = highConf.map((d) => d.id);
+    markInFlight(ids);
     setAccepting(true);
-    const rate = await getFxRate();
-    const rows = highConf.map((d) => ({
-      household_id: profile.household_id,
-      profile_id: profile.id,
-      account_id: statement.account_id ?? null,
-      statement_id: statement.id,
-      type: 'expense' as const,
-      amount: d.payload.amount,
-      currency: 'ARS',
-      usd_rate_snapshot: rate,
-      category_id: d.payload.category_id ?? null,
-      merchant: d.payload.merchant,
-      description: d.payload.raw_description,
-      occurred_on: d.payload.date,
-      scope: 'personal',
-      is_shared: false,
-      source: 'statement' as const,
-    }));
+    try {
+      const rate = await getFxRate();
+      const rows = highConf.map((d) => ({
+        household_id: profile.household_id,
+        profile_id: profile.id,
+        account_id: statement.account_id ?? null,
+        statement_id: statement.id,
+        type: 'expense' as const,
+        amount: d.payload.amount,
+        currency: 'ARS',
+        usd_rate_snapshot: rate,
+        category_id: d.payload.category_id ?? null,
+        merchant: d.payload.merchant,
+        description: d.payload.raw_description,
+        occurred_on: d.payload.date,
+        scope: 'personal',
+        is_shared: false,
+        source: 'statement' as const,
+      }));
 
-    const { error } = await supabase.from('transactions').insert(rows);
-    if (error) { toast.error('Error al aceptar en masa'); setAccepting(false); return; }
+      const { error } = await supabase.from('transactions').insert(rows);
+      if (error) { toast.error('Error al aceptar en masa'); return; }
 
-    await supabase
-      .from('draft_transactions')
-      .update({ status: 'accepted' })
-      .in('id', highConf.map((d) => d.id));
+      await supabase
+        .from('draft_transactions')
+        .update({ status: 'accepted' })
+        .in('id', ids);
 
-    await qc.invalidateQueries({ queryKey: ['drafts', statement.id] });
-    await qc.invalidateQueries({ queryKey: ['transactions'] });
-    await qc.invalidateQueries({ queryKey: ['account-tx'] });
-    await qc.invalidateQueries({ queryKey: ['spent-by-category'] });
-    toast.success(`${highConf.length} movimientos aceptados`);
-    setAccepting(false);
+      await qc.invalidateQueries({ queryKey: ['drafts', statement.id] });
+      await qc.invalidateQueries({ queryKey: ['transactions'] });
+      await qc.invalidateQueries({ queryKey: ['account-tx'] });
+      await qc.invalidateQueries({ queryKey: ['spent-by-category'] });
+      // A month of imported card spend can blow through budgets — check once.
+      triggerBudgetAlerts(supabase);
+      toast.success(`${highConf.length} movimientos aceptados`);
+    } finally {
+      clearInFlight(ids);
+      setAccepting(false);
+    }
   }
 
-  const isParsing = statement.status === 'parsing';
+  const isParsing = statementStatus === 'parsing';
   const highConfCount = drafts.filter((d) => (d.payload.confidence ?? d.confidence ?? 0) >= 0.85).length;
 
   return (
@@ -500,10 +571,10 @@ export default function ReviewClient({
         <div className="text-center py-16 px-8">
           <p className="text-5xl mb-4">✅</p>
           <p className="text-base font-bold" style={{ color: '#2D2D2D' }}>
-            {statement.status === 'failed' ? 'Error al analizar el resumen' : 'Todo revisado'}
+            {statementStatus === 'failed' ? 'Error al analizar el resumen' : 'Todo revisado'}
           </p>
           <p className="text-sm mt-2" style={{ color: '#6B6459' }}>
-            {statement.status === 'failed'
+            {statementStatus === 'failed'
               ? 'Intentá con otro archivo o foto más nítida.'
               : 'Los movimientos aceptados ya aparecen en Movimientos.'}
           </p>
@@ -528,6 +599,7 @@ export default function ReviewClient({
               key={draft.id}
               draft={draft}
               categories={categories}
+              pending={inFlight.has(draft.id)}
               onAccept={() => handleAccept(draft)}
               onReject={() => rejectDraft(draft.id)}
               onEdit={() => setEditingDraft(draft)}

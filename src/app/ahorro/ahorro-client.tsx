@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
+import { myShareArs, toArs, type SplitRow } from '@/lib/budgets';
 import { useFx } from '@/hooks/useFx';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
@@ -56,7 +57,7 @@ export default function AhorroClient({
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('amount, type, occurred_on, profile_id, currency')
+        .select('amount, type, occurred_on, profile_id, currency, category_id, scope, is_shared, usd_rate_snapshot, splits(payer_profile_id, ower_profile_id, amount)')
         .eq('household_id', profile.household_id)
         .gte('occurred_on', rangeStart);
       return data ?? [];
@@ -65,8 +66,6 @@ export default function AhorroClient({
 
   const scopeProfileId =
     scope === 'me' ? profile.id : scope === 'partner' ? partnerProfileId : undefined;
-  const toArs = (amount: number, currency?: string | null) =>
-    currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount;
 
   const scopeTabs = [
     { key: 'me' as const, label: 'Mío' },
@@ -87,18 +86,46 @@ export default function AhorroClient({
 
   const goalMap = new Map(goalRows.map((g) => [g.month, g.target_pct]));
 
-  // Respect the Mío/Nuestro/pareja scope and normalize USD→ARS so the savings
-  // rate is computed on a single currency.
-  const scopedTxns = scopeProfileId ? txns.filter((t) => t.profile_id === scopeProfileId) : txns;
+  type Txn = {
+    amount: number;
+    type: string;
+    occurred_on: string;
+    profile_id: string;
+    currency: string;
+    category_id: string | null;
+    scope: string;
+    is_shared: boolean;
+    usd_rate_snapshot: number | null;
+    splits: SplitRow[] | null;
+  };
+  const allTxns = txns as Txn[];
+
+  // Value USD rows at the rate captured when they were saved, so past months
+  // don't get revalued every time today's blue rate moves.
+  const rowRate = (t: Txn) => Number(t.usd_rate_snapshot) || arsPerUsd;
+
+  // How much of an expense counts for the selected scope, in ARS. Mirrors the
+  // budgets math: a shared expense charges each person their own part (whoever
+  // fronted it), a solo expense counts only for its payer, and "Nuestro"
+  // counts every expense once, in full.
+  const expenseArs = (t: Txn): number => {
+    const rate = rowRate(t);
+    if (!scopeProfileId) return toArs(t.amount, t.currency, rate);
+    if (t.is_shared) return myShareArs(t, scopeProfileId, rate);
+    return t.profile_id === scopeProfileId ? toArs(t.amount, t.currency, rate) : 0;
+  };
+
+  // Income stays attributed by who received it — your salary is yours.
+  const incomeArs = (t: Txn): number =>
+    !scopeProfileId || t.profile_id === scopeProfileId ? toArs(t.amount, t.currency, rowRate(t)) : 0;
 
   const rows: MonthRow[] = months.map((m) => {
     let income = 0;
     let expense = 0;
-    for (const t of scopedTxns) {
+    for (const t of allTxns) {
       if (!t.occurred_on.startsWith(m.key)) continue;
-      const amt = toArs(t.amount, t.currency);
-      if (t.type === 'income') income += amt;
-      else if (t.type === 'expense') expense += amt;
+      if (t.type === 'income') income += incomeArs(t);
+      else if (t.type === 'expense') expense += expenseArs(t);
     }
     const saved = income - expense;
     return { ...m, income, expense, saved, rate: income > 0 ? saved / income : null };
@@ -135,9 +162,13 @@ export default function AhorroClient({
     saveTimer.current = setTimeout(() => saveMutation.mutate(next), 600);
   }
 
-  const sixMoSaved = rows.reduce((s, r) => s + r.saved, 0);
-  const sixMoIncome = rows.reduce((s, r) => s + r.income, 0);
-  const avgRate = sixMoIncome > 0 ? sixMoSaved / sixMoIncome : null;
+  // Average over closed months only — the in-progress month always looks like
+  // a bad month until it ends and would drag the average down. It still shows
+  // in the chart as its own bar.
+  const closedRows = rows.slice(0, -1);
+  const closedSaved = closedRows.reduce((s, r) => s + r.saved, 0);
+  const closedIncome = closedRows.reduce((s, r) => s + r.income, 0);
+  const avgRate = closedIncome > 0 ? closedSaved / closedIncome : null;
 
   return (
     <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
@@ -243,11 +274,11 @@ export default function AhorroClient({
           <MonthlyBars rows={rows} />
           {avgRate != null && (
             <p className="text-xs mt-4 pt-3 text-center" style={{ borderTop: '1px solid #ECE5DC', color: '#6B6459' }}>
-              Promedio de ahorro de 6 meses:{' '}
+              Promedio de ahorro · {closedRows.length} meses cerrados:{' '}
               <span className="font-black" style={{ color: avgRate >= 0 ? '#5BA886' : '#E5604C' }}>
                 {Math.round(avgRate * 100)}%
               </span>{' '}
-              · {formatARS(sixMoSaved)} ahorrados
+              · {formatARS(closedSaved)} ahorrados
             </p>
           )}
         </div>

@@ -79,6 +79,10 @@ function levelFor(pct: number): 0 | 80 | 100 {
   return 0;
 }
 
+// "now" in Argentina (UTC-3, no DST) — the server clock is UTC and would
+// roll to tomorrow / next month after 21:00 local.
+const artNow = () => new Date(Date.now() - 3 * 60 * 60 * 1000);
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
@@ -100,7 +104,7 @@ Deno.serve(async (req) => {
     const householdId = me?.household_id;
     if (!householdId) return json({ error: "no household" }, 200);
 
-    const now = new Date();
+    const now = artNow();
     const period = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
     const monthStart = `${period}-01`;
     // Cap at month end so a future-month installment cuota doesn't inflate spend

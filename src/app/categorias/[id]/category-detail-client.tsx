@@ -9,6 +9,7 @@ import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { SingleBars, lastSixMonths } from '@/components/MonthlyBars';
 import { EmptyState } from '@/components/EmptyState';
 import { formatARS } from '@/lib/format';
+import { toLocalISO } from '@/lib/date';
 import Link from 'next/link';
 
 interface Profile {
@@ -58,6 +59,13 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
   // Which month's transactions / item breakdown to show (tap a bar to drill in).
   const [selectedMonth, setSelectedMonth] = useState(currentKey);
   const rangeStart = `${months[0].key}-01`;
+  // Cap at the end of the current month so future-dated installments (cuotas
+  // booked for later months) don't inflate "Este mes" or the movements list.
+  // Local date parts — toISOString flips to tomorrow after 21:00 in Argentina.
+  const rangeEnd = useMemo(() => {
+    const now = new Date();
+    return toLocalISO(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  }, []);
   const accent = category.color || (category.kind === 'income' ? '#7EC8A4' : '#FF7F6B');
 
   const { data: txns = [] } = useQuery<Tx[]>({
@@ -69,6 +77,7 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
         .eq('household_id', profile.household_id)
         .eq('category_id', category.id)
         .gte('occurred_on', rangeStart)
+        .lte('occurred_on', rangeEnd)
         .order('occurred_on', { ascending: false });
       return (data ?? []) as Tx[];
     },
@@ -76,19 +85,24 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
 
   // Active budget for this category, normalized to ARS (USD budgets converted at
   // the blue rate) so it lines up with the ARS-normalized monthly spend below.
+  // This page has no scope toggle (the spend is household-wide), so only count
+  // household budgets plus the viewer's own personal one — the partner's
+  // personal budget would inflate the limit for a number they never set.
   const { data: budget = 0 } = useQuery<number>({
-    queryKey: ['category-budget', category.id, arsPerUsd],
+    queryKey: ['category-budget', category.id, profile.id, arsPerUsd],
     queryFn: async () => {
       const { data } = await supabase
         .from('budgets')
-        .select('amount, currency')
+        .select('amount, currency, scope, profile_id')
         .eq('household_id', profile.household_id)
         .eq('category_id', category.id)
         .eq('active', true);
-      return (data ?? []).reduce(
-        (s, b) => s + (b.currency === 'USD' && arsPerUsd > 0 ? Math.round(b.amount * arsPerUsd) : b.amount),
-        0,
-      );
+      return (data ?? [])
+        .filter((b) => b.scope === 'household' || b.profile_id === profile.id)
+        .reduce(
+          (s, b) => s + (b.currency === 'USD' && arsPerUsd > 0 ? Math.round(b.amount * arsPerUsd) : b.amount),
+          0,
+        );
     },
   });
 
@@ -128,7 +142,9 @@ export default function CategoryDetailClient({ profile, category }: { profile: P
     [months, txns, toArs],
   );
   const thisMonth = monthRows[monthRows.length - 1].value;
-  const monthsWithData = monthRows.filter((r) => r.value > 0);
+  // Average over completed months only — the in-progress current month (shown
+  // separately above) would drag the average down mid-month.
+  const monthsWithData = monthRows.filter((r) => r.key !== currentKey && r.value > 0);
   const avg = monthsWithData.length > 0 ? Math.round(monthsWithData.reduce((s, r) => s + r.value, 0) / monthsWithData.length) : 0;
   const pct = budget > 0 ? thisMonth / budget : 0;
   const barCol = pct >= 1 ? '#FF7F6B' : pct >= 0.8 ? '#F5A623' : accent;

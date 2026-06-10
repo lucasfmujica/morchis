@@ -8,7 +8,8 @@ import { useCoupleBalance, recordSettlement } from '@/hooks/useCouple';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { InvitePartnerModal } from '@/components/InvitePartnerModal';
-import { formatARS, parseMoney } from '@/lib/format';
+import { formatARS } from '@/lib/format';
+import { MoneyInput } from '@/components/MoneyInput';
 import { todayISO } from '@/lib/date';
 import { toast } from 'sonner';
 import Link from 'next/link';
@@ -61,8 +62,8 @@ function SettleUpSheet({
   const [saving, setSaving] = useState(false);
   // Amount being settled, in ARS. Defaults to the full balance but can be a
   // partial payment — or larger than the balance, which flips who owes whom.
-  // Kept as a string so the field can be cleared while typing.
-  const [amountStr, setAmountStr] = useState('');
+  // 0 = empty field, which falls back to the full balance.
+  const [amountVal, setAmountVal] = useState(0);
   const [date, setDate] = useState(todayISO());
   // When on, the payment also moves real money between the partners' accounts
   // (a transfer), not just the abstract couple balance. Off = cash / external.
@@ -77,7 +78,7 @@ function SettleUpSheet({
   // net > 0 → partner owes me; net < 0 → I owe partner.
   const absNet = Math.round(Math.abs(net));
   // No upper cap: paying any amount is valid; the resulting balance is derived.
-  const amount = amountStr === '' ? absNet : Math.round(parseMoney(amountStr));
+  const amount = amountVal > 0 ? Math.round(amountVal) : absNet;
 
   // The payer is whoever the direction toggle says; the receiver is the other.
   // Money legs are filtered to each side's own non-credit ARS accounts (the
@@ -108,7 +109,7 @@ function SettleUpSheet({
   // Reset the form whenever the sheet (re)opens.
   useEffect(() => {
     if (open) {
-      setAmountStr('');
+      setAmountVal(0);
       setDate(todayISO());
       setMoveMoney(true);
       setFromAccountId(null);
@@ -213,18 +214,18 @@ function SettleUpSheet({
         {/* Amount — defaults to the current balance; type any amount you want. */}
         <p className="text-xs font-bold mb-1.5" style={{ color: '#6B6459' }}>¿Cuánto paga? (ARS)</p>
         <div className="flex items-center gap-2 mb-2">
-          <input
-            type="text"
-            inputMode="decimal"
-            placeholder={String(absNet)}
-            value={amountStr}
-            onChange={(e) => setAmountStr(e.target.value)}
+          {/* MoneyInput handles the es-AR convention ('.' thousands, ',' decimal),
+              so typing "15.000" means fifteen thousand, not fifteen pesos. */}
+          <MoneyInput
+            value={amountVal}
+            onChange={setAmountVal}
+            placeholder={absNet.toLocaleString('es-AR')}
             className="flex-1 px-4 py-3 rounded-2xl text-sm border bg-white outline-none"
             style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
           />
           {absNet >= 1 && (
             <button
-              onClick={() => setAmountStr('')}
+              onClick={() => setAmountVal(0)}
               className="px-3 py-3 rounded-2xl text-xs font-bold border"
               style={{ borderColor: '#ECE5DC', color: '#6B6459', background: '#FFFFFF' }}
             >
