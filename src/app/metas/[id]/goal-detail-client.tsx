@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { formatARS, formatUSD, usdToArs, arsToUsd, parseMoney } from '@/lib/format';
-import { todayISO } from '@/lib/date';
+import { todayISO, toLocalISO } from '@/lib/date';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { useFx } from '@/hooks/useFx';
@@ -48,6 +48,30 @@ interface Contribution {
   amount: number;
   occurred_on: string;
   note: string | null;
+}
+
+interface GoalRule {
+  id: string;
+  amount: number;
+  anchor_day: number;
+  active: boolean;
+}
+
+interface HouseholdProfile {
+  id: string;
+  nickname: string | null;
+  display_name: string | null;
+}
+
+// Next occurrence of a monthly anchor day: today if today *is* the anchor day,
+// otherwise the next one. Built from local date parts — toISOString() would
+// shift a day in Argentina (UTC-3) after 21:00.
+function nextRunForAnchor(day: number): string {
+  const now = new Date();
+  if (now.getDate() <= day) {
+    return toLocalISO(new Date(now.getFullYear(), now.getMonth(), day));
+  }
+  return toLocalISO(new Date(now.getFullYear(), now.getMonth() + 1, day));
 }
 
 // ─── Confetti ────────────────────────────────────────────────────────────────
@@ -283,6 +307,180 @@ function AportarSheet({
   );
 }
 
+// ─── Aporte automático ────────────────────────────────────────────────────────
+
+function AutoAporteSection({
+  goal,
+  profile,
+  fmtGoal,
+}: {
+  goal: Goal;
+  profile: Profile;
+  fmtGoal: (n: number) => string;
+}) {
+  const supabase = createClient();
+  const qc = useQueryClient();
+  const [amount, setAmount] = useState('');
+  const [anchorDay, setAnchorDay] = useState('1');
+
+  const amountNum = parseMoney(amount);
+  const dayNum = Number(anchorDay);
+  const dayValid = Number.isInteger(dayNum) && dayNum >= 1 && dayNum <= 28;
+
+  const { data: rule, isLoading } = useQuery<GoalRule | null>({
+    queryKey: ['goal-rule', goal.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('recurring_rules')
+        .select('id, amount, anchor_day, active')
+        .eq('household_id', goal.household_id)
+        .eq('goal_id', goal.id)
+        .limit(1)
+        .maybeSingle();
+      return (data as GoalRule) ?? null;
+    },
+  });
+
+  function invalidate() {
+    qc.invalidateQueries({ queryKey: ['goal-rule', goal.id] });
+    qc.invalidateQueries({ queryKey: ['goal-rules'] });
+  }
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      // The cron inserts a goal_contribution on each due date, so the rule's
+      // currency must match the goal's target currency — no FX on the way in.
+      const { error } = await supabase.from('recurring_rules').insert({
+        household_id: goal.household_id,
+        profile_id: profile.id,
+        direction: 'expense',
+        amount: amountNum,
+        currency: goal.target_currency,
+        cadence: 'monthly',
+        anchor_day: dayNum,
+        label: `Aporte: ${goal.name}`,
+        scope: 'personal',
+        active: true,
+        next_run: nextRunForAnchor(dayNum),
+        goal_id: goal.id,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('¡Listo! Aporte automático activado.');
+      invalidate();
+    },
+    onError: () => toast.error('No se pudo activar el aporte. Intentá de nuevo.'),
+  });
+
+  const setActiveMutation = useMutation({
+    mutationFn: async (active: boolean) => {
+      if (!rule) return;
+      const payload = active
+        ? { active: true, next_run: nextRunForAnchor(rule.anchor_day) }
+        : { active: false };
+      const { error } = await supabase.from('recurring_rules').update(payload).eq('id', rule.id);
+      if (error) throw error;
+    },
+    onSuccess: invalidate,
+    onError: () => toast.error('No se pudo actualizar el aporte. Intentá de nuevo.'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      if (!rule) return;
+      const { error } = await supabase.from('recurring_rules').delete().eq('id', rule.id);
+      if (error) throw error;
+    },
+    onSuccess: invalidate,
+    onError: () => toast.error('No se pudo eliminar el aporte. Intentá de nuevo.'),
+  });
+
+  if (isLoading) return null;
+
+  return (
+    <div className="mx-4 rounded-3xl p-5 mb-4" style={{ background: '#FFFFFF' }}>
+      <h2 className="text-base font-black mb-3" style={{ color: '#2D2D2D' }}>⚡ Aporte automático</h2>
+
+      {rule ? (
+        <>
+          <p className="text-sm font-semibold mb-1" style={{ color: '#2D2D2D' }}>
+            Aportás {fmtGoal(rule.amount)} automáticamente el día {rule.anchor_day} de cada mes
+          </p>
+          {!rule.active && (
+            <p className="text-xs font-bold mb-2" style={{ color: '#FF7F6B' }}>Pausado</p>
+          )}
+          <div className="flex gap-2 mt-3">
+            {rule.active ? (
+              <button
+                onClick={() => setActiveMutation.mutate(false)}
+                disabled={setActiveMutation.isPending}
+                className="text-xs px-3 py-1.5 rounded-xl font-semibold"
+                style={{ background: '#F9F5F0', color: '#6B6459' }}
+              >
+                Pausar
+              </button>
+            ) : (
+              <button
+                onClick={() => setActiveMutation.mutate(true)}
+                disabled={setActiveMutation.isPending}
+                className="text-xs px-3 py-1.5 rounded-xl font-semibold"
+                style={{ background: '#E4F2EA', color: '#5BA886' }}
+              >
+                Reactivar
+              </button>
+            )}
+            <button
+              onClick={() => deleteMutation.mutate()}
+              disabled={deleteMutation.isPending}
+              className="text-xs px-3 py-1.5 rounded-xl font-semibold"
+              style={{ background: '#FFE7E2', color: '#FF7F6B' }}
+            >
+              Eliminar
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="text-xs mb-3" style={{ color: '#6B6459' }}>
+            Programá un aporte mensual y la meta avanza sola.
+          </p>
+          <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>
+            Monto ({goal.target_currency})
+          </p>
+          <MoneyInput
+            value={amountNum}
+            onChange={(n) => setAmount(n ? String(n) : '')}
+            placeholder={goal.target_currency === 'ARS' ? 'Ej: 50.000' : 'Ej: 100'}
+            className="w-full rounded-2xl px-4 py-3 text-lg font-bold mb-3 outline-none border-2 transition-colors"
+            style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: amount ? '#7EC8A4' : '#ECE5DC' }}
+          />
+          <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>
+            Día del mes (1–28)
+          </p>
+          <input
+            type="number"
+            min={1}
+            max={28}
+            value={anchorDay}
+            onChange={(e) => setAnchorDay(e.target.value)}
+            className="w-full rounded-2xl px-4 py-3 text-base font-semibold mb-4 outline-none border-2 transition-colors"
+            style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: dayValid ? '#7EC8A4' : '#ECE5DC' }}
+          />
+          <PrimaryButton
+            onClick={() => createMutation.mutate()}
+            disabled={!amountNum || !dayValid}
+            loading={createMutation.isPending}
+            className="w-full py-3"
+          >
+            {createMutation.isPending ? 'Activando…' : 'Activar aporte mensual'}
+          </PrimaryButton>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function GoalDetailClient({ goalId, profile }: { goalId: string; profile: Profile }) {
@@ -313,6 +511,18 @@ export default function GoalDetailClient({ goalId, profile }: { goalId: string; 
         .eq('goal_id', goalId)
         .order('occurred_on', { ascending: false });
       return (data ?? []) as Contribution[];
+    },
+  });
+
+  // Household profiles, to show who made each contribution.
+  const { data: householdProfiles = [] } = useQuery<HouseholdProfile[]>({
+    queryKey: ['household-profiles', profile.household_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, nickname, display_name')
+        .eq('household_id', profile.household_id);
+      return (data ?? []) as HouseholdProfile[];
     },
   });
 
@@ -365,6 +575,18 @@ export default function GoalDetailClient({ goalId, profile }: { goalId: string; 
   const elapsed = Math.max(0, (now.getTime() - created.getTime()) / 86400000);
   const expectedPct = elapsed / totalDays;
   const onTrack = pct >= expectedPct;
+
+  // Contributor names + per-person totals (shared goals show who put in what).
+  const profileName = (id: string) => {
+    const p = householdProfiles.find((hp) => hp.id === id);
+    return p?.nickname ?? p?.display_name ?? null;
+  };
+  const perPersonTotals = householdProfiles
+    .map((hp) => ({
+      name: hp.nickname ?? hp.display_name ?? '—',
+      total: contributions.filter((c) => c.profile_id === hp.id).reduce((sum, c) => sum + c.amount, 0),
+    }))
+    .filter((t) => t.total > 0);
 
   return (
     <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
@@ -466,9 +688,19 @@ export default function GoalDetailClient({ goalId, profile }: { goalId: string; 
         )}
       </div>
 
+      {/* Aporte automático (not for archived or completed goals) */}
+      {!goal.archived && !done && (
+        <AutoAporteSection goal={goal} profile={profile} fmtGoal={fmtGoal} />
+      )}
+
       {/* Contribution history */}
       <div className="px-4">
         <h2 className="text-base font-black mb-3" style={{ color: '#2D2D2D' }}>Historial de aportes</h2>
+        {goal.scope === 'household' && perPersonTotals.length > 0 && (
+          <p className="text-xs font-bold mb-2" style={{ color: '#6B6459' }}>
+            {perPersonTotals.map((t) => `${t.name} ${fmtGoal(t.total)}`).join(' · ')}
+          </p>
+        )}
         {contributions.length === 0 ? (
           <div className="rounded-3xl p-5 text-center" style={{ background: '#FFFFFF' }}>
             <p className="text-sm" style={{ color: '#6B6459' }}>Todavía no hay aportes. ¡Empezá ahora!</p>
@@ -481,8 +713,10 @@ export default function GoalDetailClient({ goalId, profile }: { goalId: string; 
                   <p className="text-sm font-bold" style={{ color: '#2D2D2D' }}>
                     {parseLocalDate(c.occurred_on).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })}
                   </p>
-                  {c.note && (
-                    <p className="text-xs" style={{ color: '#6B6459' }}>{c.note}</p>
+                  {(profileName(c.profile_id) || c.note) && (
+                    <p className="text-xs" style={{ color: '#6B6459' }}>
+                      {[profileName(c.profile_id), c.note].filter(Boolean).join(' · ')}
+                    </p>
                   )}
                 </div>
                 <p className="text-sm font-black tabular-nums" style={{ color: goal.color || '#7EC8A4' }}>

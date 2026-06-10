@@ -334,6 +334,21 @@ export default function MetasClient({ profile }: { profile: Profile }) {
     },
   });
 
+  // Active auto-contribution rules, to badge goals that fund themselves.
+  const { data: goalRules = [] } = useQuery<{ id: string; goal_id: string; amount: number; anchor_day: number }[]>({
+    queryKey: ['goal-rules', profile.household_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('recurring_rules')
+        .select('id, goal_id, amount, anchor_day')
+        .eq('household_id', profile.household_id)
+        .eq('active', true)
+        .not('goal_id', 'is', null);
+      return (data ?? []) as { id: string; goal_id: string; amount: number; anchor_day: number }[];
+    },
+  });
+  const autoGoalIds = new Set(goalRules.map((r) => r.goal_id));
+
   const monthPrefix = monthKey();
   const { data: contribThisMonth = [] } = useQuery({
     queryKey: ['contrib-month', profile.household_id, monthPrefix],
@@ -454,6 +469,11 @@ export default function MetasClient({ profile }: { profile: Profile }) {
                           }}
                         >
                           {tag.label}
+                        </span>
+                      )}
+                      {autoGoalIds.has(g.id) && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: '#FBF1D8', color: '#B8860B' }}>
+                          ⚡ auto
                         </span>
                       )}
                     </div>

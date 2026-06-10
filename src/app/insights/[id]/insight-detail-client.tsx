@@ -78,6 +78,12 @@ const KIND_META: Record<string, { label: string; explain: string; href: string; 
     href: '/deudas',
     cta: 'Ver deudas',
   },
+  monthly_close: {
+    label: 'Cierre de mes',
+    explain: 'Resumen del mes cerrado: gastos, ahorro y presupuestos del mes que terminó, comparado con el anterior.',
+    href: '/analisis',
+    cta: 'Ver análisis',
+  },
   summary: {
     label: 'Resumen del mes',
     explain: 'Una foto general de en qué se fue la plata este mes.',

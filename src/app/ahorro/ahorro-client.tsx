@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { myShareArs, toArs, type SplitRow } from '@/lib/budgets';
 import { useFx } from '@/hooks/useFx';
+import { useInflation } from '@/hooks/useInflation';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { DonutChart } from '@/components/DonutChart';
@@ -41,11 +42,14 @@ export default function AhorroClient({
   const supabase = createClient();
   const qc = useQueryClient();
   const { arsPerUsd } = useFx();
+  const { rates: inflationRates } = useInflation();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   const [pendingPct, setPendingPct] = useState<number | null>(null);
   // scope: 'me' (Mío) | 'all' (Nuestro) | 'partner' — default to "Mío"
   const [scope, setScope] = useState<'me' | 'all' | 'partner'>('me');
+  // History view: constant (inflation-adjusted) vs nominal pesos — default constantes
+  const [constantPesos, setConstantPesos] = useState(true);
 
   const today = new Date();
   const months = lastSixMonths(today);
@@ -170,6 +174,29 @@ export default function AhorroClient({
   const closedIncome = closedRows.reduce((s, r) => s + r.income, 0);
   const avgRate = closedIncome > 0 ? closedSaved / closedIncome : null;
 
+  // "Pesos constantes": express each past month's nominal ARS in today's pesos
+  // by compounding monthly inflation from that month forward. The per-month
+  // savings RATE is untouched — income and expense scale by the same factor.
+  // Falls back to nominal silently when there's no inflation data.
+  const hasInflation = inflationRates.length > 0;
+  const showConstant = constantPesos && hasInflation;
+  const toConstantArs = (amount: number, monthKey: string): number => {
+    if (!showConstant) return amount;
+    const factor = inflationRates
+      .filter((r) => r.date.slice(0, 7) > monthKey)
+      .reduce((acc, r) => acc * (1 + r.monthly_pct / 100), 1);
+    return Math.round(amount * factor);
+  };
+  // Only the 6-month history card uses these — the current-month goal card
+  // stays nominal (current month needs no adjustment anyway).
+  const displayRows = rows.map((r) => ({
+    ...r,
+    income: toConstantArs(r.income, r.key),
+    expense: toConstantArs(r.expense, r.key),
+    saved: toConstantArs(r.saved, r.key),
+  }));
+  const closedSavedDisplay = displayRows.slice(0, -1).reduce((s, r) => s + r.saved, 0);
+
   return (
     <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
       <header className="px-5 pt-14 pb-4 flex items-center gap-3">
@@ -261,7 +288,32 @@ export default function AhorroClient({
             <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>
               Ingresos vs gastos · 6 meses
             </p>
+            {hasInflation && (
+              <div className="flex rounded-full overflow-hidden p-0.5 gap-0.5" style={{ background: '#ECE5DC' }}>
+                {([
+                  { value: false, label: '$ corrientes' },
+                  { value: true, label: '$ constantes' },
+                ] as const).map((opt) => (
+                  <button
+                    key={opt.label}
+                    onClick={() => setConstantPesos(opt.value)}
+                    className="px-2 py-0.5 text-[10px] font-bold rounded-full transition-colors"
+                    style={{
+                      background: constantPesos === opt.value ? '#FFFFFF' : 'transparent',
+                      color: constantPesos === opt.value ? '#2D2D2D' : '#6B6459',
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
+          {showConstant && (
+            <p className="text-[10px] text-right mb-1" style={{ color: '#A39B8F' }}>
+              ajustado por inflación
+            </p>
+          )}
           <div className="flex items-center gap-4 mb-4 text-[11px]">
             <span className="flex items-center gap-1.5" style={{ color: '#5BA886' }}>
               <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#7EC8A4' }} /> Ingresos
@@ -271,14 +323,14 @@ export default function AhorroClient({
             </span>
             <span className="ml-auto" style={{ color: '#6B6459' }}>% = ahorro del mes</span>
           </div>
-          <MonthlyBars rows={rows} />
+          <MonthlyBars rows={displayRows} />
           {avgRate != null && (
             <p className="text-xs mt-4 pt-3 text-center" style={{ borderTop: '1px solid #ECE5DC', color: '#6B6459' }}>
               Promedio de ahorro · {closedRows.length} meses cerrados:{' '}
               <span className="font-black" style={{ color: avgRate >= 0 ? '#5BA886' : '#E5604C' }}>
                 {Math.round(avgRate * 100)}%
               </span>{' '}
-              · {formatARS(closedSaved)} ahorrados
+              · {formatARS(closedSavedDisplay)} ahorrados
             </p>
           )}
         </div>

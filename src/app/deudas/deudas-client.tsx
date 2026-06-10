@@ -30,10 +30,16 @@ interface Debt {
   counterparty: string;
   direction: 'owe' | 'owed';
   amount: number;
+  // Already-paid portion; remaining = amount - paid_amount.
+  paid_amount: number;
   currency: 'ARS' | 'USD';
   note: string | null;
   settled: boolean;
   transaction_id: string | null;
+}
+
+function remainingOf(d: Debt): number {
+  return Math.max(d.amount - d.paid_amount, 0);
 }
 
 interface LinkableExpense { id: string; label: string; occurred_on: string; }
@@ -42,11 +48,12 @@ function fmtMoney(amount: number, currency: string): string {
   return currency === 'USD' ? formatUSD(amount) : formatARS(amount);
 }
 
-// Sum unsettled debts of a direction, split by currency.
+// Sum the REMAINING of unsettled debts of a direction, split by currency
+// (partial payments shrink what's actually pending).
 function totalsByCurrency(debts: Debt[], direction: 'owe' | 'owed') {
   const rows = debts.filter((d) => !d.settled && d.direction === direction);
-  const usd = rows.filter((d) => d.currency === 'USD').reduce((s, d) => s + d.amount, 0);
-  const ars = rows.filter((d) => d.currency === 'ARS').reduce((s, d) => s + d.amount, 0);
+  const usd = rows.filter((d) => d.currency === 'USD').reduce((s, d) => s + remainingOf(d), 0);
+  const ars = rows.filter((d) => d.currency === 'ARS').reduce((s, d) => s + remainingOf(d), 0);
   return { usd, ars };
 }
 
@@ -59,7 +66,8 @@ function DebtForm({
   initial?: Partial<Debt>;
   expenses: LinkableExpense[];
   // profile_id is set by the caller on create and never changed on edit.
-  onSave: (data: Omit<Debt, 'id' | 'profile_id'>) => void;
+  // paid_amount is managed by the partial-payment / settle actions, not the form.
+  onSave: (data: Omit<Debt, 'id' | 'profile_id' | 'paid_amount'>) => void;
   onCancel: () => void;
 }) {
   const [direction, setDirection] = useState<'owe' | 'owed'>(initial?.direction ?? 'owe');
@@ -207,6 +215,60 @@ function DebtForm({
   );
 }
 
+// Small inline form to register a partial payment on one of the viewer's own
+// debts. Lives at module level (like DebtForm) so the input keeps focus.
+function PartialPaymentForm({
+  debt,
+  onSave,
+  onCancel,
+}: {
+  debt: Debt;
+  onSave: (payment: number) => void;
+  onCancel: () => void;
+}) {
+  const [payStr, setPayStr] = useState('');
+  const remaining = remainingOf(debt);
+  const payment = parseMoney(payStr);
+
+  return (
+    <div className="flex flex-col gap-4 p-5 rounded-3xl" style={{ background: '#FFFFFF' }}>
+      <div>
+        <p className="font-bold text-sm" style={{ color: '#2D2D2D' }}>
+          Pago parcial · {debt.direction === 'owe' ? `Le debo a ${debt.counterparty}` : `${debt.counterparty} me debe`}
+        </p>
+        <p className="text-xs mt-1" style={{ color: '#6B6459' }}>
+          Restan {fmtMoney(remaining, debt.currency)} de {fmtMoney(debt.amount, debt.currency)}
+        </p>
+      </div>
+      <MoneyInput
+        placeholder={`Monto en ${debt.currency} (máx. ${fmtMoney(remaining, debt.currency)})`}
+        value={payment}
+        // Cap at the remaining so paid_amount can never exceed the debt.
+        onChange={(n) => setPayStr(n ? String(Math.min(n, remaining)) : '')}
+        className="w-full px-4 py-3 rounded-2xl text-sm border outline-none"
+        style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+      />
+      {payment > 0 && payment >= remaining && (
+        <p className="text-[11px]" style={{ color: '#5BA886' }}>
+          ✓ Con este pago la deuda queda saldada.
+        </p>
+      )}
+      <div className="flex gap-3">
+        <SecondaryButton onClick={onCancel} className="flex-1 py-3 text-sm">
+          Cancelar
+        </SecondaryButton>
+        <PrimaryButton
+          onClick={() => onSave(Math.min(payment, remaining))}
+          disabled={!(payment > 0)}
+          className="flex-1 py-3 text-sm"
+        >
+          Registrar pago
+        </PrimaryButton>
+      </div>
+    </div>
+  );
+}
+
 function TotalsCard({ debts, viewerId, partnerName }: { debts: Debt[]; viewerId: string; partnerName: string }) {
   // "Yo debo / Me deben" only sums the viewer's own debts; the partner's
   // household debts get a separate muted line so the totals never mix people.
@@ -261,6 +323,7 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   const [showForm, setShowForm] = useState(false);
   const [editDebt, setEditDebt] = useState<Debt | null>(null);
+  const [partialDebt, setPartialDebt] = useState<Debt | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Debt | null>(null);
 
   const { data: categories = [] } = useQuery({
@@ -302,12 +365,13 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('debts')
-        .select('id, profile_id, counterparty, direction, amount, currency, note, settled, transaction_id')
+        .select('id, profile_id, counterparty, direction, amount, currency, note, settled, transaction_id, paid_amount')
         .eq('household_id', profile.household_id)
         .order('settled')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return (data ?? []) as Debt[];
+      // Rows created before the column existed can have a null paid_amount.
+      return ((data ?? []) as Debt[]).map((d) => ({ ...d, paid_amount: d.paid_amount ?? 0 }));
     },
   });
 
@@ -338,7 +402,7 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
   const invalidate = () => qc.invalidateQueries({ queryKey: ['debts'] });
 
   const createMutation = useMutation({
-    mutationFn: async (data: Omit<Debt, 'id' | 'profile_id'>) => {
+    mutationFn: async (data: Omit<Debt, 'id' | 'profile_id' | 'paid_amount'>) => {
       const { error } = await supabase.from('debts').insert({
         ...data,
         household_id: profile.household_id,
@@ -351,8 +415,10 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Omit<Debt, 'id' | 'profile_id'> }) => {
-      const { error } = await supabase.from('debts').update(data).eq('id', id);
+    mutationFn: async ({ id, data }: { id: string; data: Omit<Debt, 'id' | 'profile_id' | 'paid_amount'> }) => {
+      // If the form marks it settled, sync paid_amount so the numbers stay coherent.
+      const payload = data.settled ? { ...data, paid_amount: data.amount } : data;
+      const { error } = await supabase.from('debts').update(payload).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => { toast.success('Deuda actualizada ✓'); setEditDebt(null); invalidate(); },
@@ -361,11 +427,32 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
 
   const toggleSettled = useMutation({
     mutationFn: async (d: Debt) => {
-      const { error } = await supabase.from('debts').update({ settled: !d.settled }).eq('id', d.id);
+      // Settling pays the debt in full; reopening resets the paid amount so
+      // remaining and totals stay coherent either way.
+      const payload = d.settled ? { settled: false, paid_amount: 0 } : { settled: true, paid_amount: d.amount };
+      const { error } = await supabase.from('debts').update(payload).eq('id', d.id);
       if (error) throw error;
     },
     onSuccess: (_data, d) => { toast.success(d.settled ? 'Marcada como pendiente' : 'Saldada ✓'); invalidate(); },
     onError: () => toast.error('No se pudo actualizar.'),
+  });
+
+  const partialPayMutation = useMutation({
+    mutationFn: async ({ debt, payment }: { debt: Debt; payment: number }) => {
+      // Cap so paid_amount never exceeds the original amount.
+      const newPaid = Math.min(debt.paid_amount + payment, debt.amount);
+      const { error } = await supabase
+        .from('debts')
+        .update({ paid_amount: newPaid, settled: newPaid >= debt.amount ? true : debt.settled })
+        .eq('id', debt.id);
+      if (error) throw error;
+    },
+    onSuccess: (_data, { debt, payment }) => {
+      toast.success(debt.paid_amount + payment >= debt.amount ? 'Deuda saldada ✓' : 'Pago registrado ✓');
+      setPartialDebt(null);
+      invalidate();
+    },
+    onError: () => toast.error('No se pudo registrar el pago.'),
   });
 
   const deleteMutation = useMutation({
@@ -392,6 +479,11 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
       : debt.direction === 'owe'
         ? `${ownerName} le debe a ${debt.counterparty}`
         : `${debt.counterparty} le debe a ${ownerName}`;
+    const remaining = remainingOf(debt);
+    const partiallyPaid = !debt.settled && debt.paid_amount > 0 && remaining > 0;
+    // "pagaste" only when the viewer is the one paying down their own debt;
+    // otherwise it's the counterparty (or the partner) who paid.
+    const paidVerb = isMine && debt.direction === 'owe' ? 'pagaste' : 'pagó';
     return (
       <div className="flex items-center gap-3 px-5 py-4" style={{ borderTop: '1px solid #ECE5DC' }}>
         <div
@@ -407,12 +499,18 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
           <p className="text-xs" style={{ color: '#6B6459' }}>
             {debt.settled ? 'Saldada' : 'Pendiente'}{debt.note ? ` · ${debt.note}` : ''}{debt.transaction_id ? ' · 🔗 gasto' : ''}
           </p>
+          {partiallyPaid && (
+            <p className="text-[11px] font-semibold" style={{ color: '#5BA886' }}>
+              {paidVerb} {fmtMoney(debt.paid_amount, debt.currency)} de {fmtMoney(debt.amount, debt.currency)}
+            </p>
+          )}
         </div>
         <p
           className="font-black text-sm flex-shrink-0"
           style={{ color: debt.direction === 'owe' ? '#FF7F6B' : '#7EC8A4', opacity: debt.settled ? 0.5 : 1 }}
         >
-          {fmtMoney(debt.amount, debt.currency)}
+          {/* Unsettled cards show what's still pending, not the original total. */}
+          {fmtMoney(debt.settled ? debt.amount : remaining, debt.currency)}
         </p>
         <div className="flex gap-1 ml-2 flex-shrink-0">
           <button
@@ -423,8 +521,18 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
           >
             {debt.settled ? '↩️' : '✓'}
           </button>
+          {!debt.settled && isMine && (
+            <button
+              onClick={() => { setShowForm(false); setEditDebt(null); setPartialDebt(debt); }}
+              className="text-xs px-2 py-1 rounded-lg border"
+              style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
+              title="Pago parcial"
+            >
+              💵
+            </button>
+          )}
           <button
-            onClick={() => setEditDebt(debt)}
+            onClick={() => { setPartialDebt(null); setEditDebt(debt); }}
             className="text-xs px-2 py-1 rounded-lg border"
             style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
           >
@@ -450,7 +558,7 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
       </header>
 
       <div className="px-4 flex flex-col gap-4">
-        {!showForm && !editDebt && debts.length > 0 && (
+        {!showForm && !editDebt && !partialDebt && debts.length > 0 && (
           <TotalsCard debts={debts} viewerId={profile.id} partnerName={partnerName} />
         )}
 
@@ -471,7 +579,15 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
           />
         )}
 
-        {!showForm && !editDebt && (
+        {partialDebt && (
+          <PartialPaymentForm
+            debt={partialDebt}
+            onSave={(payment) => partialPayMutation.mutate({ debt: partialDebt, payment })}
+            onCancel={() => setPartialDebt(null)}
+          />
+        )}
+
+        {!showForm && !editDebt && !partialDebt && (
           <button
             onClick={() => setShowForm(true)}
             className="w-full py-4 rounded-3xl text-sm font-bold text-white"

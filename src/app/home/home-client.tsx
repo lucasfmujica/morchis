@@ -434,7 +434,9 @@ export default function HomeClient({
         .from('recurring_rules')
         .select('direction, amount, next_run, active, profile_id, label, cadence, currency')
         .eq('household_id', profile.household_id)
-        .eq('active', true);
+        .eq('active', true)
+        // Goal contributions move money into a goal, not out of the pocket: keep them out of cash flow.
+        .is('goal_id', null);
       return data ?? [];
     },
   });

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
 import { useCoupleBalance, recordSettlement } from '@/hooks/useCouple';
@@ -10,7 +10,7 @@ import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { InvitePartnerModal } from '@/components/InvitePartnerModal';
 import { formatARS } from '@/lib/format';
 import { MoneyInput } from '@/components/MoneyInput';
-import { todayISO } from '@/lib/date';
+import { todayISO, toLocalISO } from '@/lib/date';
 import { toast } from 'sonner';
 import Link from 'next/link';
 
@@ -373,9 +373,60 @@ export default function ParejaClient({
     },
   });
 
+  // Household split mode ('equal' = 50/50, 'income' = proportional to incomes).
+  const { data: household } = useQuery({
+    queryKey: ['household', profile.household_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('households')
+        .select('split_mode')
+        .eq('id', profile.household_id)
+        .single();
+      return data;
+    },
+  });
+  const splitMode: 'equal' | 'income' = household?.split_mode === 'income' ? 'income' : 'equal';
+
+  const splitModeMutation = useMutation({
+    mutationFn: async (mode: 'equal' | 'income') => {
+      const { error } = await supabase
+        .from('households')
+        .update({ split_mode: mode })
+        .eq('id', profile.household_id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Listo ✓');
+      qc.invalidateQueries({ queryKey: ['household', profile.household_id] });
+    },
+    onError: () => toast.error('No se pudo guardar. Intentá de nuevo.'),
+  });
+  // Reflect the tapped option immediately while the update is in flight.
+  const activeSplitMode = splitModeMutation.isPending ? splitModeMutation.variables : splitMode;
+
   // Current month combined transactions
   const now = new Date();
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+
+  // Previous closed calendar month — local date parts, never toISOString.
+  const prevMonthStart = toLocalISO(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+  const prevMonthEnd = toLocalISO(new Date(now.getFullYear(), now.getMonth(), 0));
+
+  // Last month's incomes, used to compute the income-proportional split.
+  const { data: prevIncomes = [] } = useQuery({
+    queryKey: ['prev-month-incomes', profile.household_id, prevMonthStart],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('transactions')
+        .select('amount, currency, usd_rate_snapshot, profile_id')
+        .eq('household_id', profile.household_id)
+        .eq('type', 'income')
+        .gte('occurred_on', prevMonthStart)
+        .lte('occurred_on', prevMonthEnd);
+      return data ?? [];
+    },
+    enabled: activeSplitMode === 'income',
+  });
 
   const { data: txData } = useQuery({
     queryKey: ['couple-transactions', profile.household_id, monthStart],
@@ -413,6 +464,22 @@ export default function ParejaClient({
     sharedByCategory[key].amount += toArs(t.amount, t.currency);
   }
   const sharedCats = Object.values(sharedByCategory).sort((a, b) => b.amount - a.amount);
+
+  // Each person's share of last month's income, for the "Según ingresos" split.
+  // USD incomes convert at their snapshot rate, falling back to the current blue.
+  let myPrevIncome = 0;
+  let partnerPrevIncome = 0;
+  for (const t of prevIncomes) {
+    const ars =
+      t.currency === 'USD'
+        ? Math.round(t.amount * (Number(t.usd_rate_snapshot) || arsPerUsd))
+        : t.amount;
+    if (t.profile_id === profile.id) myPrevIncome += ars;
+    else if (partner && t.profile_id === partner.id) partnerPrevIncome += ars;
+  }
+  const totalPrevIncome = myPrevIncome + partnerPrevIncome;
+  const myIncomePct = totalPrevIncome > 0 ? Math.round((myPrevIncome / totalPrevIncome) * 100) : 50;
+  const partnerIncomePct = 100 - myIncomePct;
 
   const absNet = Math.abs(net);
   // Splits are rounded ARS, so treat sub-peso residue as settled.
@@ -533,6 +600,48 @@ export default function ParejaClient({
               </p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Default split for new household expenses */}
+      {partner && (
+        <div className="mx-4 rounded-3xl p-5 mb-4 shadow-sm" style={{ background: '#FFFFFF' }}>
+          <p className="text-sm font-bold mb-3" style={{ color: '#2D2D2D' }}>
+            ⚖️ ¿Cómo dividen los gastos del hogar?
+          </p>
+          <div className="flex rounded-2xl overflow-hidden p-1 gap-1 mb-3" style={{ background: '#ECE5DC' }}>
+            {([
+              { key: 'equal', label: '50/50' },
+              { key: 'income', label: 'Según ingresos' },
+            ] as const).map((o) => {
+              const active = activeSplitMode === o.key;
+              return (
+                <button
+                  key={o.key}
+                  onClick={() => {
+                    if (!active && !splitModeMutation.isPending) splitModeMutation.mutate(o.key);
+                  }}
+                  className="flex-1 py-2 text-xs font-bold rounded-xl transition-colors"
+                  style={{ background: active ? '#FFFFFF' : 'transparent', color: active ? '#2D2D2D' : '#6B6459' }}
+                >
+                  {o.label}
+                </button>
+              );
+            })}
+          </div>
+          {activeSplitMode === 'income' &&
+            (totalPrevIncome > 0 ? (
+              <p className="text-xs font-bold mb-2" style={{ color: '#2D2D2D' }}>
+                Este mes: {myName} {myIncomePct}% · {partner.name} {partnerIncomePct}%
+              </p>
+            ) : (
+              <p className="text-xs mb-2" style={{ color: '#6B6459', opacity: 0.7 }}>
+                Sin ingresos el mes pasado — se usa 50/50
+              </p>
+            ))}
+          <p className="text-[11px]" style={{ color: '#6B6459' }}>
+            Se aplica como división sugerida en los nuevos gastos del hogar y en los gastos fijos.
+          </p>
         </div>
       )}
 

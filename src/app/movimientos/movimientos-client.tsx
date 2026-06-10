@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
@@ -50,6 +50,12 @@ type Tx = {
   categories: { name: string; icon: string } | null;
 };
 
+// Accent-insensitive matching: NFD + strip combining marks + lowercase, so
+// "cafe" finds "Café" and "Martinez" finds "Martínez".
+function normalizeText(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
 export default function MovimientosClient({ profile, partnerProfileId }: MovimientosClientProps) {
   const supabase = createClient();
   const { format, secondary, toggle, showUSD, arsPerUsd } = useFx();
@@ -64,6 +70,13 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   const [editTx, setEditTx] = useState<Tx | null>(null);
   const [search, setSearch] = useState('');
+  // Debounced copy of the search box (~250ms): filtering — and the widened
+  // fetch below — follow this so we don't refetch/refilter on every keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(t);
+  }, [search]);
   const [filterScope, setFilterScope] = useState<'all' | 'personal' | 'household'>('all');
   const [filterShared, setFilterShared] = useState<boolean | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>('all');
@@ -115,16 +128,20 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   // months. First-of-previous-month also covers the week filter (weekRange can
   // start in the previous month). "Histórico" is the only view that needs
   // older rows, so only then do we drop the date bound; the high limit stays
-  // as a backstop, never as the primary cutoff.
+  // as a backstop, never as the primary cutoff. An active text search also
+  // needs the whole visible history, so it widens the fetch the same way
+  // "Histórico" does (same 'all' discriminator in the query key).
   const prevMonthStart = toLocalISO(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1));
+  const searchActive = debouncedSearch.trim().length > 0;
+  const fetchAll = filterRange === 'all' || searchActive;
   const { data: transactions = [] } = useQuery<Tx[]>({
-    queryKey: ['transactions', profile.household_id, filterRange === 'all' ? 'all' : 'recent'],
+    queryKey: ['transactions', profile.household_id, fetchAll ? 'all' : 'recent'],
     queryFn: async () => {
       let query = supabase
         .from('transactions')
         .select('id, amount, type, currency, category_id, account_id, transfer_account_id, scope, is_shared, merchant, occurred_on, profile_id, installment_number, installment_total, categories:category_id(name, icon)')
         .eq('household_id', profile.household_id);
-      if (filterRange !== 'all') query = query.gte('occurred_on', prevMonthStart);
+      if (!fetchAll) query = query.gte('occurred_on', prevMonthStart);
       const { data } = await query
         .order('occurred_on', { ascending: false })
         .order('created_at', { ascending: false })
@@ -140,31 +157,42 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     [transactions, profile.id],
   );
 
-  // Structural filters (scope / shared / search) but NOT the single-category
-  // drilldown. The month summary and the per-category breakdown build on this so
-  // they react to the scope you picked while still showing every category.
+  // Structural filters (scope / shared / range) but NOT the text search nor the
+  // single-category drilldown. The month summary, the chart and the per-category
+  // breakdown build on this so they react to the scope you picked while staying
+  // month-based even when a search is active.
   const scopeFiltered = useMemo(() => {
     return visibleTransactions.filter((tx) => {
       if (filterScope !== 'all' && tx.scope !== filterScope) return false;
       if (filterShared !== null && tx.is_shared !== filterShared) return false;
       if (!inRange(tx.occurred_on)) return false;
-      if (search) {
-        const q = search.toLowerCase();
-        const m = tx.merchant?.toLowerCase() ?? '';
-        const c = tx.categories?.name?.toLowerCase() ?? '';
-        if (!m.includes(q) && !c.includes(q)) return false;
-      }
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleTransactions, filterScope, filterShared, filterRange, search]);
+  }, [visibleTransactions, filterScope, filterShared, filterRange]);
+
+  // Text search over merchant/description and category name, accent-insensitive.
+  // While searching, the date-range chip is ignored so the whole visible history
+  // is searchable (the fetch above widens accordingly).
+  const searched = useMemo(() => {
+    if (!searchActive) return scopeFiltered;
+    const q = normalizeText(debouncedSearch.trim());
+    return visibleTransactions.filter((tx) => {
+      if (filterScope !== 'all' && tx.scope !== filterScope) return false;
+      if (filterShared !== null && tx.is_shared !== filterShared) return false;
+      return (
+        normalizeText(tx.merchant ?? '').includes(q) ||
+        normalizeText(tx.categories?.name ?? '').includes(q)
+      );
+    });
+  }, [searchActive, scopeFiltered, visibleTransactions, debouncedSearch, filterScope, filterShared]);
 
   const filtered = useMemo(
     () =>
       filterCategory === 'all'
-        ? scopeFiltered
-        : scopeFiltered.filter((tx) => tx.category_id === filterCategory),
-    [scopeFiltered, filterCategory],
+        ? searched
+        : searched.filter((tx) => tx.category_id === filterCategory),
+    [searched, filterCategory],
   );
 
   const grouped = useMemo(() => {
@@ -185,14 +213,20 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     });
   }
 
+  // The summary cards stay month-based and don't react to the text search:
+  // build on scopeFiltered (search-free) with only the category drilldown on top.
   const monthSummary = useMemo(() => {
     const now = new Date();
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const current = filtered.filter((tx) => tx.occurred_on.startsWith(month));
+    const base =
+      filterCategory === 'all'
+        ? scopeFiltered
+        : scopeFiltered.filter((tx) => tx.category_id === filterCategory);
+    const current = base.filter((tx) => tx.occurred_on.startsWith(month));
     const expenses = current.filter((tx) => tx.type === 'expense').reduce((s, tx) => s + toArs(tx.amount, tx.currency), 0);
     const income = current.filter((tx) => tx.type === 'income').reduce((s, tx) => s + toArs(tx.amount, tx.currency), 0);
     return { expenses, income };
-  }, [filtered, toArs]);
+  }, [scopeFiltered, filterCategory, toArs]);
 
   // Chart data: top 5 categories current vs previous month
   const chartData = useMemo(() => {
@@ -239,7 +273,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
         <div>
           <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Movimientos</h1>
           <p className="text-xs mt-0.5" style={{ color: '#6B6459' }}>
-            {filterRange === 'week' ? `Semana · Lun ${shortDM(week.start)} – Dom ${shortDM(week.end)}` : filterRange === 'month' ? 'Este mes' : 'Histórico'}
+            {searchActive ? 'Buscando en todo el histórico' : filterRange === 'week' ? `Semana · Lun ${shortDM(week.start)} – Dom ${shortDM(week.end)}` : filterRange === 'month' ? 'Este mes' : 'Histórico'}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -317,7 +351,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       <div className="px-4 mb-3 flex flex-col gap-2">
         <input
           type="search"
-          placeholder="Buscar..."
+          placeholder="🔍 Buscar comercio o descripción…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full px-4 py-2.5 rounded-2xl text-sm border bg-white outline-none"

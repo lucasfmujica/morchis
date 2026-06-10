@@ -15,10 +15,15 @@ interface ParsedTransaction {
   confidence: number;    // 0–1
 }
 
+// Input for the AI provider: binary documents/images go as base64,
+// CSV exports go as plain decoded text.
+type StatementInput =
+  | { kind: "base64"; data: string; mimeType: string }
+  | { kind: "text"; text: string };
+
 interface AIProvider {
   parseStatement(
-    fileBase64: string,
-    mimeType: string,
+    input: StatementInput,
     categories: { id: string; name: string }[],
     merchantAliases: { raw_pattern: string; merchant_clean: string | null; category_id: string | null }[],
   ): Promise<ParsedTransaction[]>;
@@ -40,6 +45,9 @@ B) TICKET o COMPROBANTE de una sola compra (supermercado, kiosco, farmacia, rest
       - raw_description: listá los productos/ítems detectados separados por coma (ej: \"Leche La Serenísima, Pan lactal, Coca-Cola 2.25L, Detergente Magistral\"). Si hay muchísimos, incluí los principales y agregá \"y otros\".
       - date: la fecha del ticket en formato YYYY-MM-DD.
       - suggested_category: la categoría más apropiada según los productos (ej: un ticket de supermercado suele ser Comida/Supermercado).
+
+C) EXPORT CSV de actividad (ej: Mercado Pago): cada fila es una operación. Extraé SOLO los gastos reales (pagos a comercios, compras, servicios, débitos automáticos). IGNORÁ: transferencias entre cuentas propias, ingresos de dinero, recargas de saldo, devoluciones/reembolsos, y pagos de tarjeta de crédito (son movimientos de plata, no gastos). Montos negativos suelen ser salidas — devolvé el valor absoluto. La fecha en formato YYYY-MM-DD (los CSV argentinos suelen venir DD/MM/YYYY o ISO).
+   → Devolvé un array con UNA entrada por cada gasto real.
 
 Reglas generales:
 - Los montos son en pesos argentinos (ARS), siempre enteros positivos.
@@ -70,8 +78,7 @@ const TRANSACTION_SCHEMA = {
 
 class ClaudeProvider implements AIProvider {
   async parseStatement(
-    fileBase64: string,
-    mimeType: string,
+    input: StatementInput,
     categories: { id: string; name: string }[],
     merchantAliases: { raw_pattern: string; merchant_clean: string | null; category_id: string | null }[],
   ): Promise<ParsedTransaction[]> {
@@ -82,8 +89,33 @@ class ClaudeProvider implements AIProvider {
           .join("\n")}`
       : "";
 
-    const mediaType = mimeType === "application/pdf" ? "application/pdf" : mimeType as "image/jpeg" | "image/png" | "image/webp" | "image/gif";
-    const isPdf = mimeType === "application/pdf";
+    // Variable block: the document. CSVs go as plain text; PDFs as a
+    // document block; everything else as an image block.
+    let fileBlock: Record<string, unknown>;
+    if (input.kind === "text") {
+      fileBlock = {
+        type: "text",
+        text: `Contenido del archivo CSV:\n\n${input.text}`,
+      };
+    } else if (input.mimeType === "application/pdf") {
+      fileBlock = {
+        type: "document",
+        source: {
+          type: "base64",
+          media_type: "application/pdf",
+          data: input.data,
+        },
+      };
+    } else {
+      fileBlock = {
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: input.mimeType as "image/jpeg" | "image/png" | "image/webp" | "image/gif",
+          data: input.data,
+        },
+      };
+    }
 
     const messages = [
       {
@@ -95,27 +127,10 @@ class ClaudeProvider implements AIProvider {
             text: `${SYSTEM_PROMPT}\n\nCategorías disponibles: ${categoryList}${aliasList}\n\nEsquema de salida:\n${JSON.stringify(TRANSACTION_SCHEMA, null, 2)}`,
             cache_control: { type: "ephemeral" },
           },
-          // Variable block: the document
-          isPdf
-            ? {
-                type: "document",
-                source: {
-                  type: "base64",
-                  media_type: mediaType,
-                  data: fileBase64,
-                },
-              }
-            : {
-                type: "image",
-                source: {
-                  type: "base64",
-                  media_type: mediaType,
-                  data: fileBase64,
-                },
-              },
+          fileBlock,
           {
             type: "text",
-            text: "Analizá el documento y extraé las transacciones según su tipo (resumen/extracto: una por cada gasto; ticket/comprobante: una sola con el total y los productos en raw_description).",
+            text: "Analizá el documento y extraé las transacciones según su tipo (resumen/extracto: una por cada gasto; ticket/comprobante: una sola con el total y los productos en raw_description; CSV de actividad: una por cada gasto real).",
           },
         ],
       },
@@ -225,15 +240,35 @@ Deno.serve(async (req: Request) => {
     if (dlErr || !fileData) throw new Error(`Error descargando archivo: ${dlErr?.message}`);
 
     const arrayBuffer = await fileData.arrayBuffer();
-    // Chunked base64 encoding — spreading a huge Uint8Array into String.fromCharCode
-    // overflows the call stack for large files (photos), so encode in slices.
     const bytes = new Uint8Array(arrayBuffer);
-    let binary = "";
-    for (let i = 0; i < bytes.length; i += 8192) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+
+    // CSV exports (e.g. Mercado Pago "actividad") go to Claude as plain text.
+    // Storage may report application/octet-stream, so also check the extension.
+    const isCsv = fileData.type === "text/csv" ||
+      statement.file_path.toLowerCase().endsWith(".csv");
+
+    let input: StatementInput;
+    if (isCsv) {
+      const MAX_CSV_CHARS = 150_000;
+      let csvText = new TextDecoder("utf-8").decode(bytes);
+      if (csvText.length > MAX_CSV_CHARS) {
+        csvText = csvText.slice(0, MAX_CSV_CHARS) +
+          "\n\n[ARCHIVO TRUNCADO: se incluyen solo los primeros 150.000 caracteres]";
+      }
+      input = { kind: "text", text: csvText };
+    } else {
+      // Chunked base64 encoding — spreading a huge Uint8Array into String.fromCharCode
+      // overflows the call stack for large files (photos), so encode in slices.
+      let binary = "";
+      for (let i = 0; i < bytes.length; i += 8192) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+      }
+      input = {
+        kind: "base64",
+        data: btoa(binary),
+        mimeType: fileData.type || "application/pdf",
+      };
     }
-    const base64 = btoa(binary);
-    const mimeType = fileData.type || "application/pdf";
 
     // Load categories for this household
     const { data: categories = [] } = await serviceClient
@@ -278,7 +313,7 @@ Deno.serve(async (req: Request) => {
 
     // Parse via Claude
     const provider = new ClaudeProvider();
-    const parsed = await provider.parseStatement(base64, mimeType, categories ?? [], merchantAliases ?? []);
+    const parsed = await provider.parseStatement(input, categories ?? [], merchantAliases ?? []);
 
     // Resolve category IDs and dedup
     const categoryByName = new Map((categories ?? []).map((c) => [c.name.toLowerCase(), c.id]));

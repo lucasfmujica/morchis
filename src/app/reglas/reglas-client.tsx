@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { formatARS, formatUSD, parseMoney } from '@/lib/format';
@@ -37,7 +37,15 @@ interface Rule {
   profile_id: string;
   category_id: string | null;
   account_id: string | null;
+  // Rules with goal_id auto-contribute to a savings goal (created from the
+  // goal screen): they are not cash transactions, so they live outside the
+  // fixed income/expense lists and the monthly math.
+  goal_id: string | null;
 }
+
+// What the rule form produces: goal rules are never edited here, so goal_id
+// stays out of the payload.
+type RuleFormData = Omit<Rule, 'id' | 'profile_id' | 'goal_id'>;
 
 interface AccountOption {
   id: string;
@@ -104,6 +112,54 @@ function monthlyEquivalent(amount: number, cadence: string, anchorDay: number | 
     return amount * count;
   }
   return amount;
+}
+
+// --- Subscription detection -------------------------------------------------
+
+// Normalization for merchant names and rule labels: lowercase, accents
+// stripped (NFD + remove combining marks), non-alphanumerics removed, so
+// "Café Martínez" ≈ "CAFE-MARTINEZ" ≈ "cafe martinez".
+function normalizeMerchant(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+// Dismissed suggestions persist locally as a set of normalized merchants.
+const DISMISSED_SUBS_KEY = 'morchis-dismissed-subscriptions';
+
+function loadDismissedSubs(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = JSON.parse(localStorage.getItem(DISMISSED_SUBS_KEY) ?? '[]');
+    return Array.isArray(raw) ? raw.filter((x) => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+// Slice of a transaction the detector needs (merchant is non-null by query).
+interface ScanTx {
+  merchant: string | null;
+  amount: number;
+  currency: 'ARS' | 'USD';
+  occurred_on: string;
+  category_id: string | null;
+  profile_id: string;
+  scope: string;
+}
+
+interface SubscriptionSuggestion {
+  key: string; // normalized merchant
+  merchant: string; // as shown (most recent spelling)
+  amount: number; // most recent amount
+  currency: 'ARS' | 'USD';
+  anchorDay: number; // day-of-month of the last occurrence, clamped 1–28
+  scope: string;
+  profileId: string;
+  categoryId: string | null;
 }
 
 function daysUntil(dateStr: string): number {
@@ -272,7 +328,7 @@ function RuleForm({
 }: {
   initial?: Partial<Rule>;
   accounts: AccountOption[];
-  onSave: (data: Omit<Rule, 'id' | 'profile_id'>) => void;
+  onSave: (data: RuleFormData) => void;
   onCancel: () => void;
 }) {
   const [direction, setDirection] = useState<'income' | 'expense'>(
@@ -527,7 +583,7 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('recurring_rules')
-        .select('id, direction, label, amount, currency, cadence, anchor_day, next_run, active, scope, profile_id, category_id, account_id')
+        .select('id, direction, label, amount, currency, cadence, anchor_day, next_run, active, scope, profile_id, category_id, account_id, goal_id')
         .eq('household_id', profile.household_id)
         .order('direction')
         .order('label');
@@ -536,13 +592,92 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
     },
   });
 
+  // Last 4 calendar months of merchant expenses, scanned for likely
+  // subscriptions the user hasn't registered as fixed rules.
+  const { data: scanTxs = [] } = useQuery({
+    queryKey: ['subscription_scan', profile.household_id],
+    queryFn: async () => {
+      const now = new Date();
+      const start = toLocalISO(new Date(now.getFullYear(), now.getMonth() - 3, 1));
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('merchant, amount, currency, occurred_on, category_id, profile_id, scope')
+        .eq('household_id', profile.household_id)
+        .eq('type', 'expense')
+        .not('merchant', 'is', null)
+        .gte('occurred_on', start)
+        .order('occurred_on', { ascending: false })
+        .limit(2000);
+      if (error) throw error;
+      return (data ?? []) as ScanTx[];
+    },
+  });
+
+  const [dismissedSubs, setDismissedSubs] = useState<string[]>(() => loadDismissedSubs());
+  function dismissSuggestion(key: string) {
+    setDismissedSubs((prev) => {
+      const next = [...new Set([...prev, key])];
+      try {
+        localStorage.setItem(DISMISSED_SUBS_KEY, JSON.stringify(next));
+      } catch {
+        // localStorage unavailable (private mode/quota): dismissal lasts the session.
+      }
+      return next;
+    });
+  }
+
+  // Group expenses by normalized merchant and flag the ones that look like a
+  // subscription: ≥3 distinct months, similar amounts (max/min ≤ 1.3) and no
+  // active rule whose label matches (substring either way, same normalization).
+  const subscriptionSuggestions = useMemo<SubscriptionSuggestion[]>(() => {
+    const groups = new Map<string, ScanTx[]>();
+    for (const tx of scanTxs) {
+      // Same visibility rule as the rest of the screen.
+      if (tx.scope !== 'household' && tx.profile_id !== profile.id) continue;
+      if (!tx.merchant) continue;
+      const key = normalizeMerchant(tx.merchant);
+      if (!key) continue;
+      const arr = groups.get(key);
+      if (arr) arr.push(tx);
+      else groups.set(key, [tx]);
+    }
+    const activeLabels = rules
+      .filter((r) => r.active)
+      .map((r) => normalizeMerchant(r.label))
+      .filter(Boolean);
+    const out: SubscriptionSuggestion[] = [];
+    for (const [key, txs] of groups) {
+      if (dismissedSubs.includes(key)) continue;
+      const months = new Set(txs.map((t) => t.occurred_on.slice(0, 7)));
+      if (months.size < 3) continue;
+      const amounts = txs.map((t) => t.amount);
+      const min = Math.min(...amounts);
+      const max = Math.max(...amounts);
+      if (min <= 0 || max / min > 1.3) continue;
+      if (activeLabels.some((l) => l.includes(key) || key.includes(l))) continue;
+      // txs keep the query's most-recent-first order.
+      const last = txs[0];
+      out.push({
+        key,
+        merchant: last.merchant!,
+        amount: last.amount,
+        currency: last.currency,
+        anchorDay: Math.min(28, Math.max(1, parseInt(last.occurred_on.slice(8, 10), 10) || 1)),
+        scope: last.scope,
+        profileId: last.profile_id,
+        categoryId: last.category_id,
+      });
+    }
+    return out.slice(0, 5);
+  }, [scanTxs, rules, dismissedSubs, profile.id]);
+
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['recurring_rules'] });
     qc.invalidateQueries({ queryKey: ['projection'] });
   };
 
   const createMutation = useMutation({
-    mutationFn: async (data: Omit<Rule, 'id' | 'profile_id'>) => {
+    mutationFn: async (data: RuleFormData) => {
       const { error } = await supabase.from('recurring_rules').insert({
         ...data,
         household_id: profile.household_id,
@@ -556,12 +691,53 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Omit<Rule, 'id' | 'profile_id'> }) => {
+    mutationFn: async ({ id, data }: { id: string; data: RuleFormData }) => {
       const { error } = await supabase.from('recurring_rules').update(data).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => { toast.success('Regla actualizada ✓'); setEditRule(null); invalidate(); },
     onError: () => toast.error('No se pudo actualizar la regla.'),
+  });
+
+  // Pause/resume a goal-contribution rule (the only edit allowed here).
+  const toggleGoalRuleMutation = useMutation({
+    mutationFn: async ({ id, active }: { id: string; active: boolean }) => {
+      const { error } = await supabase.from('recurring_rules').update({ active }).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: (_d, { active }) => {
+      toast.success(active ? 'Aporte reanudado ✓' : 'Aporte pausado');
+      invalidate();
+    },
+    onError: () => toast.error('No se pudo actualizar el aporte.'),
+  });
+
+  // Pre-create a monthly rule from a detected subscription. The scope/profile
+  // come from the most recent occurrence, not from the current user.
+  const createFromSuggestionMutation = useMutation({
+    mutationFn: async (s: SubscriptionSuggestion) => {
+      const { error } = await supabase.from('recurring_rules').insert({
+        household_id: profile.household_id,
+        profile_id: s.profileId,
+        direction: 'expense',
+        label: s.merchant,
+        amount: s.amount,
+        currency: s.currency,
+        cadence: 'monthly',
+        anchor_day: s.anchorDay,
+        next_run: nextRunFromAnchor('monthly', s.anchorDay),
+        scope: s.scope,
+        active: true,
+        category_id: s.categoryId,
+        account_id: null,
+        is_variable: false,
+      });
+      if (error) throw error;
+    },
+    // No need to touch dismissedSubs: once the rule exists, its active label
+    // matches the merchant and the suggestion drops out on refetch.
+    onSuccess: () => { toast.success('Regla creada ✓'); invalidate(); },
+    onError: () => toast.error('No se pudo crear la regla.'),
   });
 
   const deleteMutation = useMutation({
@@ -573,8 +749,13 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
     onError: () => toast.error('No se pudo eliminar la regla.'),
   });
 
-  const income = rules.filter((r) => r.direction === 'income');
-  const expenses = rules.filter((r) => r.direction === 'expense');
+  // Goal-contribution rules are not cash transactions: keep them out of the
+  // fixed lists, the monthly summary and the upcoming bills, and show them in
+  // their own section below.
+  const cashRules = rules.filter((r) => r.goal_id == null);
+  const goalRules = rules.filter((r) => r.goal_id != null);
+  const income = cashRules.filter((r) => r.direction === 'income');
+  const expenses = cashRules.filter((r) => r.direction === 'expense');
 
   function RuleCard({ rule }: { rule: Rule }) {
     return (
@@ -633,10 +814,47 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
 
       <div className="px-4 flex flex-col gap-4">
         {/* Upcoming bills this month — tap one to edit it */}
-        {!showForm && !editRule && <UpcomingBills rules={rules} onEdit={(r) => setEditRule(r)} />}
+        {!showForm && !editRule && <UpcomingBills rules={cashRules} onEdit={(r) => setEditRule(r)} />}
 
         {/* Monthly summary */}
-        {!showForm && !editRule && rules.length > 0 && <FixedSummaryCard rules={rules} />}
+        {!showForm && !editRule && cashRules.length > 0 && <FixedSummaryCard rules={cashRules} />}
+
+        {/* Likely subscriptions: repeating merchant expenses without a rule */}
+        {!showForm && !editRule && subscriptionSuggestions.length > 0 && (
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>
+              📡 Posibles suscripciones detectadas
+            </p>
+            <div className="flex flex-col gap-2.5">
+              {subscriptionSuggestions.map((s) => (
+                <div key={s.key} className="flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold truncate" style={{ color: '#2D2D2D' }}>{s.merchant}</p>
+                    <p className="text-xs" style={{ color: '#6B6459' }}>
+                      Último cobro: {fmtMoney(s.amount, s.currency)}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => createFromSuggestionMutation.mutate(s)}
+                    disabled={createFromSuggestionMutation.isPending}
+                    className="flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full text-white"
+                    style={{ background: '#7EC8A4' }}
+                  >
+                    Crear regla fija
+                  </button>
+                  <button
+                    onClick={() => dismissSuggestion(s.key)}
+                    aria-label={`Descartar ${s.merchant}`}
+                    className="flex-shrink-0 text-xs px-2 py-1 rounded-lg border"
+                    style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* New rule form */}
         {showForm && !editRule && (
@@ -690,7 +908,55 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
           </div>
         )}
 
-        {!isLoading && rules.length === 0 && !showForm && (
+        {/* Goal-contribution rules: created from the goal screen, only
+            pause/resume and delete here (the rest is managed over there). */}
+        {!showForm && !editRule && goalRules.length > 0 && (
+          <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
+            <div className="px-5 py-3" style={{ borderBottom: '1px solid #ECE5DC' }}>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5B8DEF' }}>
+                💰 Aportes automáticos a metas
+              </p>
+            </div>
+            {goalRules.map((r) => (
+              <div
+                key={r.id}
+                className="flex items-center gap-3 px-5 py-4"
+                style={{ borderTop: '1px solid #ECE5DC' }}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-sm truncate" style={{ color: '#2D2D2D' }}>{r.label}</p>
+                  <p className="text-xs" style={{ color: '#6B6459' }}>
+                    día {r.anchor_day ?? '—'}
+                    {!r.active ? ' · pausado' : ''}
+                  </p>
+                </div>
+                <p className="font-black text-sm flex-shrink-0" style={{ color: '#5B8DEF' }}>
+                  {fmtMoney(r.amount, r.currency)}
+                </p>
+                <div className="flex gap-1 ml-2 flex-shrink-0">
+                  <button
+                    onClick={() => toggleGoalRuleMutation.mutate({ id: r.id, active: !r.active })}
+                    aria-label={r.active ? `Pausar ${r.label}` : `Reanudar ${r.label}`}
+                    className="text-xs px-2 py-1 rounded-lg border"
+                    style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
+                  >
+                    {r.active ? '⏸' : '▶'}
+                  </button>
+                  <button
+                    onClick={() => setConfirmDeleteRule(r)}
+                    aria-label={`Eliminar ${r.label}`}
+                    className="text-xs px-2 py-1 rounded-lg border"
+                    style={{ borderColor: '#FFE7E2', color: '#FF7F6B' }}
+                  >
+                    🗑
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!isLoading && cashRules.length === 0 && !showForm && (
           <EmptyState
             icon="📅"
             title="Sin reglas fijas"

@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
+import { useInflation } from '@/hooks/useInflation';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { DonutChart } from '@/components/DonutChart';
@@ -42,9 +43,13 @@ export default function AnalisisClient({
   const supabase = createClient();
   const qc = useQueryClient();
   const { arsPerUsd } = useFx();
+  const { rates: inflationRates } = useInflation();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income'>('expense');
   const [refreshing, setRefreshing] = useState(false);
+  // Trend chart controls: period (6M/12M) and nominal vs constant pesos.
+  const [trendRange, setTrendRange] = useState<'6M' | '12M'>('6M');
+  const [constantPesos, setConstantPesos] = useState(true);
   // scope: 'me' (Mío) | 'all' (Nuestro) | 'partner' — default to "Mío"
   const [scope, setScope] = useState<'me' | 'all' | 'partner'>('me');
   const scopeProfileId =
@@ -57,16 +62,25 @@ export default function AnalisisClient({
 
   // Computed once per mount so they stay referentially stable across renders
   // (and don't invalidate the memos below on every keystroke/refresh toggle).
-  const { months, currentKey, rangeStart, todayStr } = useMemo(() => {
+  const { months, currentKey, todayStr } = useMemo(() => {
     const t = new Date();
     const ms = lastSixMonths(t);
     return {
       months: ms,
       currentKey: ms[ms.length - 1].key,
-      rangeStart: `${ms[0].key}-01`,
       todayStr: toLocalISO(t),
     };
   }, []);
+
+  // Months covered by the trend chart. For 12M we prepend the 6 months before
+  // the standard window, reusing lastSixMonths anchored just before it.
+  const trendMonths = useMemo(() => {
+    if (trendRange === '6M') return months;
+    const [y0, m0] = months[0].key.split('-').map(Number);
+    // new Date(y0, m0 - 2, 1) = the month right before the 6M window start.
+    return [...lastSixMonths(new Date(y0, m0 - 2, 1)), ...months];
+  }, [months, trendRange]);
+  const trendRangeStart = `${trendMonths[0].key}-01`;
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],
@@ -80,18 +94,22 @@ export default function AnalisisClient({
     },
   });
 
+  // Range widens only when 12M is selected (the start date is in the key, so
+  // 6M keeps its cached slimmer fetch and 12M gets its own).
   const { data: txns = [] } = useQuery({
-    queryKey: ['transactions', profile.household_id, '6mo-analisis'],
+    queryKey: ['transactions', profile.household_id, 'analisis', trendRangeStart],
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
         .select('amount, type, occurred_on, category_id, profile_id, currency, is_shared, scope, splits(payer_profile_id, ower_profile_id, amount)')
         .eq('household_id', profile.household_id)
-        .gte('occurred_on', rangeStart)
+        .gte('occurred_on', trendRangeStart)
         // Don't pull future-dated installment rows — Análisis only looks back.
         .lte('occurred_on', todayStr);
       return data ?? [];
     },
+    // Avoid the chart flashing empty while the wider 12M range loads.
+    placeholderData: (prev) => prev,
   });
 
   const { data: members = [] } = useQuery({
@@ -149,6 +167,23 @@ export default function AnalisisClient({
       currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount,
     [arsPerUsd],
   );
+
+  // Re-express a past month's nominal ARS amount in today's pesos. Same
+  // cumulative-factor math as useInflation's arsToRealARS but in the inverse
+  // direction: multiply a *past* amount up to the latest known month instead
+  // of deflating a current amount back to a past base.
+  const inflateToToday = useCallback(
+    (amount: number, monthKey: string): number => {
+      if (inflationRates.length === 0) return amount;
+      const factor = inflationRates
+        .filter((r) => r.date.slice(0, 7) > monthKey)
+        .reduce((acc, r) => acc * (1 + r.monthly_pct / 100), 1);
+      return Math.round(amount * factor);
+    },
+    [inflationRates],
+  );
+  // Fall back to nominal silently if inflation data hasn't loaded.
+  const inflationActive = constantPesos && inflationRates.length > 0;
 
   type Txn = {
     amount: number;
@@ -252,11 +287,13 @@ export default function AnalisisClient({
     return { personRows, personMax: Math.max(1, ...personRows.map((r) => r.value)) };
   }, [allTxns, members, currentKey, todayStr, expenseShareArs, profile.id]);
 
-  // 6-month income vs expense. Expenses use each person's share for the scoped
-  // view; income isn't shared, so it's attributed to its owner.
+  // Trend income vs expense (6 or 12 months). Expenses use each person's share
+  // for the scoped view; income isn't shared, so it's attributed to its owner.
+  // With "$ constantes" on, each month is re-expressed in today's pesos so the
+  // nominal-inflation drift doesn't read as "spending more".
   const trendRows = useMemo(
     () =>
-      months.map((m) => {
+      trendMonths.map((m) => {
         let income = 0;
         let expense = 0;
         for (const t of allTxns) {
@@ -267,10 +304,24 @@ export default function AnalisisClient({
             expense += expenseShareArs(t, scopeProfileId);
           }
         }
+        if (inflationActive) {
+          income = inflateToToday(income, m.key);
+          expense = inflateToToday(expense, m.key);
+        }
         return { ...m, income, expense, rate: income > 0 ? (income - expense) / income : null };
       }),
-    [months, allTxns, scopeProfileId, toArs, expenseShareArs],
+    [trendMonths, allTxns, scopeProfileId, toArs, expenseShareArs, inflationActive, inflateToToday],
   );
+
+  // "Total del año" — sum of the 12 trend months (already constant-pesos
+  // adjusted when the toggle is on). Only shown in the 12M view.
+  const yearTotals = useMemo(() => {
+    if (trendRange !== '12M') return null;
+    return trendRows.reduce(
+      (acc, r) => ({ income: acc.income + r.income, expense: acc.expense + r.expense }),
+      { income: 0, expense: 0 },
+    );
+  }, [trendRange, trendRows]);
 
   // 6-month net worth. We only have current balances (initial_balance is a "now"
   // snapshot), so we can't reconstruct net worth for months before there was any
@@ -401,9 +452,51 @@ export default function AnalisisClient({
           )}
         </div>
 
-        {/* 6-month trend */}
+        {/* Income vs expense trend (6M/12M, nominal or constant pesos) */}
         <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6B6459' }}>Ingresos vs gastos · 6 meses</p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>
+              Ingresos vs gastos · {trendRange === '12M' ? '12 meses' : '6 meses'}
+            </p>
+            <div className="flex rounded-full p-0.5 gap-0.5" style={{ background: '#ECE5DC' }}>
+              {(['6M', '12M'] as const).map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setTrendRange(r)}
+                  className="px-2.5 py-1 text-[10px] font-bold rounded-full transition-colors"
+                  style={{
+                    background: trendRange === r ? '#FFFFFF' : 'transparent',
+                    color: trendRange === r ? '#2D2D2D' : '#6B6459',
+                  }}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex rounded-full p-0.5 gap-0.5" style={{ background: '#ECE5DC' }}>
+              {([
+                { key: false, label: '$ corrientes' },
+                { key: true, label: '$ constantes' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.label}
+                  onClick={() => setConstantPesos(opt.key)}
+                  className="px-2.5 py-1 text-[10px] font-bold rounded-full transition-colors"
+                  style={{
+                    background: constantPesos === opt.key ? '#FFFFFF' : 'transparent',
+                    color: constantPesos === opt.key ? '#2D2D2D' : '#6B6459',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {inflationActive && (
+              <span className="text-[10px]" style={{ color: '#C4B9AE' }}>ajustado por inflación (INDEC)</span>
+            )}
+          </div>
           <div className="flex items-center gap-4 mb-3 text-[11px]">
             <span className="flex items-center gap-1.5" style={{ color: '#5BA886' }}>
               <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#7EC8A4' }} /> Ingresos
@@ -413,7 +506,22 @@ export default function AnalisisClient({
             </span>
             <span className="ml-auto" style={{ color: '#6B6459' }}>% = ahorro</span>
           </div>
-          <MonthlyBars rows={trendRows} />
+          {/* 12 columns don't fit a phone width with fixed-width bars — let the chart scroll. */}
+          <div className={trendRange === '12M' ? 'overflow-x-auto -mx-1 px-1' : undefined}>
+            <div style={trendRange === '12M' ? { minWidth: 480 } : undefined}>
+              <MonthlyBars rows={trendRows} />
+            </div>
+          </div>
+          {yearTotals && (
+            <div className="flex items-center justify-between mt-3 pt-3" style={{ borderTop: '1px solid #ECE5DC' }}>
+              <span className="text-xs font-bold" style={{ color: '#6B6459' }}>Total del año</span>
+              <span className="text-xs font-black" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                <span style={{ color: '#5BA886' }}>{formatARS(yearTotals.income)}</span>
+                <span style={{ color: '#C4B9AE' }}> · </span>
+                <span style={{ color: '#E5604C' }}>{formatARS(yearTotals.expense)}</span>
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Per-person comparison */}

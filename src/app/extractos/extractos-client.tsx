@@ -138,7 +138,7 @@ export default function ExtractosClient({
     <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
       <header className="px-5 pt-14 pb-4">
         <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Extractos</h1>
-        <p className="text-xs mt-0.5" style={{ color: '#6B6459' }}>Subí un resumen para importar movimientos</p>
+        <p className="text-xs mt-0.5" style={{ color: '#6B6459' }}>Subí un resumen para importar movimientos — PDF, foto o CSV (ej: actividad de Mercado Pago)</p>
       </header>
 
       {/* Upload card */}
@@ -168,7 +168,7 @@ export default function ExtractosClient({
         <input
           ref={fileInputRef}
           type="file"
-          accept="application/pdf,image/jpeg,image/png,image/heic,image/webp"
+          accept="application/pdf,image/jpeg,image/png,image/heic,image/webp,text/csv,.csv"
           capture="environment"
           className="hidden"
           onChange={(e) => {
@@ -190,7 +190,7 @@ export default function ExtractosClient({
             className="flex-1 py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2"
             style={{ background: '#E4F2EA', color: '#5BA886' }}
           >
-            📄 Subir PDF
+            📄 Subir archivo
           </button>
           <button
             onClick={() => {
@@ -255,7 +255,7 @@ export default function ExtractosClient({
           <p className="text-5xl mb-4">🧾</p>
           <p className="text-base font-bold" style={{ color: '#2D2D2D' }}>Ningún extracto todavía</p>
           <p className="text-sm mt-2" style={{ color: '#6B6459' }}>
-            Subí el PDF o sacá una foto a tu resumen de tarjeta — la IA extrae todos los movimientos para que los revisés.
+            Subí tu resumen en PDF, foto o CSV (ej: actividad de Mercado Pago) — la IA extrae todos los movimientos para que los revisés.
           </p>
         </div>
       )}
