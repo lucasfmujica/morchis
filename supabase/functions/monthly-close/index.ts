@@ -68,7 +68,7 @@ const toArs = (a: number, cur: string, snap: number | null, blue: number) => cur
 
 interface Split { payer_profile_id: string; ower_profile_id: string; amount: number }
 interface Exp { category_id: string | null; categories: { name: string } | null; profile_id: string; scope: string; is_shared: boolean; amount: number; currency: string; usd_rate_snapshot: number | null; splits: Split[] | null }
-interface Budget { id: string; category_id: string; scope: string; amount: number; currency: string | null; profile_id: string | null; period: string | null; categories: { name: string } | null }
+interface Budget { id: string; category_id: string | null; scope: string; amount: number; currency: string | null; profile_id: string | null; period: string | null; categories: { name: string } | null }
 interface ProfileRow { id: string; nickname: string | null; display_name: string | null; notification_prefs: Record<string, boolean> | null }
 
 // Same per-share math as src/lib/budgets.ts.
@@ -84,7 +84,7 @@ function myShareArs(t: Exp, profileId: string, blue: number): number {
 }
 function spentForBudget(b: Budget, rows: Exp[], blue: number): number {
   const owner = b.profile_id ?? '';
-  return rows.filter(t => t.category_id === b.category_id).reduce((sum, t) => {
+  return rows.filter(t => b.category_id == null || t.category_id === b.category_id).reduce((sum, t) => {
     if (b.scope === 'household') return t.scope === 'household' ? sum + toArs(t.amount, t.currency, t.usd_rate_snapshot, blue) : sum;
     if (t.is_shared) return sum + myShareArs(t, owner, blue);
     return t.profile_id === owner ? sum + toArs(t.amount, t.currency, t.usd_rate_snapshot, blue) : sum;
@@ -191,7 +191,7 @@ async function processHousehold(admin: SupabaseClient, hid: string, vPub: string
     const results = monthly.map(b => {
       const limit = toArs(b.amount, b.currency ?? 'ARS', null, blue);
       const spent = spentForBudget(b, cur, blue);
-      return { name: b.categories?.name ?? 'Categoría', limit, spent, ok: limit <= 0 || spent <= limit };
+      return { name: b.category_id == null ? 'Límite total' : b.categories?.name ?? 'Categoría', limit, spent, ok: limit <= 0 || spent <= limit };
     }).filter(r => r.limit > 0);
     if (results.length) {
       const ok = results.filter(r => r.ok).length;

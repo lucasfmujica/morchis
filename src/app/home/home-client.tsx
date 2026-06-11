@@ -566,6 +566,9 @@ export default function HomeClient({
     const monthRows = budgetRows.filter((r) => r.occurred_on != null && r.occurred_on >= monthStart && r.occurred_on <= monthEnd);
     const weekRows = budgetRows.filter((r) => r.occurred_on != null && r.occurred_on >= week.start && r.occurred_on <= week.end);
     return budgets
+      // Total limits (no category) get their own surface (the week card below);
+      // summing them here would double-count against the category budgets.
+      .filter((b) => b.category_id != null)
       .filter((b) => b.scope === 'household' || b.profile_id === profile.id)
       .map((b) => {
         const spent = spentForBudget(b, b.period === 'weekly' ? weekRows : monthRows, profile.id, arsPerUsd);
@@ -586,6 +589,24 @@ export default function HomeClient({
     () => relevantBudgets.filter((a) => a.pct >= 0.8).sort((a, b) => b.pct - a.pct),
     [relevantBudgets],
   );
+
+  // Weekly TOTAL spending limit ("esta semana quiero gastar X") for the active
+  // scope: my personal limit on Mío, the household one on Nuestro, the
+  // partner's on Pareja. Its spend is weekExpenseTotal — the same number the
+  // week card already shows, computed with the same share rules.
+  const weeklyLimitArs = useMemo(() => {
+    const b = budgets.find(
+      (bb) =>
+        bb.category_id == null &&
+        bb.period === 'weekly' &&
+        (scope === 'all'
+          ? bb.scope === 'household'
+          : bb.scope === 'personal' && bb.profile_id === (scope === 'me' ? profile.id : partnerProfileId)),
+    );
+    return b ? budgetToArs(b.amount, b.currency, arsPerUsd) : null;
+  }, [budgets, scope, profile.id, partnerProfileId, arsPerUsd]);
+  const weekPct = weeklyLimitArs && weeklyLimitArs > 0 ? weekExpenseTotal / weeklyLimitArs : null;
+  const weekBarColor = weekPct == null ? '#FF7F6B' : weekPct >= 1 ? '#FF7F6B' : weekPct >= 0.8 ? '#F5A623' : '#7EC8A4';
 
   const quickTiles = [
     { href: '/cuentas', icon: '🏦', label: 'Cuentas', value: mask(format(totalBalance)), color: totalBalance < 0 ? '#E5604C' : '#2D2D2D' },
@@ -781,21 +802,45 @@ export default function HomeClient({
         ))}
       </div>
 
-      {/* This week's spend (Mon–Sun) — tap to see the week's movements */}
+      {/* This week's spend (Mon–Sun) — tap to see the week's movements. When a
+          weekly TOTAL limit exists for the active scope, the card becomes a
+          progress bar against it. */}
       <Link
         href="/movimientos?range=week"
-        className="mx-4 mb-4 flex items-center gap-3 px-5 py-4 rounded-3xl"
+        className="mx-4 mb-4 block px-5 py-4 rounded-3xl"
         style={{ background: '#FFFFFF' }}
       >
-        <span className="text-2xl">📆</span>
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Gastos de la semana</p>
-          <p className="text-[11px]" style={{ color: '#6B6459' }}>Lun {shortDM(week.start)} – Dom {shortDM(week.end)}</p>
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">📆</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Gastos de la semana</p>
+            <p className="text-[11px]" style={{ color: '#6B6459' }}>Lun {shortDM(week.start)} – Dom {shortDM(week.end)}</p>
+          </div>
+          <p className="text-xl font-black flex-shrink-0" style={{ color: weeklyLimitArs ? weekBarColor : '#FF7F6B', fontVariantNumeric: 'tabular-nums' }}>
+            {mask(format(weekExpenseTotal))}
+          </p>
+          <span className="text-xs flex-shrink-0" style={{ color: '#C4B9AE' }}>›</span>
         </div>
-        <p className="text-xl font-black flex-shrink-0" style={{ color: '#FF7F6B', fontVariantNumeric: 'tabular-nums' }}>
-          {mask(format(weekExpenseTotal))}
-        </p>
-        <span className="text-xs flex-shrink-0" style={{ color: '#C4B9AE' }}>›</span>
+        {weeklyLimitArs != null && weekPct != null && (
+          <div className="mt-3">
+            <div className="h-2.5 rounded-full overflow-hidden" style={{ background: '#ECE5DC' }}>
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{ background: weekBarColor, width: `${Math.min(weekPct * 100, 100)}%` }}
+              />
+            </div>
+            <div className="flex justify-between mt-1">
+              <p className="text-[11px] font-semibold" style={{ color: weekBarColor }}>
+                {weekPct >= 1 ? 'Límite semanal superado' : `${Math.round(weekPct * 100)}% del límite semanal`}
+              </p>
+              <p className="text-[11px]" style={{ color: weekPct >= 1 ? '#FF7F6B' : '#6B6459' }}>
+                {weekPct >= 1
+                  ? `+${mask(formatARS(weekExpenseTotal - weeklyLimitArs))} excedido`
+                  : `quedan ${mask(formatARS(weeklyLimitArs - weekExpenseTotal))}`}
+              </p>
+            </div>
+          </div>
+        )}
       </Link>
 
       {/* Income of the month + savings rate (expenses = my share, like the tiles) */}

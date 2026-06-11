@@ -35,7 +35,8 @@ interface ExpenseRow {
 }
 interface Budget {
   id: string;
-  category_id: string;
+  // null = total limit for the period (all categories)
+  category_id: string | null;
   scope: string;
   amount: number;
   currency: string | null;
@@ -61,7 +62,8 @@ function myShareArs(t: ExpenseRow, profileId: string, rate: number): number {
 function spentForBudget(b: Budget, rows: ExpenseRow[], rate: number): number {
   const owner = b.profile_id ?? "";
   return rows
-    .filter((t) => t.category_id === b.category_id)
+    // A total budget (no category) counts every expense; a category budget only its own.
+    .filter((t) => b.category_id == null || t.category_id === b.category_id)
     .reduce((sum, t) => {
       if (b.scope === "household") {
         return t.scope === "household" ? sum + toArs(t.amount, t.currency, rate) : sum;
@@ -160,7 +162,7 @@ Deno.serve(async (req) => {
       // Personal-budget pushes also go through the pref filter (memberIds
       // only contains people who keep budget alerts on).
       const targets = b.scope === "household" ? memberIds : b.profile_id ? memberIds.filter((id) => id === b.profile_id) : [];
-      const name = catName.get(b.category_id) ?? "tu presupuesto";
+      const name = b.category_id == null ? "tu límite total" : catName.get(b.category_id) ?? "tu presupuesto";
       const over = level === 100;
       const payload = JSON.stringify({
         title: over ? "🚨 Presupuesto excedido" : "⚠️ Cerca del límite",

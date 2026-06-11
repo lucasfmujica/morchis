@@ -5,7 +5,8 @@
 
 export interface BudgetRow {
   id: string;
-  category_id: string;
+  // null = a TOTAL limit for the period (all categories), e.g. a weekly cap.
+  category_id: string | null;
   scope: string;
   amount: number;
   currency?: string | null;
@@ -85,7 +86,8 @@ export function budgetContribution(
   viewerProfileId: string,
   arsPerUsd: number,
 ): number {
-  if (t.category_id !== b.category_id) return 0;
+  // A total budget (no category) counts every expense; a category budget only its own.
+  if (b.category_id != null && t.category_id !== b.category_id) return 0;
   const owner = b.profile_id ?? viewerProfileId;
   if (b.scope === 'household') {
     return t.scope === 'household' ? toArs(t.amount, t.currency, arsPerUsd) : 0;

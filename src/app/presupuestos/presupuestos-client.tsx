@@ -28,7 +28,8 @@ interface Profile {
 
 interface Budget {
   id: string;
-  category_id: string;
+  // null = total limit for the period (all categories combined)
+  category_id: string | null;
   scope: string;
   profile_id: string | null;
   amount: number;
@@ -60,6 +61,17 @@ interface DetailView {
   icon: string;
   total: number;
   rows: DetailRow[];
+}
+
+// Sentinel for the "Total" chip in the budget sheet — saved as category_id null.
+const TOTAL_ID = '__total__';
+
+function budgetIcon(b: Budget, cat?: Category): string {
+  return b.category_id == null ? '🎯' : cat?.icon ?? '📦';
+}
+
+function budgetName(b: Budget, cat?: Category): string {
+  return b.category_id == null ? 'Límite total' : cat?.name ?? '—';
 }
 
 function fmtDetailDate(iso: string): string {
@@ -119,7 +131,7 @@ function BudgetSheet({
   const supabase = createClient();
   const qc = useQueryClient();
 
-  const [categoryId, setCategoryId] = useState(editing?.category_id ?? '');
+  const [categoryId, setCategoryId] = useState(editing ? editing.category_id ?? TOTAL_ID : '');
   const [amount, setAmount] = useState(editing ? String(editing.amount) : '');
   const [scope, setScope] = useState<'personal' | 'household'>(
     (editing?.scope as 'personal' | 'household') ?? 'personal',
@@ -133,7 +145,7 @@ function BudgetSheet({
     setSaving(true);
     const payload = {
       household_id: householdId,
-      category_id: categoryId,
+      category_id: categoryId === TOTAL_ID ? null : categoryId,
       scope,
       profile_id: scope === 'personal' ? profileId : null,
       amount: parseMoney(amount),
@@ -204,6 +216,18 @@ function BudgetSheet({
         {/* Category */}
         <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Categoría</p>
         <div className="flex flex-wrap gap-2 mb-4 max-h-40 overflow-y-auto">
+          {/* Total = a cap on ALL spending of the period, not one category */}
+          <button
+            onClick={() => setCategoryId(TOTAL_ID)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-sm font-semibold transition-colors"
+            style={{
+              background: categoryId === TOTAL_ID ? '#7EC8A4' : '#F9F5F0',
+              color: categoryId === TOTAL_ID ? '#FFFFFF' : '#2D2D2D',
+            }}
+          >
+            <span>🎯</span>
+            <span>Total (todas las categorías)</span>
+          </button>
           {expenseCategories.map((c) => (
             <button
               key={c.id}
@@ -553,9 +577,10 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   });
 
   // Personal budgets are per-user: only show my own. Household budgets are shared.
-  const filteredBudgets = budgets.filter(
-    (b) => b.scope === tab && (tab === 'household' || b.profile_id === profile.id),
-  );
+  // The total limit (no category) leads the list — it frames the rest.
+  const filteredBudgets = budgets
+    .filter((b) => b.scope === tab && (tab === 'household' || b.profile_id === profile.id))
+    .sort((a, b) => Number(b.category_id == null) - Number(a.category_id == null));
 
   const catMap = Object.fromEntries(categories.map((c) => [c.id, c]));
 
@@ -573,22 +598,23 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   // the amount that actually counts toward the budget (a person's share for
   // shared expenses), so the rows add up to the total on the card.
   function openBudgetDetail(b: Budget) {
-    const cat = catMap[b.category_id];
+    const cat = b.category_id ? catMap[b.category_id] : undefined;
     const rows: DetailRow[] = rowsForPeriod(b.period)
       .map((t) => ({ t, amountArs: budgetContribution(b, t, profile.id, arsPerUsd) }))
       .filter(({ amountArs }) => amountArs > 0)
       .map(({ t, amountArs }) => ({
         id: t.id ?? `${t.occurred_on}-${amountArs}`,
-        label: t.merchant || cat?.name || 'Gasto',
+        // For a total budget there's no single category: name each row by its own.
+        label: t.merchant || (cat ?? catMap[t.category_id ?? ''])?.name || 'Gasto',
         occurred_on: t.occurred_on ?? '',
         shared: t.is_shared,
         amountArs,
       }))
       .sort((a, b2) => b2.occurred_on.localeCompare(a.occurred_on));
     setDetail({
-      title: cat?.name ?? 'Presupuesto',
+      title: budgetName(b, cat),
       subtitle: `${b.period === 'weekly' ? 'Esta semana' : 'Este mes'} · ${rows.length} ${rows.length === 1 ? 'gasto' : 'gastos'}`,
-      icon: cat?.icon ?? '📦',
+      icon: budgetIcon(b, cat),
       total: spentForBudget(b),
       rows,
     });
@@ -686,7 +712,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
           />
         ) : (
           filteredBudgets.map((b) => {
-            const cat = catMap[b.category_id];
+            const cat = b.category_id ? catMap[b.category_id] : undefined;
             const spent = spentForBudget(b);
             const limitArs = toArs(b.amount, b.currency);
             const over = spent > limitArs;
@@ -702,10 +728,10 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
               >
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <span className="text-2xl">{cat?.icon ?? '📦'}</span>
+                    <span className="text-2xl">{budgetIcon(b, cat)}</span>
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <p className="font-bold text-sm" style={{ color: '#2D2D2D' }}>{cat?.name ?? '—'}</p>
+                        <p className="font-bold text-sm" style={{ color: '#2D2D2D' }}>{budgetName(b, cat)}</p>
                         <span
                           className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
                           style={{ background: '#ECE5DC', color: '#6B6459' }}
