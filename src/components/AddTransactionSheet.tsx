@@ -362,6 +362,9 @@ export function AddTransactionSheet({
         'projection',
         'couple-balance',
         'couple-transactions',
+        // The category detail screen lists movements under this key — without
+        // it, deleting from there looks like a no-op until a full reload.
+        'category-tx',
       ].map((key) => qc.invalidateQueries({ queryKey: [key] })),
     );
   }

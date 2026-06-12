@@ -9,7 +9,7 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, content-type",
 };
 
-const GROUPS = ["comida", "bebidas", "snacks", "limpieza", "cuidado personal", "hogar", "mascotas", "otros"];
+const GROUPS = ["frutas y verduras", "carnes y fiambres", "lácteos y huevos", "almacén", "panadería", "bebidas", "snacks", "limpieza", "cuidado personal", "hogar", "mascotas", "otros"];
 const CURRENCIES = ["ARS", "USD"];
 
 interface ReceiptItem {
@@ -50,14 +50,18 @@ Devolvé SIEMPRE este JSON:
         - qty: cantidad (número, 1 si no figura).
         - line_total: precio total de esa línea (unitario × cantidad), número positivo en la MISMA moneda que el total.
         - group: clasificá el producto en UNA de: ${GROUPS.join(", ")}.
-            · comida = alimentos básicos y para cocinar (lácteos, carnes, verduras, fideos, arroz, pan, huevos, aceite).
-            · bebidas = agua, jugos, gaseosas, bebidas alcohólicas.
-            · snacks = golosinas, papas fritas, chocolates, helados, antojos.
-            · limpieza = detergente, lavandina, esponjas, papel, artículos de limpieza del hogar.
-            · cuidado personal = shampoo, jabón, pasta dental, desodorante, higiene.
-            · hogar = pilas, lámparas, utensilios, cosas durables para la casa.
+            · frutas y verduras = frutas y verduras frescas (banana, manzana, tomate, papa, cebolla, lechuga, zanahoria, limón, etc.).
+            · carnes y fiambres = carnes (vaca, pollo, cerdo, pescado), fiambres y embutidos (jamón, salame, leberwurst, salchichas).
+            · lácteos y huevos = leche, quesos, yogur, manteca, crema, dulce de leche y huevos.
+            · almacén = secos y de despensa: arroz, fideos, harina, aceite, azúcar, sal, conservas, legumbres, salsas, condimentos, café, té, yerba, untables (hummus, pasta de maní) y mermeladas.
+            · panadería = pan, facturas, figacitas, tortillas, wraps y productos de panadería.
+            · bebidas = SOLO bebidas para tomar: agua, aguas saborizadas, jugos, gaseosas y bebidas alcohólicas (cerveza, vino, etc.). La leche va a "lácteos y huevos" y el café/té/yerba a "almacén".
+            · snacks = golosinas, papas fritas, chocolates, galletitas dulces, helados y antojos.
+            · limpieza = detergente, lavandina, esponjas, papel de cocina/higiénico y artículos de limpieza del hogar.
+            · cuidado personal = shampoo, jabón, pasta dental, desodorante e higiene personal.
+            · hogar = pilas, lámparas, utensilios y cosas durables para la casa.
             · mascotas = alimento o artículos para mascotas.
-            · otros = cualquier cosa que no encaje.
+            · otros = cualquier cosa que no encaje (incluye propinas, bolsas, etc.).
     * Si es un COMPROBANTE de un único cargo SIN detalle de productos (ej. una notificación de DiDi, una transferencia, un débito), devolvé items como un array VACÍO []. NO inventes productos ni los clasifiques en grupos de supermercado.
 
 Reglas:
@@ -104,6 +108,37 @@ async function parseReceipt(
     },
   ];
 
+  // Forced tool use: the API guarantees the reply is a structured tool call
+  // matching this schema, so the model can never answer with prose.
+  const receiptTool = {
+    name: "registrar_comprobante",
+    description: "Registra los datos extraídos del comprobante de gasto.",
+    input_schema: {
+      type: "object",
+      properties: {
+        merchant: { type: "string" },
+        date: { type: "string", description: "YYYY-MM-DD" },
+        total: { type: "number" },
+        currency: { type: "string", enum: CURRENCIES },
+        suggested_category: { type: "string" },
+        items: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              qty: { type: "number" },
+              line_total: { type: "number" },
+              group: { type: "string", enum: GROUPS },
+            },
+            required: ["name", "qty", "line_total", "group"],
+          },
+        },
+      },
+      required: ["merchant", "date", "total", "currency", "suggested_category", "items"],
+    },
+  };
+
   const response = await fetch(ANTHROPIC_API_URL, {
     method: "POST",
     headers: {
@@ -112,7 +147,13 @@ async function parseReceipt(
       "anthropic-version": "2023-06-01",
       "anthropic-beta": "prompt-caching-2024-07-31,pdfs-2024-09-25",
     },
-    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4096, messages }),
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 4096,
+      messages,
+      tools: [receiptTool],
+      tool_choice: { type: "tool", name: "registrar_comprobante" },
+    }),
   });
 
   if (!response.ok) {
@@ -121,9 +162,11 @@ async function parseReceipt(
   }
 
   const data = await response.json();
-  const text = data.content?.[0]?.text ?? "{}";
-  const cleaned = text.replace(/^```[\w]*\n?/, "").replace(/\n?```$/, "").trim();
-  const parsed = JSON.parse(cleaned) as ParsedReceipt;
+  const toolUse = (data.content ?? []).find((b: { type: string }) => b.type === "tool_use");
+  if (!toolUse?.input) {
+    throw new Error("No se pudo leer el comprobante. Probá con una foto más nítida y completa.");
+  }
+  const parsed = toolUse.input as ParsedReceipt;
 
   // Normalize. Money keeps up to 2 decimals (a USD proof may have cents); the
   // currency is constrained to what the app supports, defaulting to ARS.
@@ -195,6 +238,7 @@ Deno.serve(async (req: Request) => {
     return new Response(JSON.stringify({ ok: true, receipt: parsed }), { headers: { ...CORS, "Content-Type": "application/json" } });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
+    console.error("parse-receipt error:", msg);
     return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { ...CORS, "Content-Type": "application/json" } });
   }
 });

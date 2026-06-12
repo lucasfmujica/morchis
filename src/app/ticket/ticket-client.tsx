@@ -36,9 +36,13 @@ interface Receipt {
   items: Item[];
 }
 
-const GROUPS = ['comida', 'bebidas', 'snacks', 'limpieza', 'cuidado personal', 'hogar', 'mascotas', 'otros'];
+const GROUPS = ['frutas y verduras', 'carnes y fiambres', 'lácteos y huevos', 'almacén', 'panadería', 'bebidas', 'snacks', 'limpieza', 'cuidado personal', 'hogar', 'mascotas', 'otros'];
 const GROUP_META: Record<string, { icon: string; color: string }> = {
-  comida: { icon: '🍎', color: '#7EC8A4' },
+  'frutas y verduras': { icon: '🥬', color: '#7EC8A4' },
+  'carnes y fiambres': { icon: '🥩', color: '#E8806B' },
+  'lácteos y huevos': { icon: '🥚', color: '#F2C94C' },
+  almacén: { icon: '🫙', color: '#B5926B' },
+  panadería: { icon: '🥖', color: '#D9A05B' },
   bebidas: { icon: '🥤', color: '#6FA8DC' },
   snacks: { icon: '🍫', color: '#F5A623' },
   limpieza: { icon: '🧼', color: '#5C9CE6' },
@@ -72,6 +76,39 @@ export default function TicketClient({ profile }: { profile: Profile }) {
     },
   });
   const categories = allCategories.filter((c) => c.kind === 'expense');
+
+  // Same cache key/shape as the rest of the app (deudas, reglas, etc.).
+  const { data: allAccounts = [] } = useQuery({
+    queryKey: ['accounts', profile.household_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('accounts')
+        .select('id, name, type, owner_profile_id')
+        .eq('household_id', profile.household_id)
+        .eq('archived', false)
+        .order('name');
+      return data ?? [];
+    },
+  });
+  // I'm the payer of a scanned receipt: offer my accounts + ownerless ones.
+  const accounts = allAccounts.filter((a) => !a.owner_profile_id || a.owner_profile_id === profile.id);
+
+  const { data: partner = null } = useQuery({
+    queryKey: ['partner-profile', profile.household_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, nickname, display_name')
+        .eq('household_id', profile.household_id)
+        .neq('id', profile.id)
+        .maybeSingle();
+      return data;
+    },
+  });
+  const partnerName = partner?.nickname || partner?.display_name || 'tu pareja';
+
+  const [accountId, setAccountId] = useState<string>('none');
+  const [isShared, setIsShared] = useState(false);
 
   // Map the AI's suggested category onto a real category: exact name first, then
   // a partial match (so "Transporte" still lands on "Transporte / Viajes"), and
@@ -148,6 +185,8 @@ export default function TicketClient({ profile }: { profile: Profile }) {
   async function handleSave() {
     if (!receipt) return;
     setStatus('working');
+    // Only honor the toggle when there's actually a partner to split with.
+    const shared = isShared && !!partner;
     try {
       const summary = receipt.items.map((it) => it.name).join(', ').slice(0, 500);
       const { data: tx, error: txErr } = await supabase
@@ -160,19 +199,36 @@ export default function TicketClient({ profile }: { profile: Profile }) {
           currency: receipt.currency,
           usd_rate_snapshot: arsPerUsd,
           category_id: categoryId || null,
+          account_id: accountId === 'none' ? null : accountId,
           merchant: receipt.merchant || 'Compra',
           occurred_on: receipt.date,
           description: summary || null,
           source: 'receipt',
-          // Explicit personal scope: the DB defaults scope to 'household', which
-          // would silently count every scanned receipt 100% against couple budgets.
-          // Match the manual sheet's default of "Mío".
-          scope: 'personal',
-          is_shared: false,
+          // A shared receipt is a household expense split with the partner;
+          // otherwise explicit personal scope (the DB defaults to 'household',
+          // which would silently count it 100% against couple budgets).
+          scope: shared ? 'household' : 'personal',
+          is_shared: shared,
         })
         .select('id')
         .single();
       if (txErr || !tx) throw txErr ?? new Error('No se pudo guardar');
+
+      // 50/50 split with the partner, tracked in ARS like the manual sheet.
+      // For a custom split, edit the saved movement afterwards.
+      if (shared && partner) {
+        const arsTotal = receipt.currency === 'USD' ? Math.round(receipt.total * arsPerUsd) : receipt.total;
+        const owed = Math.round(arsTotal / 2);
+        if (owed > 0) {
+          const { error: splitErr } = await supabase.from('splits').insert({
+            transaction_id: tx.id,
+            payer_profile_id: profile.id,
+            ower_profile_id: partner.id,
+            amount: owed,
+          });
+          if (splitErr) throw splitErr;
+        }
+      }
 
       if (receipt.items.length > 0) {
         const { error: itErr } = await supabase.from('transaction_items').insert(
@@ -193,6 +249,12 @@ export default function TicketClient({ profile }: { profile: Profile }) {
       await qc.invalidateQueries({ queryKey: ['spent-by-category'] });
       await qc.invalidateQueries({ queryKey: ['category-month-totals'] });
       await qc.invalidateQueries({ queryKey: ['category-tx'] });
+      await qc.invalidateQueries({ queryKey: ['summary'] });
+      await qc.invalidateQueries({ queryKey: ['budget-expense-rows'] });
+      if (shared) {
+        await qc.invalidateQueries({ queryKey: ['couple-balance'] });
+        await qc.invalidateQueries({ queryKey: ['couple-transactions'] });
+      }
       triggerBudgetAlerts(supabase);
       setStatus('done');
       toast.success('Comprobante guardado ✓');
@@ -318,6 +380,28 @@ export default function TicketClient({ profile }: { profile: Profile }) {
                   <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
                 ))}
               </select>
+              {/* Which account paid + whether the expense is split with the partner */}
+              <select
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border text-sm bg-white outline-none mt-2"
+                style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+              >
+                <option value="none">💳 Sin cuenta</option>
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>{a.type === 'credit' ? '💳' : '🏦'} {a.name}</option>
+                ))}
+              </select>
+              {partner && (
+                <button
+                  onClick={() => setIsShared(!isShared)}
+                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-sm mt-2"
+                  style={{ borderColor: isShared ? '#7EC8A4' : '#ECE5DC', background: isShared ? '#F0FAF5' : '#FFFFFF' }}
+                >
+                  <span style={{ color: '#2D2D2D' }}>👫 Compartido con {partnerName} (50/50)</span>
+                  <span className="font-bold" style={{ color: isShared ? '#7EC8A4' : '#C4B9AE' }}>{isShared ? 'Sí' : 'No'}</span>
+                </button>
+              )}
               {receipt.items.length > 0 && Math.abs(itemsSum - receipt.total) > Math.max(50, receipt.total * 0.05) && (
                 <p className="text-[11px] mt-2" style={{ color: '#B8860B' }}>
                   ⚠️ La suma de productos ({fmt(itemsSum)}) no coincide con el total. Revisá los ítems.

@@ -110,7 +110,7 @@ export type Database = {
         Row: {
           active: boolean
           amount: number
-          category_id: string
+          category_id: string | null
           currency: string
           household_id: string
           id: string
@@ -121,7 +121,7 @@ export type Database = {
         Insert: {
           active?: boolean
           amount: number
-          category_id: string
+          category_id?: string | null
           currency?: string
           household_id: string
           id?: string
@@ -132,7 +132,7 @@ export type Database = {
         Update: {
           active?: boolean
           amount?: number
-          category_id?: string
+          category_id?: string | null
           currency?: string
           household_id?: string
           id?: string

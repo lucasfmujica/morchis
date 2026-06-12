@@ -573,7 +573,8 @@ export default function HomeClient({
       .map((b) => {
         const spent = spentForBudget(b, b.period === 'weekly' ? weekRows : monthRows, profile.id, arsPerUsd);
         const limit = budgetToArs(b.amount, b.currency, arsPerUsd);
-        const cat = catById[b.category_id];
+        // Safe: nulls were filtered out above, TS just can't see it across .map.
+        const cat = catById[b.category_id!];
         return {
           id: b.id,
           name: cat?.name ?? 'Categoría',

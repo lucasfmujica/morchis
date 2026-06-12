@@ -108,7 +108,7 @@ export default function CategoriasClient({
   // Active budgets, kept raw so the per-category limit can follow the active
   // tab without refetching (and so 'budgets' invalidations refresh it too).
   const { data: budgetRows = [] } = useQuery<
-    { category_id: string; amount: number; currency: string | null; scope: string; profile_id: string | null }[]
+    { category_id: string | null; amount: number; currency: string | null; scope: string; profile_id: string | null }[]
   >({
     queryKey: ['budgets', profile.household_id, 'rows'],
     queryFn: async () => {
@@ -132,7 +132,8 @@ export default function CategoriasClient({
       const matchesTab = scopeProfileId
         ? b.scope === 'personal' && b.profile_id === scopeProfileId
         : b.scope === 'household';
-      if (!matchesTab) continue;
+      // category_id NULL = límite total del mes, not a per-category budget.
+      if (!matchesTab || !b.category_id) continue;
       map[b.category_id] = (map[b.category_id] ?? 0) + toArs(b.amount, b.currency, arsPerUsd);
     }
     return map;
