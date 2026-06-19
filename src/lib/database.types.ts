@@ -1031,6 +1031,7 @@ export type Database = {
           installment_group_id: string | null
           installment_number: number | null
           installment_total: number | null
+          is_fixed: boolean
           is_shared: boolean
           merchant: string | null
           occurred_on: string
@@ -1054,6 +1055,7 @@ export type Database = {
           installment_group_id?: string | null
           installment_number?: number | null
           installment_total?: number | null
+          is_fixed?: boolean
           is_shared?: boolean
           merchant?: string | null
           occurred_on?: string
@@ -1077,6 +1079,7 @@ export type Database = {
           installment_group_id?: string | null
           installment_number?: number | null
           installment_total?: number | null
+          is_fixed?: boolean
           is_shared?: boolean
           merchant?: string | null
           occurred_on?: string

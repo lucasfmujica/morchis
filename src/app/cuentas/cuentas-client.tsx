@@ -85,6 +85,7 @@ interface AccountTx {
   category_id: string | null;
   scope: string;
   is_shared: boolean;
+  is_fixed: boolean;
   installment_total: number | null;
   profile_id: string | null;
   categories: { name: string; icon: string } | null;
@@ -226,7 +227,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('id, account_id, transfer_account_id, type, amount, currency, occurred_on, merchant, description, category_id, scope, is_shared, installment_total, profile_id, categories:category_id(name, icon)')
+        .select('id, account_id, transfer_account_id, type, amount, currency, occurred_on, merchant, description, category_id, scope, is_shared, is_fixed, installment_total, profile_id, categories:category_id(name, icon)')
         .eq('household_id', profile.household_id)
         .not('account_id', 'is', null);
       return (data as AccountTx[]) ?? [];

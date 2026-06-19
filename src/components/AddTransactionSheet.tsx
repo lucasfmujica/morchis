@@ -56,6 +56,7 @@ interface EditTx {
   transfer_account_id?: string | null;
   scope: string;
   is_shared: boolean;
+  is_fixed?: boolean;
   merchant: string | null;
   occurred_on: string;
   installment_total?: number | null;
@@ -205,6 +206,9 @@ export function AddTransactionSheet({
   // with their accounts), or the shared household.
   const [owner, setOwner] = useState<'me' | 'partner' | 'household'>('me');
   const [isShared, setIsShared] = useState(false);
+  // Fixed expense (rent, psychologist, etc.): excluded from the weekly total
+  // limit, but still counts in category budgets and monthly totals.
+  const [isFixed, setIsFixed] = useState(false);
   // Who actually fronted the money. Only meaningful for a "Hogar" movement:
   // a "Mío"/partner movement is paid by that same person. Decoupling this from
   // the owner is what lets a household expense be paid by either person (and
@@ -253,6 +257,7 @@ export function AddTransactionSheet({
         setToAccountId(editTx.transfer_account_id ?? null);
         setOwner(ownerOf(editTx));
         setIsShared(editTx.is_shared);
+        setIsFixed(editTx.is_fixed ?? false);
         // profile_id is the payer, so a movement whose profile isn't mine was
         // paid by my partner.
         setPaidBy(editTx.profile_id && editTx.profile_id !== profileId ? 'partner' : 'me');
@@ -269,6 +274,7 @@ export function AddTransactionSheet({
         setToAccountId(null);
         setOwner('me');
         setIsShared(false);
+        setIsFixed(false);
         setPaidBy('me');
         setMerchant('');
         setDate(todayISO());
@@ -630,6 +636,8 @@ export function AddTransactionSheet({
         occurred_on: date,
         scope,
         is_shared: sharedEffective,
+        // Only expenses can be "fixed"; income/transfers never are.
+        is_fixed: txType === 'expense' ? isFixed : false,
         source: 'manual' as const,
       };
 
@@ -1104,6 +1112,21 @@ export function AddTransactionSheet({
             </button>
             )}
 
+            {/* Fixed expense — excluded from the weekly total limit. */}
+            {txType === 'expense' && (
+            <button
+              onClick={() => setIsFixed((v) => !v)}
+              className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold border"
+              style={{
+                background: isFixed ? '#E7EFFB' : '#FFFFFF',
+                borderColor: isFixed ? '#5B8DEF' : '#ECE5DC',
+                color: isFixed ? '#5B8DEF' : '#6B6459',
+              }}
+            >
+              {isFixed ? '📌 Gasto fijo' : '📌 Fijo'}
+            </button>
+            )}
+
             {/* Account */}
             {visibleAccounts.length > 0 && (
               <select
@@ -1130,6 +1153,13 @@ export function AddTransactionSheet({
               style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
             />
           </div>
+          )}
+
+          {/* Hint for the fixed-expense toggle. */}
+          {!isTransfer && txType === 'expense' && isFixed && (
+            <p className="px-4 mt-2 text-[11px]" style={{ color: '#6B6459' }}>
+              📌 No cuenta para el límite semanal (sí en presupuestos y totales del mes).
+            </p>
           )}
 
           {/* Split percentage — only when "Compartido" is on */}

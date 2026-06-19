@@ -39,6 +39,7 @@ type Tx = {
   occurred_on: string;
   scope: string;
   is_shared: boolean;
+  is_fixed: boolean;
   profile_id: string | null;
   splits: SplitRow[] | null;
   // Receipt item breakdown, fetched in the same query as a nested relation.
@@ -107,7 +108,7 @@ export default function CategoryDetailClient({
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('id, amount, type, currency, category_id, account_id, merchant, occurred_on, scope, is_shared, profile_id, splits(payer_profile_id, ower_profile_id, amount), items:transaction_items(item_group, line_total, name, qty)')
+        .select('id, amount, type, currency, category_id, account_id, merchant, occurred_on, scope, is_shared, is_fixed, profile_id, splits(payer_profile_id, ower_profile_id, amount), items:transaction_items(item_group, line_total, name, qty)')
         .eq('household_id', profile.household_id)
         .eq('category_id', category.id)
         .gte('occurred_on', rangeStart)

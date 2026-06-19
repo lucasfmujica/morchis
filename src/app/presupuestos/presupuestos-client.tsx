@@ -14,6 +14,7 @@ import {
   spentForBudget as computeSpentForBudget,
   budgetContribution,
   weekContribution,
+  isFixedExpense,
   BUDGET_EXPENSE_SELECT,
   type BudgetExpenseRow,
 } from '@/lib/budgets';
@@ -52,6 +53,7 @@ interface DetailRow {
   label: string;
   occurred_on: string;
   shared: boolean;
+  fixed: boolean;
   amountArs: number;
 }
 
@@ -326,7 +328,7 @@ function TransactionsSheet({ view, onClose }: { view: DetailView; onClose: () =>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{r.label}</p>
                   <p className="text-xs" style={{ color: '#6B6459' }}>
-                    {fmtDetailDate(r.occurred_on)}{r.shared ? ' · compartido' : ''}
+                    {fmtDetailDate(r.occurred_on)}{r.shared ? ' · compartido' : ''}{r.fixed ? ' · 📌 fijo' : ''}
                   </p>
                 </div>
                 <p className="text-base font-black" style={{ color: '#FF7F6B', fontVariantNumeric: 'tabular-nums' }}>
@@ -568,6 +570,13 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
     (sum, r) => sum + weekContribution(r, tab, profile.id, arsPerUsd),
     0,
   );
+  // Split this week into fixed vs discretionary so the variable spend (what the
+  // total limit actually measures) is visible on its own.
+  const weekFixed = weekRows.reduce(
+    (sum, r) => sum + (isFixedExpense(r) ? weekContribution(r, tab, profile.id, arsPerUsd) : 0),
+    0,
+  );
+  const weekVariable = weekSpend - weekFixed;
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -608,6 +617,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
         label: t.merchant || (cat ?? catMap[t.category_id ?? ''])?.name || 'Gasto',
         occurred_on: t.occurred_on ?? '',
         shared: t.is_shared,
+        fixed: isFixedExpense(t),
         amountArs,
       }))
       .sort((a, b2) => b2.occurred_on.localeCompare(a.occurred_on));
@@ -629,6 +639,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
         label: t.merchant || catMap[t.category_id ?? '']?.name || 'Gasto',
         occurred_on: t.occurred_on ?? '',
         shared: t.is_shared,
+        fixed: isFixedExpense(t),
         amountArs,
       }))
       .sort((a, b2) => b2.occurred_on.localeCompare(a.occurred_on));
@@ -699,6 +710,24 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
             {formatARS(weekSpend)}
           </p>
         </div>
+        {/* Variable vs fixed breakdown — the variable spend is what the total
+            limit measures, so it gets its own line. */}
+        {weekFixed > 0 && (
+          <div className="flex gap-2 mt-3">
+            <div className="flex-1 rounded-2xl px-3 py-2" style={{ background: '#F1F7F4' }}>
+              <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Variable</p>
+              <p className="text-base font-black" style={{ color: '#5BA886', fontVariantNumeric: 'tabular-nums' }}>
+                {formatARS(weekVariable)}
+              </p>
+            </div>
+            <div className="flex-1 rounded-2xl px-3 py-2" style={{ background: '#F9F5F0' }}>
+              <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>📌 Fijos</p>
+              <p className="text-base font-black" style={{ color: '#6B6459', fontVariantNumeric: 'tabular-nums' }}>
+                {formatARS(weekFixed)}
+              </p>
+            </div>
+          </div>
+        )}
       </button>
 
       {/* Budget cards */}
@@ -775,6 +804,11 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
                   </div>
                 </div>
                 <BudgetBar spent={spent} limitArs={limitArs} currency={b.currency} arsPerUsd={arsPerUsd} />
+                {b.category_id == null && (
+                  <p className="text-[11px] mt-2" style={{ color: '#6B6459' }}>
+                    📌 No incluye gastos fijos
+                  </p>
+                )}
               </div>
             );
           })

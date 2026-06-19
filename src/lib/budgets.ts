@@ -26,6 +26,8 @@ export interface BudgetExpenseRow {
   scope: string;
   profile_id: string;
   is_shared: boolean;
+  is_fixed?: boolean | null;
+  source?: string | null;
   occurred_on?: string;
   splits?: SplitRow[] | null;
   // Optional display fields, only needed when listing the rows behind a total.
@@ -35,6 +37,15 @@ export interface BudgetExpenseRow {
 
 export function toArs(amount: number, currency: string | null | undefined, arsPerUsd: number): number {
   return currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount;
+}
+
+/**
+ * A "fixed" expense (rent, psychologist, etc.): either manually flagged or
+ * materialized from a recurring rule. These don't count against TOTAL limits
+ * (which measure discretionary spend) but still count in category budgets.
+ */
+export function isFixedExpense(t: { is_fixed?: boolean | null; source?: string | null }): boolean {
+  return t.is_fixed === true || t.source === 'recurring';
 }
 
 /**
@@ -88,6 +99,9 @@ export function budgetContribution(
 ): number {
   // A total budget (no category) counts every expense; a category budget only its own.
   if (b.category_id != null && t.category_id !== b.category_id) return 0;
+  // Total limits measure discretionary spend, so fixed expenses don't count
+  // against them. Category budgets still count their fixed expenses in full.
+  if (b.category_id == null && isFixedExpense(t)) return 0;
   const owner = b.profile_id ?? viewerProfileId;
   if (b.scope === 'household') {
     return t.scope === 'household' ? toArs(t.amount, t.currency, arsPerUsd) : 0;
@@ -118,4 +132,4 @@ export function weekContribution(
 
 /** SQL column list for fetching expense rows compatible with the helpers above. */
 export const BUDGET_EXPENSE_SELECT =
-  'category_id, amount, currency, scope, profile_id, is_shared, occurred_on, splits(payer_profile_id, ower_profile_id, amount)';
+  'category_id, amount, currency, scope, profile_id, is_shared, is_fixed, source, occurred_on, splits(payer_profile_id, ower_profile_id, amount)';

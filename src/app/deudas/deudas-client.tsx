@@ -401,6 +401,41 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['debts'] });
 
+  // A repayment on a "me deben" debt that's linked to one of your expenses nets
+  // out of that gasto's real cost: the linked transaction's amount drops by what
+  // was just repaid, and is restored if the debt is reopened. We drive it off the
+  // change in paid_amount (delta = oldPaid - newPaid) so settling, partial
+  // payments and reopening all stay consistent no matter the order they happen.
+  async function applyRepaymentNetting(debt: Debt, newPaid: number) {
+    if (debt.direction !== 'owed' || !debt.transaction_id) return;
+    const delta = (debt.paid_amount ?? 0) - newPaid; // negative while paying down
+    if (delta === 0) return;
+    const { data: tx, error } = await supabase
+      .from('transactions')
+      .select('id, amount, currency')
+      .eq('id', debt.transaction_id)
+      .maybeSingle();
+    if (error) throw error;
+    // Skip if the linked gasto was deleted or is in another currency (we'd have
+    // no safe rate to net at); the debt still settles, just without netting.
+    if (!tx || tx.currency !== debt.currency) return;
+    const next = Math.max(0, Number(tx.amount) + delta);
+    const { error: upErr } = await supabase
+      .from('transactions')
+      .update({ amount: next })
+      .eq('id', tx.id);
+    if (upErr) throw upErr;
+  }
+
+  // Netting a repayment moves money, so refresh the same queries the add-expense
+  // sheet does (balances, budgets, analytics) — not just the debts list.
+  const invalidateMoney = () =>
+    Promise.all(
+      ['transactions', 'account-tx', 'spent-by-category', 'category-month-totals', 'budget-expense-rows', 'summary', 'category-tx', 'couple-balance'].map(
+        (key) => qc.invalidateQueries({ queryKey: [key] }),
+      ),
+    );
+
   const createMutation = useMutation({
     mutationFn: async (data: Omit<Debt, 'id' | 'profile_id' | 'paid_amount'>) => {
       const { error } = await supabase.from('debts').insert({
@@ -429,11 +464,19 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
     mutationFn: async (d: Debt) => {
       // Settling pays the debt in full; reopening resets the paid amount so
       // remaining and totals stay coherent either way.
+      const newPaid = d.settled ? 0 : d.amount;
+      // Net the repayment out of the linked gasto BEFORE flipping paid_amount —
+      // the netting delta is read from the debt's current paid_amount.
+      await applyRepaymentNetting(d, newPaid);
       const payload = d.settled ? { settled: false, paid_amount: 0 } : { settled: true, paid_amount: d.amount };
       const { error } = await supabase.from('debts').update(payload).eq('id', d.id);
       if (error) throw error;
     },
-    onSuccess: (_data, d) => { toast.success(d.settled ? 'Marcada como pendiente' : 'Saldada ✓'); invalidate(); },
+    onSuccess: (_data, d) => {
+      toast.success(d.settled ? 'Marcada como pendiente' : 'Saldada ✓');
+      invalidate();
+      invalidateMoney();
+    },
     onError: () => toast.error('No se pudo actualizar.'),
   });
 
@@ -441,6 +484,8 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
     mutationFn: async ({ debt, payment }: { debt: Debt; payment: number }) => {
       // Cap so paid_amount never exceeds the original amount.
       const newPaid = Math.min(debt.paid_amount + payment, debt.amount);
+      // Net the just-paid portion out of the linked gasto (delta off paid_amount).
+      await applyRepaymentNetting(debt, newPaid);
       const { error } = await supabase
         .from('debts')
         .update({ paid_amount: newPaid, settled: newPaid >= debt.amount ? true : debt.settled })
@@ -451,6 +496,7 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
       toast.success(debt.paid_amount + payment >= debt.amount ? 'Deuda saldada ✓' : 'Pago registrado ✓');
       setPartialDebt(null);
       invalidate();
+      invalidateMoney();
     },
     onError: () => toast.error('No se pudo registrar el pago.'),
   });

@@ -387,7 +387,7 @@ export default function HomeClient({
       const { data } = await supabase
         .from('transactions')
         .select(
-          'amount, type, occurred_on, profile_id, category_id, currency, scope, is_shared, splits(payer_profile_id, ower_profile_id, amount)',
+          'amount, type, occurred_on, profile_id, category_id, currency, scope, is_shared, is_fixed, source, splits(payer_profile_id, ower_profile_id, amount)',
         )
         .eq('household_id', profile.household_id)
         .gte('occurred_on', rowsStart)
@@ -529,15 +529,20 @@ export default function HomeClient({
   // In Mío/Pareja a shared expense counts as that person's SHARE (via the
   // split), no matter who fronted the money — the same rule the budget cards
   // and the budgets page use. "Nuestro" counts every expense once, in full.
-  const { monthExpenseTotal, weekExpenseTotal, scopedSpentByCategory } = useMemo(() => {
+  const { monthExpenseTotal, weekExpenseTotal, weekFixedTotal, scopedSpentByCategory } = useMemo(() => {
     const shareOf = (t: (typeof transactions)[number]): number => {
       if (!scopeProfileId) return toArs(t.amount, t.currency as string | null);
       const row = t as unknown as BudgetExpenseRow;
       if (row.is_shared) return myShareArs(row, scopeProfileId, arsPerUsd);
       return t.profile_id === scopeProfileId ? toArs(t.amount, t.currency as string | null) : 0;
     };
+    // Fixed expenses (manually flagged or materialized from a recurring rule)
+    // don't count against the weekly total limit — only against budgets/totals.
+    const isFixed = (t: (typeof transactions)[number]): boolean =>
+      (t as { is_fixed?: boolean }).is_fixed === true || (t as { source?: string }).source === 'recurring';
     let monthTotal = 0;
     let weekTotal = 0;
+    let weekFixed = 0;
     const byCat: Record<string, number> = {};
     for (const t of transactions) {
       if (t.type !== 'expense') continue;
@@ -547,10 +552,15 @@ export default function HomeClient({
         monthTotal += amt;
         if (t.category_id) byCat[t.category_id] = (byCat[t.category_id] ?? 0) + amt;
       }
-      if (t.occurred_on >= week.start && t.occurred_on <= week.end) weekTotal += amt;
+      if (t.occurred_on >= week.start && t.occurred_on <= week.end) {
+        weekTotal += amt;
+        if (isFixed(t)) weekFixed += amt;
+      }
     }
-    return { monthExpenseTotal: monthTotal, weekExpenseTotal: weekTotal, scopedSpentByCategory: byCat };
+    return { monthExpenseTotal: monthTotal, weekExpenseTotal: weekTotal, weekFixedTotal: weekFixed, scopedSpentByCategory: byCat };
   }, [transactions, scopeProfileId, week, toArs, arsPerUsd, monthStart, monthEnd]);
+  // Discretionary spend that counts against the weekly limit = total minus fixed.
+  const weekVariableTotal = weekExpenseTotal - weekFixedTotal;
   // Savings rate: my income vs MY SHARE of the month's expenses (consistent
   // with the tiles above and the Ahorro page), not just what I fronted.
   const savingsRate = incomeSoFar > 0 ? Math.round(((incomeSoFar - monthExpenseTotal) / incomeSoFar) * 100) : null;
@@ -606,7 +616,9 @@ export default function HomeClient({
     );
     return b ? budgetToArs(b.amount, b.currency, arsPerUsd) : null;
   }, [budgets, scope, profile.id, partnerProfileId, arsPerUsd]);
-  const weekPct = weeklyLimitArs && weeklyLimitArs > 0 ? weekExpenseTotal / weeklyLimitArs : null;
+  // The limit measures discretionary spend, so compare it against the variable
+  // total (fixed expenses excluded), not the full week's spend.
+  const weekPct = weeklyLimitArs && weeklyLimitArs > 0 ? weekVariableTotal / weeklyLimitArs : null;
   const weekBarColor = weekPct == null ? '#FF7F6B' : weekPct >= 1 ? '#FF7F6B' : weekPct >= 0.8 ? '#F5A623' : '#7EC8A4';
 
   const quickTiles = [
@@ -836,10 +848,15 @@ export default function HomeClient({
               </p>
               <p className="text-[11px]" style={{ color: weekPct >= 1 ? '#FF7F6B' : '#6B6459' }}>
                 {weekPct >= 1
-                  ? `+${mask(formatARS(weekExpenseTotal - weeklyLimitArs))} excedido`
-                  : `quedan ${mask(formatARS(weeklyLimitArs - weekExpenseTotal))}`}
+                  ? `+${mask(formatARS(weekVariableTotal - weeklyLimitArs))} excedido`
+                  : `quedan ${mask(formatARS(weeklyLimitArs - weekVariableTotal))}`}
               </p>
             </div>
+            {weekFixedTotal > 0 && (
+              <p className="text-[11px] mt-1" style={{ color: '#6B6459' }}>
+                📌 {mask(formatARS(weekFixedTotal))} en fijos no cuentan para el límite
+              </p>
+            )}
           </div>
         )}
       </Link>

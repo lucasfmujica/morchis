@@ -42,6 +42,7 @@ type Tx = {
   transfer_account_id: string | null;
   scope: string;
   is_shared: boolean;
+  is_fixed: boolean;
   merchant: string | null;
   occurred_on: string;
   profile_id: string;
@@ -139,7 +140,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     queryFn: async () => {
       let query = supabase
         .from('transactions')
-        .select('id, amount, type, currency, category_id, account_id, transfer_account_id, scope, is_shared, merchant, occurred_on, profile_id, installment_number, installment_total, categories:category_id(name, icon)')
+        .select('id, amount, type, currency, category_id, account_id, transfer_account_id, scope, is_shared, is_fixed, merchant, occurred_on, profile_id, installment_number, installment_total, categories:category_id(name, icon)')
         .eq('household_id', profile.household_id);
       if (!fetchAll) query = query.gte('occurred_on', prevMonthStart);
       const { data } = await query
