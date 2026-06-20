@@ -1080,6 +1080,9 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   }, [expenseCats, env.rowByCategory, env.targetByCategory]);
 
   const rta = env.readyToAssign;
+  // "Para asignar" = tu efectivo on-budget − lo ya guardado en categorías (el
+  // disponible positivo de tus sobres). Lo derivamos al revés para el desglose.
+  const funded = env.cash - rta;
   const rtaColor = rta > 0 ? '#5BA886' : rta < 0 ? '#E5604C' : '#6B6459';
   const rtaBg = rta > 0 ? '#E4F2EA' : rta < 0 ? '#FFE7E2' : '#FFFFFF';
 
@@ -1129,7 +1132,12 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
         <p className="text-[11px] mt-1" style={{ color: '#6B6459' }}>
           {rta > 0 ? 'Plata en cuentas todavía sin un trabajo. Asignala a una categoría.' : rta < 0 ? 'Asignaste (o fronteaste) más de lo que tenés. Sacá de alguna categoría.' : 'Cada peso tiene un trabajo. 🎉'}
         </p>
-        <p className="text-[11px] mt-1.5" style={{ color: '#A89B8C' }}>Efectivo on-budget {format(env.cash)} · Asignado este mes {format(env.assignedTotal)}</p>
+        <p className="text-[11px] mt-1.5" style={{ color: '#A89B8C' }}>
+          {editable ? 'Tus cuentas' : 'Sus cuentas'} {format(env.cash)} − en categorías {format(funded)} = {format(rta)}
+        </p>
+        <p className="text-[11px] mt-0.5" style={{ color: '#A89B8C' }}>
+          Solo {editable ? 'tus' : 'sus'} cuentas on-budget · asignado este mes {format(env.assignedTotal)}
+        </p>
         {editable && overspentCount >= 4 && (
           <p className="text-[11px] mt-2 leading-snug" style={{ color: '#6B6459' }}>
             Empezaste a presupuestar a mitad de mes. Tocá <b>Cubrir lo ya gastado</b> para asignar
@@ -1296,8 +1304,14 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
                       else if (target > 0) { statusText = '✓ Meta cumplida'; statusColor = '#5BA886'; }
                       else if (assigned <= 0 && activity <= 0) { statusText = ''; }
                       else if (activity <= 0) { statusText = 'Financiado'; statusColor = '#5BA886'; }
-                      else if (available <= 0) { statusText = 'Gastado todo'; statusColor = '#6B6459'; }
-                      else { statusText = `Gastaste ${fmtCell(activity)} de ${fmtCell(assigned)}`; statusColor = '#6B6459'; }
+                      else {
+                        // YNAB "spent X of Y": Y is what was in the envelope this
+                        // month (assignment + carry-over = activity + leftover). A
+                        // fully-drained envelope reads "· todo".
+                        const pool = activity + Math.max(0, available);
+                        statusText = `Gastaste ${fmtCell(activity)} de ${fmtCell(pool)}${available <= 0 ? ' · todo' : ''}`;
+                        statusColor = '#6B6459';
+                      }
                       return (
                         <div
                           key={c.id}
