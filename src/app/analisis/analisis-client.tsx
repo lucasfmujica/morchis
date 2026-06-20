@@ -9,6 +9,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { MonthlyBars, SingleBars, lastSixMonths } from '@/components/MonthlyBars';
 import { netWorthAt, assetBalance, cardMonthSpend, type AccountRow, type AccountTx } from '@/lib/accounts';
+import { ageOfMoneyDays, type CashFlow } from '@/lib/ageOfMoney';
 import { myShareArs, type SplitRow } from '@/lib/budgets';
 import { toLocalISO } from '@/lib/date';
 import { formatARS } from '@/lib/format';
@@ -114,7 +115,7 @@ export default function AnalisisClient({
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('amount, type, occurred_on, category_id, profile_id, currency, is_shared, scope, splits(payer_profile_id, ower_profile_id, amount)')
+        .select('id, amount, type, occurred_on, category_id, profile_id, currency, is_shared, scope, merchant, splits(payer_profile_id, ower_profile_id, amount)')
         .eq('household_id', profile.household_id)
         .gte('occurred_on', trendRangeStart)
         // Don't pull future-dated installment rows — Análisis only looks back.
@@ -210,6 +211,7 @@ export default function AnalisisClient({
   const inflationActive = constantPesos && inflationRates.length > 0;
 
   type Txn = {
+    id: string;
     amount: number;
     type: string;
     occurred_on: string;
@@ -218,6 +220,7 @@ export default function AnalisisClient({
     currency: string;
     is_shared: boolean;
     scope: string;
+    merchant: string | null;
     splits: SplitRow[] | null;
   };
   const allTxns = txns as Txn[];
@@ -411,6 +414,64 @@ export default function AnalisisClient({
     return { nwRows, currentNetWorth, nwDelta };
   }, [txns, accountTx, scopedAccounts, months, currentKey, todayStr, arsPerUsd]);
 
+  const catById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
+
+  // Age of Money — FIFO-match the scope's cash in (income) vs out (what they
+  // paid). Approximate over the loaded window; null until there's enough flow.
+  const ageOfMoney = useMemo(() => {
+    const flows: CashFlow[] = [];
+    for (const t of allTxns) {
+      if (t.type !== 'income' && t.type !== 'expense') continue;
+      if (scopeProfileId && t.profile_id !== scopeProfileId) continue;
+      const ars = toArs(t.amount, t.currency);
+      if (ars <= 0) continue;
+      flows.push({ date: t.occurred_on, dir: t.type === 'income' ? 'in' : 'out', ars });
+    }
+    return ageOfMoneyDays(flows);
+  }, [allTxns, scopeProfileId, toArs]);
+
+  // Top merchants for the breakdown month (Spending by Payee), by share.
+  const topMerchants = useMemo(() => {
+    const byMerchant = new Map<string, number>();
+    for (const t of allTxns) {
+      if (t.type !== 'expense' || !t.occurred_on.startsWith(bMonth) || t.occurred_on > todayStr) continue;
+      const share = expenseShareArs(t, scopeProfileId);
+      if (share <= 0) continue;
+      const name = t.merchant?.trim() || 'Sin comercio';
+      byMerchant.set(name, (byMerchant.get(name) ?? 0) + share);
+    }
+    const all = [...byMerchant.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+    return { rows: all.slice(0, 6), total: all.reduce((s, r) => s + r.value, 0) };
+  }, [allTxns, bMonth, todayStr, scopeProfileId, expenseShareArs]);
+
+  // Biggest single expenses of the breakdown month.
+  const biggestExpenses = useMemo(() => {
+    const rows: { id: string; merchant: string | null; cat: (typeof categories)[number] | undefined; value: number; date: string }[] = [];
+    for (const t of allTxns) {
+      if (t.type !== 'expense' || !t.occurred_on.startsWith(bMonth) || t.occurred_on > todayStr) continue;
+      const share = expenseShareArs(t, scopeProfileId);
+      if (share <= 0) continue;
+      rows.push({ id: t.id, merchant: t.merchant, cat: catById.get(t.category_id ?? ''), value: share, date: t.occurred_on });
+    }
+    return rows.sort((a, b) => b.value - a.value).slice(0, 5);
+  }, [allTxns, bMonth, todayStr, scopeProfileId, expenseShareArs, catById]);
+
+  // Income by source (category) for the breakdown month.
+  const incomeBySource = useMemo(() => {
+    const byCat = new Map<string, number>();
+    for (const t of allTxns) {
+      if (t.type !== 'income' || !t.occurred_on.startsWith(bMonth) || t.occurred_on > todayStr) continue;
+      if (scopeProfileId && t.profile_id !== scopeProfileId) continue;
+      const ars = toArs(t.amount, t.currency);
+      if (ars <= 0) continue;
+      byCat.set(t.category_id ?? 'none', (byCat.get(t.category_id ?? 'none') ?? 0) + ars);
+    }
+    const rows = [...byCat.entries()]
+      .map(([id, value]) => ({ cat: catById.get(id), value }))
+      .sort((a, b) => b.value - a.value);
+    return { rows, total: rows.reduce((s, r) => s + r.value, 0) };
+  }, [allTxns, bMonth, todayStr, scopeProfileId, toArs, catById]);
+
   async function handleRefresh() {
     setRefreshing(true);
     try {
@@ -512,6 +573,24 @@ export default function AnalisisClient({
           })()}
         </div>
 
+        {/* Age of Money — YNAB Reflect signature metric */}
+        {ageOfMoney != null && (
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+            <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6B6459' }}>🕰️ Antigüedad del dinero</p>
+            <div className="flex items-end gap-2">
+              <p className="text-3xl font-black leading-none" style={{ color: '#2D2D2D', fontVariantNumeric: 'tabular-nums' }}>{ageOfMoney}</p>
+              <p className="text-sm font-bold mb-0.5" style={{ color: '#6B6459' }}>{ageOfMoney === 1 ? 'día' : 'días'}</p>
+            </div>
+            <p className="text-[11px] mt-2" style={{ color: '#6B6459' }}>
+              {ageOfMoney < 30
+                ? 'Gastás plata que entró hace poco — vivís bastante al día.'
+                : ageOfMoney < 60
+                  ? 'Buen colchón: gastás plata de hace más de un mes.'
+                  : 'Gran colchón: la plata que gastás tiene más de dos meses. 🎉'}
+            </p>
+          </div>
+        )}
+
         {/* Savings rate vs target */}
         {savingsVsTarget.rate != null && (
           <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
@@ -599,6 +678,48 @@ export default function AnalisisClient({
           )}
         </div>
 
+        {/* Top merchants (Spending by Payee) */}
+        {topMerchants.rows.length > 0 && (
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>🏪 Top comercios · {bMonthLabel}</p>
+            <div className="flex flex-col gap-2.5">
+              {topMerchants.rows.map((r) => {
+                const pct = topMerchants.total > 0 ? Math.round((r.value / topMerchants.total) * 100) : 0;
+                return (
+                  <div key={r.name}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{r.name}</span>
+                      <span className="text-sm font-black tabular-nums ml-2 shrink-0" style={{ color: '#2D2D2D' }}>{formatARS(r.value)}</span>
+                    </div>
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#F1ECE4' }}>
+                      <div className="h-full rounded-full" style={{ width: `${pct}%`, background: '#7EC8A4' }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Biggest single expenses */}
+        {biggestExpenses.length > 0 && (
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>💸 Gastos más grandes · {bMonthLabel}</p>
+            <div className="flex flex-col gap-2.5">
+              {biggestExpenses.map((e) => (
+                <div key={e.id} className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-base shrink-0" style={{ background: '#F9F5F0' }}>{e.cat?.icon || '🧾'}</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{e.merchant || e.cat?.name || 'Gasto'}</p>
+                    <p className="text-[11px]" style={{ color: '#6B6459' }}>{e.date.slice(8, 10)}/{e.date.slice(5, 7)}{e.cat ? ` · ${e.cat.name}` : ''}</p>
+                  </div>
+                  <span className="text-sm font-black tabular-nums shrink-0" style={{ color: '#FF7F6B' }}>{formatARS(e.value)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Income vs expense trend (6M/12M, nominal or constant pesos) */}
         <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
           {spendingInsight != null && (
@@ -675,6 +796,30 @@ export default function AnalisisClient({
             </div>
           )}
         </div>
+
+        {/* Income by source */}
+        {incomeBySource.rows.length > 0 && (
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>💵 Ingresos por fuente · {bMonthLabel}</p>
+            <div className="flex flex-col gap-2.5">
+              {incomeBySource.rows.map((r, i) => {
+                const pct = incomeBySource.total > 0 ? Math.round((r.value / incomeBySource.total) * 100) : 0;
+                return (
+                  <div key={r.cat?.id ?? `none-${i}`} className="flex items-center gap-3">
+                    <span className="text-base shrink-0">{r.cat?.icon || '💰'}</span>
+                    <span className="flex-1 text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{r.cat?.name || 'Sin categoría'}</span>
+                    <span className="text-xs font-bold tabular-nums" style={{ color: '#6B6459' }}>{pct}%</span>
+                    <span className="text-sm font-black tabular-nums shrink-0 text-right" style={{ color: '#5BA886', minWidth: '5.5rem' }}>{formatARS(r.value)}</span>
+                  </div>
+                );
+              })}
+              <div className="flex items-center justify-between pt-2 mt-1" style={{ borderTop: '1px solid #ECE5DC' }}>
+                <span className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Total</span>
+                <span className="text-sm font-black tabular-nums" style={{ color: '#5BA886' }}>{formatARS(incomeBySource.total)}</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Per-person comparison */}
         {personRows.length > 1 && (
