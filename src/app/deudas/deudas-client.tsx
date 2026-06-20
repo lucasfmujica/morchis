@@ -530,63 +530,77 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
     // "pagaste" only when the viewer is the one paying down their own debt;
     // otherwise it's the counterparty (or the partner) who paid.
     const paidVerb = isMine && debt.direction === 'owe' ? 'pagaste' : 'pagó';
+    const paidPct = debt.amount > 0 ? Math.min(100, Math.round((debt.paid_amount / debt.amount) * 100)) : 0;
+    const accent = debt.direction === 'owe' ? '#FF7F6B' : '#7EC8A4';
     return (
-      <div className="flex items-center gap-3 px-5 py-4" style={{ borderTop: '1px solid #ECE5DC' }}>
-        <div
-          className="w-9 h-9 rounded-full flex items-center justify-center text-lg flex-shrink-0"
-          style={{ background: debt.direction === 'owe' ? '#FFE7E2' : '#E4F2EA', opacity: debt.settled ? 0.5 : 1 }}
-        >
-          {debt.direction === 'owe' ? '💸' : '🤝'}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-bold text-sm truncate" style={{ color: '#2D2D2D' }}>
-            {title}
-          </p>
-          <p className="text-xs" style={{ color: '#6B6459' }}>
-            {debt.settled ? 'Saldada' : 'Pendiente'}{debt.note ? ` · ${debt.note}` : ''}{debt.transaction_id ? ' · 🔗 gasto' : ''}
-          </p>
-          {partiallyPaid && (
-            <p className="text-[11px] font-semibold" style={{ color: '#5BA886' }}>
-              {paidVerb} {fmtMoney(debt.paid_amount, debt.currency)} de {fmtMoney(debt.amount, debt.currency)}
+      <div className="px-4 py-3.5" style={{ borderTop: '1px solid #ECE5DC', opacity: debt.settled ? 0.6 : 1 }}>
+        {/* Top: who/what + the prominent amount */}
+        <div className="flex items-center gap-3">
+          <div
+            className="w-9 h-9 rounded-full flex items-center justify-center text-lg shrink-0"
+            style={{ background: debt.direction === 'owe' ? '#FFE7E2' : '#E4F2EA' }}
+          >
+            {debt.direction === 'owe' ? '💸' : '🤝'}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-sm truncate" style={{ color: '#2D2D2D' }}>{title}</p>
+            <p className="text-[11px] truncate" style={{ color: '#6B6459' }}>
+              {debt.settled ? 'Saldada' : 'Pendiente'}{debt.note ? ` · ${debt.note}` : ''}{debt.transaction_id ? ' · 🔗' : ''}
             </p>
-          )}
+          </div>
+          <div className="text-right shrink-0">
+            {/* Unsettled cards show what's still pending, not the original total. */}
+            <p className="font-black text-base tabular-nums leading-tight" style={{ color: accent }}>
+              {fmtMoney(debt.settled ? debt.amount : remaining, debt.currency)}
+            </p>
+            {partiallyPaid && (
+              <p className="text-[10px] tabular-nums" style={{ color: '#A89B8C' }}>de {fmtMoney(debt.amount, debt.currency)}</p>
+            )}
+          </div>
         </div>
-        <p
-          className="font-black text-sm flex-shrink-0"
-          style={{ color: debt.direction === 'owe' ? '#FF7F6B' : '#7EC8A4', opacity: debt.settled ? 0.5 : 1 }}
-        >
-          {/* Unsettled cards show what's still pending, not the original total. */}
-          {fmtMoney(debt.settled ? debt.amount : remaining, debt.currency)}
-        </p>
-        <div className="flex gap-1 ml-2 flex-shrink-0">
+
+        {/* Partial-payment progress */}
+        {partiallyPaid && (
+          <div className="mt-2 ml-12">
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#F1ECE4' }}>
+              <div className="h-full rounded-full" style={{ width: `${paidPct}%`, background: '#7EC8A4' }} />
+            </div>
+            <p className="text-[10px] mt-1 font-semibold" style={{ color: '#5BA886' }}>
+              {paidVerb} {fmtMoney(debt.paid_amount, debt.currency)} ({paidPct}%)
+            </p>
+          </div>
+        )}
+
+        {/* Actions get their own row so nothing crowds the amount */}
+        <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: '1px solid #F1ECE4' }}>
           <button
             onClick={() => toggleSettled.mutate(debt)}
-            className="text-xs px-2 py-1 rounded-lg border"
-            style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
-            title={debt.settled ? 'Marcar pendiente' : 'Marcar saldada'}
+            className="flex-1 text-xs font-bold py-2 rounded-xl"
+            style={{ background: debt.settled ? '#F9F5F0' : '#E4F2EA', color: debt.settled ? '#6B6459' : '#5BA886' }}
           >
-            {debt.settled ? '↩️' : '✓'}
+            {debt.settled ? '↩️ Reabrir' : '✓ Saldar'}
           </button>
           {!debt.settled && isMine && (
             <button
               onClick={() => { setShowForm(false); setEditDebt(null); setPartialDebt(debt); }}
-              className="text-xs px-2 py-1 rounded-lg border"
-              style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
-              title="Pago parcial"
+              className="flex-1 text-xs font-bold py-2 rounded-xl"
+              style={{ background: '#E7EFFB', color: '#5B8DEF' }}
             >
-              💵
+              💵 Pago
             </button>
           )}
           <button
             onClick={() => { setPartialDebt(null); setEditDebt(debt); }}
-            className="text-xs px-2 py-1 rounded-lg border"
+            aria-label="Editar"
+            className="px-3 py-2 text-xs rounded-xl border"
             style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
           >
             ✏️
           </button>
           <button
             onClick={() => setConfirmDelete(debt)}
-            className="text-xs px-2 py-1 rounded-lg border"
+            aria-label="Eliminar"
+            className="px-3 py-2 text-xs rounded-xl border"
             style={{ borderColor: '#FFE7E2', color: '#FF7F6B' }}
           >
             🗑
