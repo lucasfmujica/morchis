@@ -137,25 +137,41 @@ async function getBalances(ctx: Ctx) {
 
 async function getBudgets(ctx: Ctx) {
   const now = new Date(); const y = now.getFullYear(), m = now.getMonth();
+  // Envelope model: a category's "budget" is its monthly target (category_targets).
   const [{ data: buds }, { data: exp }] = await Promise.all([
-    ctx.admin.from('budgets').select('amount,currency,scope,profile_id,categories(name)').eq('household_id', ctx.hid).eq('active', true),
+    ctx.admin.from('category_targets').select('target_amount,currency,profile_id,categories(name)').eq('household_id', ctx.hid),
     ctx.admin.from('transactions').select('id,categories(name),profile_id,scope,is_shared,amount,currency,usd_rate_snapshot,splits(payer_profile_id,ower_profile_id,amount)').eq('household_id', ctx.hid).eq('type', 'expense').gte('occurred_on', iso(y, m, 1)).lt('occurred_on', iso(y, m + 1, 1)),
   ]);
   const rows = (exp ?? []) as (ExpRow & { categories: { name: string } | null })[];
   return {
-    budgets: ((buds ?? []) as { amount: number; currency: string; scope: string; profile_id: string | null; categories: { name: string } | null }[]).map(b => {
+    budgets: ((buds ?? []) as { target_amount: number; currency: string; profile_id: string | null; categories: { name: string } | null }[]).map(b => {
       const name = b.categories?.name ?? '';
-      const limit = b.currency === 'USD' ? b.amount * ctx.blue : b.amount;
-      const lens = b.scope === 'household' ? 'household' : (b.profile_id ?? ctx.askerId);
+      const limit = b.currency === 'USD' ? b.target_amount * ctx.blue : b.target_amount;
+      const lens = b.profile_id ?? ctx.askerId;
       const spent = rows.filter(t => (t.categories?.name ?? '') === name).reduce((s, t) => s + shareForExpense(t, lens, ctx), 0);
-      return { category: name, scope: b.scope, owner: b.profile_id ? (ctx.pm[b.profile_id] ?? null) : null, spent_ars: Math.round(spent), limit_ars: Math.round(limit), pct: limit > 0 ? Math.round(spent / limit * 100) : 0 };
+      return { category: name, scope: 'personal', owner: b.profile_id ? (ctx.pm[b.profile_id] ?? null) : null, spent_ars: Math.round(spent), limit_ars: Math.round(limit), pct: limit > 0 ? Math.round(spent / limit * 100) : 0 };
     }),
   };
 }
 
 async function getGoals(ctx: Ctx) {
-  const { data } = await ctx.admin.from('goals').select('name,target_amount,current_amount,target_currency,deadline,scope,profile_id').eq('household_id', ctx.hid).eq('archived', false);
-  return { goals: ((data ?? []) as { name: string; target_amount: number; current_amount: number; target_currency: string; deadline: string | null; scope: string; profile_id: string | null }[]).map(g => ({ name: g.name, scope: g.scope, owner: g.profile_id ? (ctx.pm[g.profile_id] ?? null) : null, current: Math.round(g.current_amount), target: Math.round(g.target_amount), currency: g.target_currency, pct: g.target_amount > 0 ? Math.round(g.current_amount / g.target_amount * 100) : 0, deadline: g.deadline })) };
+  // Savings goals are is_goal categories with a target; progress = Σ assigned to date.
+  const [{ data: cats }, { data: tgts }, { data: bm }] = await Promise.all([
+    ctx.admin.from('categories').select('id,name').eq('household_id', ctx.hid).eq('is_goal', true),
+    ctx.admin.from('category_targets').select('category_id,target_amount,currency,target_date,profile_id').eq('household_id', ctx.hid),
+    ctx.admin.from('budget_months').select('category_id,assigned,currency').eq('household_id', ctx.hid),
+  ]);
+  const targets = (tgts ?? []) as { category_id: string; target_amount: number; currency: string; target_date: string | null; profile_id: string | null }[];
+  const assigned = (bm ?? []) as { category_id: string; assigned: number; currency: string }[];
+  return {
+    goals: ((cats ?? []) as { id: string; name: string }[]).map(c => {
+      const t = targets.find(x => x.category_id === c.id);
+      if (!t) return null;
+      const current = assigned.filter(a => a.category_id === c.id).reduce((s, a) => s + (a.currency === 'USD' ? a.assigned * ctx.blue : a.assigned), 0);
+      const target = t.currency === 'USD' ? t.target_amount * ctx.blue : t.target_amount;
+      return { name: c.name, scope: 'personal', owner: t.profile_id ? (ctx.pm[t.profile_id] ?? null) : null, current: Math.round(current), target: Math.round(target), currency: 'ARS', pct: target > 0 ? Math.round(current / target * 100) : 0, deadline: t.target_date };
+    }).filter(Boolean),
+  };
 }
 
 async function getDebts(ctx: Ctx) {
@@ -164,8 +180,7 @@ async function getDebts(ctx: Ctx) {
 }
 
 async function getRecurring(ctx: Ctx) {
-  // goal_id is null: goal auto-contributions are savings, not fixed expenses.
-  const { data } = await ctx.admin.from('recurring_rules').select('label,amount,currency,cadence,direction,scope,profile_id,categories(name)').eq('household_id', ctx.hid).eq('active', true).is('goal_id', null);
+  const { data } = await ctx.admin.from('recurring_rules').select('label,amount,currency,cadence,direction,scope,profile_id,categories(name)').eq('household_id', ctx.hid).eq('active', true);
   const rows = ((data ?? []) as { label: string; amount: number; currency: string; cadence: string; direction: string; scope: string; profile_id: string; categories: { name: string } | null }[]).map(r => ({
     label: r.label, direction: r.direction, category: r.categories?.name ?? null, scope: r.scope, owner: ctx.pm[r.profile_id] ?? null,
     monthly_ars: Math.round((r.currency === 'USD' ? r.amount * ctx.blue : r.amount) * (MONTHLY[r.cadence] ?? 1)), cadence: r.cadence,

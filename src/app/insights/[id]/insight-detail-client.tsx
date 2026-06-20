@@ -275,17 +275,17 @@ function CategoryInsightSection({
   });
 
   const { data: budget = 0 } = useQuery<number>({
-    queryKey: ['category-budget', matchedCat?.id, arsPerUsd],
+    queryKey: ['category-target', matchedCat?.id, arsPerUsd],
     enabled: !!matchedCat && matchedCat.kind === 'expense',
     queryFn: async () => {
+      // The envelope-model "budget" for a category is its monthly target.
       const { data } = await supabase
-        .from('budgets')
-        .select('amount, currency')
+        .from('category_targets')
+        .select('target_amount, currency')
         .eq('household_id', householdId)
-        .eq('category_id', matchedCat!.id)
-        .eq('active', true);
+        .eq('category_id', matchedCat!.id);
       return (data ?? []).reduce(
-        (s, b) => s + (b.currency === 'USD' && arsPerUsd > 0 ? Math.round(b.amount * arsPerUsd) : b.amount),
+        (s, b) => s + (b.currency === 'USD' && arsPerUsd > 0 ? Math.round(b.target_amount * arsPerUsd) : b.target_amount),
         0,
       );
     },

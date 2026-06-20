@@ -37,15 +37,9 @@ interface Rule {
   profile_id: string;
   category_id: string | null;
   account_id: string | null;
-  // Rules with goal_id auto-contribute to a savings goal (created from the
-  // goal screen): they are not cash transactions, so they live outside the
-  // fixed income/expense lists and the monthly math.
-  goal_id: string | null;
 }
 
-// What the rule form produces: goal rules are never edited here, so goal_id
-// stays out of the payload.
-type RuleFormData = Omit<Rule, 'id' | 'profile_id' | 'goal_id'>;
+type RuleFormData = Omit<Rule, 'id' | 'profile_id'>;
 
 interface AccountOption {
   id: string;
@@ -583,7 +577,7 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('recurring_rules')
-        .select('id, direction, label, amount, currency, cadence, anchor_day, next_run, active, scope, profile_id, category_id, account_id, goal_id')
+        .select('id, direction, label, amount, currency, cadence, anchor_day, next_run, active, scope, profile_id, category_id, account_id')
         .eq('household_id', profile.household_id)
         .order('direction')
         .order('label');
@@ -699,19 +693,6 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
     onError: () => toast.error('No se pudo actualizar la regla.'),
   });
 
-  // Pause/resume a goal-contribution rule (the only edit allowed here).
-  const toggleGoalRuleMutation = useMutation({
-    mutationFn: async ({ id, active }: { id: string; active: boolean }) => {
-      const { error } = await supabase.from('recurring_rules').update({ active }).eq('id', id);
-      if (error) throw error;
-    },
-    onSuccess: (_d, { active }) => {
-      toast.success(active ? 'Aporte reanudado ✓' : 'Aporte pausado');
-      invalidate();
-    },
-    onError: () => toast.error('No se pudo actualizar el aporte.'),
-  });
-
   // Pre-create a monthly rule from a detected subscription. The scope/profile
   // come from the most recent occurrence, not from the current user.
   const createFromSuggestionMutation = useMutation({
@@ -749,11 +730,7 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
     onError: () => toast.error('No se pudo eliminar la regla.'),
   });
 
-  // Goal-contribution rules are not cash transactions: keep them out of the
-  // fixed lists, the monthly summary and the upcoming bills, and show them in
-  // their own section below.
-  const cashRules = rules.filter((r) => r.goal_id == null);
-  const goalRules = rules.filter((r) => r.goal_id != null);
+  const cashRules = rules;
   const income = cashRules.filter((r) => r.direction === 'income');
   const expenses = cashRules.filter((r) => r.direction === 'expense');
 
@@ -905,54 +882,6 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
               </p>
             </div>
             {expenses.map((r) => <RuleCard key={r.id} rule={r} />)}
-          </div>
-        )}
-
-        {/* Goal-contribution rules: created from the goal screen, only
-            pause/resume and delete here (the rest is managed over there). */}
-        {!showForm && !editRule && goalRules.length > 0 && (
-          <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
-            <div className="px-5 py-3" style={{ borderBottom: '1px solid #ECE5DC' }}>
-              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5B8DEF' }}>
-                💰 Aportes automáticos a metas
-              </p>
-            </div>
-            {goalRules.map((r) => (
-              <div
-                key={r.id}
-                className="flex items-center gap-3 px-5 py-4"
-                style={{ borderTop: '1px solid #ECE5DC' }}
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-sm truncate" style={{ color: '#2D2D2D' }}>{r.label}</p>
-                  <p className="text-xs" style={{ color: '#6B6459' }}>
-                    día {r.anchor_day ?? '—'}
-                    {!r.active ? ' · pausado' : ''}
-                  </p>
-                </div>
-                <p className="font-black text-sm flex-shrink-0" style={{ color: '#5B8DEF' }}>
-                  {fmtMoney(r.amount, r.currency)}
-                </p>
-                <div className="flex gap-1 ml-2 flex-shrink-0">
-                  <button
-                    onClick={() => toggleGoalRuleMutation.mutate({ id: r.id, active: !r.active })}
-                    aria-label={r.active ? `Pausar ${r.label}` : `Reanudar ${r.label}`}
-                    className="text-xs px-2 py-1 rounded-lg border"
-                    style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
-                  >
-                    {r.active ? '⏸' : '▶'}
-                  </button>
-                  <button
-                    onClick={() => setConfirmDeleteRule(r)}
-                    aria-label={`Eliminar ${r.label}`}
-                    className="text-xs px-2 py-1 rounded-lg border"
-                    style={{ borderColor: '#FFE7E2', color: '#FF7F6B' }}
-                  >
-                    🗑
-                  </button>
-                </div>
-              </div>
-            ))}
           </div>
         )}
 

@@ -100,14 +100,12 @@ Deno.serve(async (req: Request) => {
   const ms = `${year}-${String(month+1).padStart(2,'0')}-01`;
   const me = `${year}-${String(month+1).padStart(2,'0')}-${String(new Date(Date.UTC(year,month+1,0)).getUTCDate()).padStart(2,'0')}`;
 
-  const [txR, rulesR, goalsR, budgetsR, catsR, fxR] = await Promise.all([
+  const [txR, rulesR, catsR, targetsR, assignedR, fxR] = await Promise.all([
     admin.from('transactions').select('type,amount,occurred_on,category_id,currency,usd_rate_snapshot').eq('household_id',hid).gte('occurred_on',ms).lte('occurred_on',me),
-    // goal_id is null: goal auto-contributions are virtual (no transaction),
-    // so they must not count as upcoming cash outflow.
-    admin.from('recurring_rules').select('direction,amount,next_run,active,cadence,currency').eq('household_id',hid).eq('active',true).is('goal_id',null),
-    admin.from('goals').select('id,name,icon,target_amount,current_amount,deadline,target_currency').eq('household_id',hid).eq('archived',false),
-    admin.from('budgets').select('category_id,amount,currency').eq('household_id',hid).eq('active',true),
-    admin.from('categories').select('id,name').eq('household_id',hid),
+    admin.from('recurring_rules').select('direction,amount,next_run,active,cadence,currency').eq('household_id',hid).eq('active',true),
+    admin.from('categories').select('id,name,icon,is_goal').eq('household_id',hid),
+    admin.from('category_targets').select('category_id,target_amount,currency,cadence,target_date').eq('household_id',hid),
+    admin.from('budget_months').select('category_id,assigned,currency').eq('household_id',hid),
     admin.from('fx_rates').select('ars_per_usd').eq('source','blue').order('date',{ascending:false}).limit(1).maybeSingle(),
   ]);
 
@@ -121,10 +119,18 @@ Deno.serve(async (req: Request) => {
   const txs = rawTx.map(t => ({ type:t.type, occurred_on:t.occurred_on, category_id:t.category_id, amount: toArs(t.amount, t.currency, t.usd_rate_snapshot) }));
   const rules = ((rulesR.data ?? []) as { direction:string; amount:number; next_run:string|null; active:boolean; cadence:string|null; currency:string|null }[])
     .map(r => ({ direction:r.direction, next_run:r.next_run, active:r.active, cadence:r.cadence, amount: toArs(r.amount, r.currency) }));
-  const goals = (goalsR.data ?? []) as { id:string; name:string; icon:string|null; target_amount:number; current_amount:number; deadline:string|null; target_currency:string }[];
-  const budgets = ((budgetsR.data ?? []) as { category_id:string; amount:number; currency:string|null }[])
-    .map(b => ({ category_id:b.category_id, amount: toArs(b.amount, b.currency) }));
-  const categories = (catsR.data ?? []) as { id:string; name:string }[];
+  const categories = (catsR.data ?? []) as { id:string; name:string; icon:string|null; is_goal:boolean }[];
+  const targets = (targetsR.data ?? []) as { category_id:string; target_amount:number; currency:string|null; cadence:string; target_date:string|null }[];
+  const assignedRows = (assignedR.data ?? []) as { category_id:string; assigned:number; currency:string|null }[];
+  // Envelope-model "budget" per category = its target amount.
+  const budgets = targets.map(t => ({ category_id: t.category_id, amount: toArs(t.target_amount, t.currency) }));
+  // Savings goals = is_goal categories with a target; progress = Σ assigned to date.
+  const goals = (categories.filter(c => c.is_goal).map(c => {
+    const t = targets.find(tt => tt.category_id === c.id);
+    if (!t) return null;
+    const current = assignedRows.filter(a => a.category_id === c.id).reduce((s, a) => s + toArs(a.assigned, a.currency), 0);
+    return { id: c.id, name: c.name, icon: c.icon, target_amount: toArs(t.target_amount, t.currency), current_amount: current, deadline: t.target_date, target_currency: 'ARS' };
+  }).filter(Boolean)) as { id:string; name:string; icon:string|null; target_amount:number; current_amount:number; deadline:string|null; target_currency:string }[];
 
   // ── 2. Claude Sonnet — parse NL text ─────────────────────────────────────
   const parseResp = await fetch(ANTHROPIC_API_URL, {
