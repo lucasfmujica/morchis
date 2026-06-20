@@ -28,7 +28,10 @@ type Tx = {
 };
 
 type ItemRow = {
+  id: string;
   transaction_id: string;
+  name: string;
+  qty: number | null;
   line_total: number;
   item_group: string;
 };
@@ -58,6 +61,8 @@ export default function SuperClient({ profile }: { profile: Profile }) {
   const [range, setRange] = useState<Range>('month');
   // Tapped purchase → opens the editable per-purchase detail sheet.
   const [openTx, setOpenTx] = useState<Tx | null>(null);
+  // Tapped breakdown group → drill into the individual items in that rubro.
+  const [drillGroup, setDrillGroup] = useState<string | null>(null);
 
   // Grocery category ids (so the transaction query can filter server-side).
   const { data: groceryIds = [] } = useQuery<string[]>({
@@ -92,11 +97,14 @@ export default function SuperClient({ profile }: { profile: Profile }) {
   // Scanned line-items for the household, used for the food-group breakdown and
   // to tell which purchases have detail.
   const { data: itemRows = [] } = useQuery<ItemRow[]>({
-    queryKey: ['super-items', profile.household_id],
+    // 'v2' busts any stale cache from the earlier query shape that didn't select
+    // `name` (a 5-min staleTime was serving it as "Sin nombre"). The invalidation
+    // in ReceiptItemsSheet uses the ['super-items'] prefix, so it still matches.
+    queryKey: ['super-items', profile.household_id, 'v2'],
     queryFn: async () => {
       const { data } = await supabase
         .from('transaction_items')
-        .select('transaction_id, line_total, item_group')
+        .select('id, transaction_id, name, qty, line_total, item_group')
         .eq('household_id', profile.household_id);
       return (data as ItemRow[]) ?? [];
     },
@@ -164,6 +172,33 @@ export default function SuperClient({ profile }: { profile: Profile }) {
       .filter((x) => x.total > 0)
       .sort((a, b) => b.total - a.total);
     return { groups, sum };
+  }, [visible, itemsByTx, toArs]);
+
+  // Individual items grouped by rubro (for the drill-down), each carrying the
+  // purchase it came from. Built over the same visible+itemised set.
+  const itemsByGroup = useMemo(() => {
+    const map = new Map<
+      string,
+      { id: string; name: string; qty: number | null; ars: number; merchant: string | null; occurred_on: string }[]
+    >();
+    for (const tx of visible) {
+      const rows = itemsByTx.get(tx.id);
+      if (!rows) continue;
+      for (const r of rows) {
+        const arr = map.get(r.item_group) ?? [];
+        arr.push({
+          id: r.id,
+          name: r.name,
+          qty: r.qty,
+          ars: toArs(Number(r.line_total), tx.currency),
+          merchant: tx.merchant,
+          occurred_on: tx.occurred_on,
+        });
+        map.set(r.item_group, arr);
+      }
+    }
+    for (const arr of map.values()) arr.sort((a, b) => b.ars - a.ars);
+    return map;
   }, [visible, itemsByTx, toArs]);
 
   // One card per purchase (newest first), with its item count.
@@ -243,18 +278,21 @@ export default function SuperClient({ profile }: { profile: Profile }) {
                   {byGroup.groups.map(({ g, total }) => {
                     const meta = groupMeta(g);
                     const pct = byGroup.sum > 0 ? Math.round((total / byGroup.sum) * 100) : 0;
+                    const n = itemsByGroup.get(g)?.length ?? 0;
                     return (
-                      <div key={g}>
+                      <button key={g} onClick={() => setDrillGroup(g)} className="text-left w-full">
                         <div className="flex items-center gap-2 mb-1.5">
                           <span className="text-sm">{meta.icon}</span>
                           <span className="text-sm capitalize flex-1 truncate" style={{ color: '#2D2D2D' }}>{g}</span>
                           <span className="text-[11px] font-semibold tabular-nums" style={{ color: '#A89B8C' }}>{pct}%</span>
                           <span className="text-sm font-bold tabular-nums" style={{ color: meta.color }}>{format(total)}</span>
+                          <span className="text-xs" style={{ color: '#C4B9AE' }}>›</span>
                         </div>
                         <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#F1ECE4' }}>
                           <div className="h-full rounded-full" style={{ width: `${Math.max(pct, 3)}%`, background: meta.color }} />
                         </div>
-                      </div>
+                        <p className="text-[10px] mt-1" style={{ color: '#C4B9AE' }}>{n} producto{n !== 1 ? 's' : ''} · tocá para ver</p>
+                      </button>
                     );
                   })}
                 </div>
@@ -307,6 +345,51 @@ export default function SuperClient({ profile }: { profile: Profile }) {
           </>
         )}
       </div>
+
+      {/* Drill-down: all items in a tapped rubro, across the period's purchases */}
+      {drillGroup && (() => {
+        const list = itemsByGroup.get(drillGroup) ?? [];
+        const meta = groupMeta(drillGroup);
+        const groupTotal = list.reduce((s, it) => s + it.ars, 0);
+        return (
+          <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={() => setDrillGroup(null)}>
+            <div
+              className="w-full rounded-t-3xl p-6 max-h-[78vh] overflow-y-auto"
+              style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xl">{meta.icon}</span>
+                <h2 className="text-lg font-black capitalize flex-1" style={{ color: '#2D2D2D' }}>{drillGroup}</h2>
+                <span className="text-lg font-black tabular-nums" style={{ color: meta.color }}>{format(groupTotal)}</span>
+              </div>
+              <p className="text-xs mb-4" style={{ color: '#6B6459' }}>
+                {list.length} producto{list.length !== 1 ? 's' : ''} · {rangeLabel}
+              </p>
+              <div className="flex flex-col">
+                {list.map((it, i) => (
+                  <div
+                    key={it.id}
+                    className="flex items-center gap-3 py-2.5"
+                    style={{ borderTop: i > 0 ? '1px solid #F1ECE4' : 'none' }}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm truncate" style={{ color: '#2D2D2D' }}>
+                        {it.qty && it.qty > 1 ? `${it.qty}× ` : ''}{it.name || 'Sin nombre'}
+                      </p>
+                      <p className="text-[11px] truncate" style={{ color: '#A89B8C' }}>
+                        {it.merchant || 'Compra'} · {new Date(it.occurred_on + 'T00:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}
+                      </p>
+                    </div>
+                    <span className="text-sm font-bold tabular-nums shrink-0" style={{ color: '#2D2D2D' }}>{format(it.ars)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <ReceiptItemsSheet
         open={!!openTx}
