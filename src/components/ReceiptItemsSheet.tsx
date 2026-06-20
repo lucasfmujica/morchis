@@ -175,12 +175,47 @@ export function ReceiptItemsSheet({
         if (error) throw error;
       }
 
-      await qc.invalidateQueries({ queryKey: ['transaction-items', transactionId] });
-      await qc.invalidateQueries({ queryKey: ['super-items'] });
+      await invalidateItemQueries();
       toast.success('Productos actualizados ✓');
       setEditing(false);
     } catch (e) {
       toast.error('No se pudo guardar. Intentá de nuevo.');
+      console.error(e);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function invalidateItemQueries() {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ['transaction-items', transactionId] }),
+      qc.invalidateQueries({ queryKey: ['super-items'] }),
+      // The /movimientos "🧾 Productos" chip keys off this set, so a purchase
+      // that just got its first item should start showing the badge.
+      qc.invalidateQueries({ queryKey: ['transaction-item-ids'] }),
+    ]);
+  }
+
+  // Quick path for a no-detail purchase that's all one rubro (e.g. a verdulería
+  // or panadería ticket): drop a single item for the whole amount in that group,
+  // so it counts in the breakdown without itemising product by product.
+  async function assignWholeToGroup(group: string) {
+    if (!transactionId || total <= 0) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase.from('transaction_items').insert({
+        household_id: householdId,
+        transaction_id: transactionId,
+        name: merchant?.trim() || 'Compra',
+        qty: 1,
+        line_total: total,
+        item_group: group,
+      });
+      if (error) throw error;
+      await invalidateItemQueries();
+      toast.success(`Asignado a ${group} ✓`);
+    } catch (e) {
+      toast.error('No se pudo asignar. Intentá de nuevo.');
       console.error(e);
     } finally {
       setSaving(false);

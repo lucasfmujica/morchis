@@ -12,8 +12,8 @@ const LIMIT = Number(process.argv[2] || 200);
 
   let lastSplitId = null;
   page.on('request', (r) => {
-    const m = r.url().match(/transactions\?select=usd_rate_snapshot,splits[^&]*&id=eq\.([^&]+)/);
-    if (m) lastSplitId = decodeURIComponent(m[1]);
+    const m = decodeURIComponent(r.url()).match(/transactions\?select=usd_rate_snapshot,splits[^&]*&id=eq\.([^&]+)/);
+    if (m) lastSplitId = m[1];
   });
   page.on('console', (m) => { if (m.type() === 'error' && m.text().includes('DEBUG editTx missing id')) console.log('   >>> ' + m.text()); });
 

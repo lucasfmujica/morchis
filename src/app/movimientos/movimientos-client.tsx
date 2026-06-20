@@ -12,7 +12,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { exportTransactionsToCSV } from '@/lib/csvExport';
 import { formatARS } from '@/lib/format';
 import { FLAG_COLORS, flagHex } from '@/lib/flags';
-import { todayISO, toLocalISO, weekRange, shortDM } from '@/lib/date';
+import { todayISO, weekRange, shortDM } from '@/lib/date';
 import {
   BarChart,
   Bar,
@@ -143,27 +143,22 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     },
   });
 
-  // Bound the fetch by date, not by row count: the month card, the
-  // current-vs-previous chart and the per-category breakdown all need the full
-  // current + previous month, and a plain row limit silently undercounted busy
-  // months. First-of-previous-month also covers the week filter (weekRange can
-  // start in the previous month). "Histórico" is the only view that needs
-  // older rows, so only then do we drop the date bound; the high limit stays
-  // as a backstop, never as the primary cutoff. An active text search also
-  // needs the whole visible history, so it widens the fetch the same way
-  // "Histórico" does (same 'all' discriminator in the query key).
-  const prevMonthStart = toLocalISO(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1));
+  // One fetch, one cache key. The Semana/Mes/Histórico chips, the text search
+  // and the per-account register are all *client-side* filters (see inRange and
+  // `filtered` below), so the data layer must hand them the same full set every
+  // time. We used to split the cache by range ('recent' vs 'all', date-bounded),
+  // but the two entries expired independently (staleTime 5 min, no focus
+  // refetch), so a just-added movement could surface under Semana while its
+  // older Histórico snapshot still hid it — Histórico is meant to be a strict
+  // superset. The row limit stays as a backstop, never as the primary cutoff.
   const searchActive = debouncedSearch.trim().length > 0;
-  const fetchAll = filterRange === 'all' || searchActive || filterAccount !== 'all';
   const { data: transactions = [] } = useQuery<Tx[]>({
-    queryKey: ['transactions', profile.household_id, fetchAll ? 'all' : 'recent'],
+    queryKey: ['transactions', profile.household_id],
     queryFn: async () => {
-      let query = supabase
+      const { data } = await supabase
         .from('transactions')
         .select('id, amount, type, currency, category_id, account_id, transfer_account_id, scope, is_shared, is_fixed, cleared, flag, merchant, occurred_on, profile_id, source, installment_number, installment_total, categories:category_id(name, icon)')
-        .eq('household_id', profile.household_id);
-      if (!fetchAll) query = query.gte('occurred_on', prevMonthStart);
-      const { data } = await query
+        .eq('household_id', profile.household_id)
         .order('occurred_on', { ascending: false })
         .order('created_at', { ascending: false })
         .limit(1000);

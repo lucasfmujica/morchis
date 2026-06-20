@@ -10,14 +10,17 @@ const ACCOUNTS = ['ARQ','Brubank','Deel','Efectivo','Efectivo USD','Mercado Pago
   const ctx = await browser.newContext({ storageState: STATE, viewport: { width: 430, height: 932 } });
   const page = await ctx.newPage();
   let lastSplitId = null;
-  page.on('request', (r) => { const m = r.url().match(/transactions\?select=usd_rate_snapshot,splits[^&]*&id=eq\.([^&]+)/); if (m) lastSplitId = decodeURIComponent(m[1]); });
+  page.on('request', (r) => { const m = decodeURIComponent(r.url()).match(/transactions\?select=usd_rate_snapshot,splits[^&]*&id=eq\.([^&]+)/); if (m) lastSplitId = m[1]; });
   page.on('console', (m) => { if (m.type() === 'error' && m.text().includes('DEBUG editTx missing id')) console.log('   >>> ' + m.text()); });
 
   await page.goto(`${BASE}/cuentas`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(2000);
 
   const openAccount = async (name) => {
-    const card = page.locator('div').filter({ hasText: new RegExp('^[🏦💳💵]?' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) }).filter({ hasText: /saldo actual|gastado/ }).first();
+    const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Match the account name immediately followed by its type label, to avoid
+    // "Mercado Pago" also matching "Mercado Pago USD".
+    const card = page.locator('div').filter({ hasText: new RegExp(esc + '(Caja de ahorro|Cuenta corriente|Efectivo|Tarjeta de cr)') }).filter({ hasText: /saldo actual|gastado/ }).first();
     await card.click({ timeout: 4000 });
   };
 
