@@ -180,12 +180,12 @@ export function useEnvelope(
     },
   });
 
-  const debtsQ = useQuery<{ transaction_id: string | null; amount: number; currency: string }[]>({
+  const debtsQ = useQuery<{ transaction_id: string | null; amount: number; paid_amount: number | null; currency: string }[]>({
     queryKey: ['envelope-debts', targetProfileId],
     queryFn: async () => {
       const { data } = await supabase
         .from('debts')
-        .select('transaction_id, amount, currency')
+        .select('transaction_id, amount, paid_amount, currency')
         .eq('profile_id', targetProfileId)
         .eq('direction', 'owed')
         .not('transaction_id', 'is', null);
@@ -216,10 +216,16 @@ export function useEnvelope(
     if (a.type === 'credit' && a.payment_category_id) paymentCategoryByAccount.set(a.id, a.payment_category_id);
   }
 
+  // Only the STILL-OUTSTANDING part of a receivable depresses your share: when a
+  // repayment is registered in /deudas it's already netted straight out of the
+  // linked gasto's amount, so subtracting the full debt here too would double-
+  // count it (zeroing a fully-repaid expense out of its envelope entirely).
   const receivableByTx = new Map<string, number>();
   for (const d of debts) {
     if (!d.transaction_id) continue;
-    receivableByTx.set(d.transaction_id, (receivableByTx.get(d.transaction_id) ?? 0) + toArs(d.amount, d.currency, arsPerUsd));
+    const remaining = Math.max(0, Number(d.amount) - (d.paid_amount ?? 0));
+    if (remaining <= 0) continue;
+    receivableByTx.set(d.transaction_id, (receivableByTx.get(d.transaction_id) ?? 0) + toArs(remaining, d.currency, arsPerUsd));
   }
 
   // Age of Money: FIFO-match cash inflows (income into on-budget accounts) to

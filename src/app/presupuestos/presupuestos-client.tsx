@@ -30,8 +30,9 @@ function monthLabel(month: string): string {
 }
 
 // es-AR number for the table cells — no symbol, so the columns read clean.
+// `|| 0` collapses negative zero (Math.round(-0.2) === -0) so we never show "-0".
 function fmtCell(n: number): string {
-  return Math.round(n).toLocaleString('es-AR');
+  return (Math.round(n) || 0).toLocaleString('es-AR');
 }
 
 function fmtDate(iso: string): string {
@@ -100,11 +101,13 @@ function CategoryDetailSheet({
   otherCategories,
   editable,
   isFeatured,
+  isHidden,
   format,
   onClose,
   onAssign,
   onSetTarget,
   onToggleFeatured,
+  onToggleHidden,
   onMove,
   onRenameCategory,
   groups,
@@ -121,11 +124,13 @@ function CategoryDetailSheet({
   otherCategories: EnvelopeCategory[];
   editable: boolean;
   isFeatured: boolean;
+  isHidden: boolean;
   format: (ars: number) => string;
   onClose: () => void;
   onAssign: (n: number) => void;
   onSetTarget: (amount: number, cadence: 'monthly' | 'by_date' | 'weekly', date: string | null, targetType: 'refill' | 'set_aside') => void;
   onToggleFeatured: () => void;
+  onToggleHidden: () => void;
   onMove: (toCategoryId: string, amount: number) => void;
   onRenameCategory: (name: string, icon: string) => void;
   groups: EnvelopeCategory[];
@@ -220,7 +225,7 @@ function CategoryDetailSheet({
               <p className="text-sm" style={{ color: '#6B6459' }}>
                 {targetInfo.cadence === 'weekly' ? 'Meta semanal ' : 'Meta mensual '}{format(targetInfo.totalArs)}
                 {targetInfo.neededThisMonth > 0
-                  ? <> · {targetInfo.targetType === 'set_aside' ? 'falta apartar' : 'faltan'} <b style={{ color: '#C79A2B' }}>{format(targetInfo.neededThisMonth)}</b> este mes</>
+                  ? <> · {targetInfo.targetType === 'set_aside' ? 'falta sumar' : 'faltan'} <b style={{ color: '#C79A2B' }}>{format(targetInfo.neededThisMonth)}</b> este mes</>
                   : <span style={{ color: '#5BA886' }}> · al día este mes ✓</span>}
               </p>
             )}
@@ -289,7 +294,7 @@ function CategoryDetailSheet({
             </div>
             {tMode !== 'by_date' && (
               <div className="flex rounded-xl overflow-hidden mb-2 p-1 gap-1" style={{ background: '#ECE5DC' }}>
-                {([{ k: 'refill', l: 'Rellenar hasta' }, { k: 'set_aside', l: 'Apartar' }] as const).map((o) => (
+                {([{ k: 'refill', l: 'Mantener disponible' }, { k: 'set_aside', l: 'Sumar cada mes' }] as const).map((o) => (
                   <button key={o.k} onClick={() => setTType(o.k)} className="flex-1 py-1.5 text-[11px] font-bold rounded-lg" style={{ background: tType === o.k ? '#FFFFFF' : 'transparent', color: tType === o.k ? '#2D2D2D' : '#6B6459' }}>{o.l}</button>
                 ))}
               </div>
@@ -297,7 +302,7 @@ function CategoryDetailSheet({
             <p className="text-[11px] mb-1.5" style={{ color: '#6B6459' }}>
               {tMode === 'by_date'
                 ? 'Total a juntar para una fecha (meta de ahorro).'
-                : `${tMode === 'weekly' ? 'Monto por semana' : 'Monto por mes'}. ${tType === 'refill' ? 'Rellenar = llevar el disponible hasta ese monto.' : 'Apartar = asignar ese monto de nuevo cada período.'}`}
+                : `${tMode === 'weekly' ? 'Monto por semana' : 'Monto por mes'}. ${tType === 'refill' ? 'Mantener = el disponible siempre llega a este monto (lo que sobra se queda).' : 'Sumar = se asigna este monto nuevo cada período, además de lo que ya había.'}`}
             </p>
             {suggested > 0 && tMode === 'monthly' && (
               <button onClick={() => setTAmt(suggested)} className="text-xs font-bold px-3 py-2 rounded-xl mb-2" style={{ background: '#E7EFFB', color: '#5B8DEF' }}>
@@ -325,39 +330,46 @@ function CategoryDetailSheet({
             </button>
 
             {/* Feature this category as the Home goal */}
-            <button onClick={onToggleFeatured} className="w-full py-2.5 rounded-xl text-sm font-bold mb-4" style={{ background: isFeatured ? '#E4F2EA' : '#F9F5F0', color: isFeatured ? '#5BA886' : '#6B6459' }}>
+            <button onClick={onToggleFeatured} className="w-full py-2.5 rounded-xl text-sm font-bold mb-3" style={{ background: isFeatured ? '#E4F2EA' : '#F9F5F0', color: isFeatured ? '#5BA886' : '#6B6459' }}>
               {isFeatured ? '📌 Destacada en Home' : '📌 Destacar en Home'}
             </button>
 
-            {/* Move money to another envelope */}
-            <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: '#6B6459' }}>Mover plata a otro sobre</p>
-            <div className="flex gap-2 mb-5">
+            {/* Hide this category from the list (one you won't assign to) */}
+            <button onClick={onToggleHidden} className="w-full py-2.5 rounded-xl text-sm font-bold mb-4" style={{ background: isHidden ? '#FBEAE7' : '#F9F5F0', color: isHidden ? '#E5604C' : '#6B6459' }}>
+              {isHidden ? '👁 Mostrar esta categoría' : '🙈 Ocultar esta categoría'}
+            </button>
+
+            {/* Move money to another category */}
+            <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: '#6B6459' }}>Mover plata a otra categoría</p>
+            <div className="flex flex-col gap-2 mb-5">
               <select
                 value={moveTo}
                 onChange={(e) => setMoveTo(e.target.value)}
-                className="flex-1 rounded-xl px-3 py-2 text-sm outline-none border"
+                className="w-full min-w-0 rounded-xl px-3 py-2 text-sm outline-none border"
                 style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: '#ECE5DC' }}
               >
-                <option value="">Elegí un sobre…</option>
+                <option value="">Elegí una categoría…</option>
                 {otherCategories.map((c) => (
                   <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
                 ))}
               </select>
-              <MoneyInput
-                value={moveAmt}
-                onChange={setMoveAmt}
-                placeholder="Monto"
-                className="w-24 rounded-xl px-3 py-2 text-sm font-bold outline-none border text-right"
-                style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: '#ECE5DC' }}
-              />
-              <button
-                onClick={() => { if (moveTo && moveAmt > 0) { onMove(moveTo, moveAmt); setMoveTo(''); setMoveAmt(0); } }}
-                disabled={!moveTo || moveAmt <= 0}
-                className="px-3 py-2 rounded-xl text-sm font-bold text-white"
-                style={{ background: !moveTo || moveAmt <= 0 ? '#C4B9AE' : '#7EC8A4' }}
-              >
-                Mover
-              </button>
+              <div className="flex gap-2">
+                <MoneyInput
+                  value={moveAmt}
+                  onChange={setMoveAmt}
+                  placeholder="Monto"
+                  className="flex-1 min-w-0 rounded-xl px-3 py-2 text-sm font-bold outline-none border text-right"
+                  style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: '#ECE5DC' }}
+                />
+                <button
+                  onClick={() => { if (moveTo && moveAmt > 0) { onMove(moveTo, moveAmt); setMoveTo(''); setMoveAmt(0); } }}
+                  disabled={!moveTo || moveAmt <= 0}
+                  className="shrink-0 px-4 py-2 rounded-xl text-sm font-bold text-white"
+                  style={{ background: !moveTo || moveAmt <= 0 ? '#C4B9AE' : '#7EC8A4' }}
+                >
+                  Mover
+                </button>
+              </div>
             </div>
           </>
         )}
@@ -774,6 +786,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   const [newViewOpen, setNewViewOpen] = useState(false);
   const [prioritiesOpen, setPrioritiesOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [showHidden, setShowHidden] = useState(false);
   const [detailCat, setDetailCat] = useState<EnvelopeCategory | null>(null);
   const [newCatOpen, setNewCatOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -844,7 +857,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
       }
     }
     const byName = (a: EnvelopeCategory, b: EnvelopeCategory) => a.name.localeCompare(b.name);
-    const ORDER = ['Fijos', 'Variables', 'Ocio', 'Ahorro y metas'];
+    const ORDER = ['Variables', 'Ocio', 'Fijos', 'Ahorro y metas'];
     const headers = [...headerById.values()].sort((a, b) => {
       const ia = ORDER.indexOf(a.name), ib = ORDER.indexOf(b.name);
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.name.localeCompare(b.name);
@@ -867,7 +880,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   const pickerCats = useMemo(() => env.categories.filter((c) => !c.is_group), [env.categories]);
 
   // Spotlight prefs (Top Priorities + expected income) live in notification_prefs.
-  type Prefs = { priority_category_ids?: string[]; expected_income?: number; featured_category_id?: string };
+  type Prefs = { priority_category_ids?: string[]; expected_income?: number; featured_category_id?: string; hidden_category_ids?: string[] };
   const prefsQ = useQuery({
     queryKey: ['profile-prefs', profile.id],
     queryFn: async () => {
@@ -878,6 +891,14 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   const prefs = prefsQ.data ?? {};
   const priorityIds = useMemo(() => prefs.priority_category_ids ?? [], [prefs.priority_category_ids]);
   const expectedIncome = prefs.expected_income ?? 0;
+  // Categories the user chose to hide (won't assign anything to). Hidden purely
+  // visually — their money still counts toward subtotals and "Para asignar".
+  const hiddenIds = useMemo(() => new Set(prefs.hidden_category_ids ?? []), [prefs.hidden_category_ids]);
+  const toggleHidden = (categoryId: string) => {
+    const next = new Set(hiddenIds);
+    if (next.has(categoryId)) next.delete(categoryId); else next.add(categoryId);
+    updatePrefs.mutate({ hidden_category_ids: [...next] });
+  };
   const updatePrefs = useMutation({
     mutationFn: async (patch: Partial<Prefs>) => {
       const next = { ...prefs, ...patch };
@@ -1106,7 +1127,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
         </p>
         <p className="text-3xl font-black mt-0.5" style={{ color: rtaColor, fontVariantNumeric: 'tabular-nums' }}>{format(rta)}</p>
         <p className="text-[11px] mt-1" style={{ color: '#6B6459' }}>
-          {rta > 0 ? 'Plata en cuentas todavía sin un trabajo. Asignala a un sobre.' : rta < 0 ? 'Asignaste (o fronteaste) más de lo que tenés. Sacá de algún sobre.' : 'Cada peso tiene un trabajo. 🎉'}
+          {rta > 0 ? 'Plata en cuentas todavía sin un trabajo. Asignala a una categoría.' : rta < 0 ? 'Asignaste (o fronteaste) más de lo que tenés. Sacá de alguna categoría.' : 'Cada peso tiene un trabajo. 🎉'}
         </p>
         <p className="text-[11px] mt-1.5" style={{ color: '#A89B8C' }}>Efectivo on-budget {format(env.cash)} · Asignado este mes {format(env.assignedTotal)}</p>
         {editable && overspentCount >= 4 && (
@@ -1198,6 +1219,15 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
             ⭐ {v.name}
           </button>
         ))}
+        {hiddenIds.size > 0 && (
+          <button
+            onClick={() => setShowHidden((v) => !v)}
+            className="shrink-0 text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap"
+            style={{ background: showHidden ? '#6B6459' : '#FFFFFF', color: showHidden ? '#FFFFFF' : '#6B6459' }}
+          >
+            {showHidden ? '🙈 Ocultar ocultas' : `👁 Ocultas ${hiddenIds.size}`}
+          </button>
+        )}
         {editable && (
           <button
             onClick={() => setNewViewOpen(true)}
@@ -1214,7 +1244,12 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
           <div className="rounded-3xl p-8 text-center text-sm" style={{ background: '#FFFFFF', color: '#6B6459' }}>Cargando…</div>
         ) : (
           groups.map((g) => {
-            const cats = g.cats.filter((c) => matchesFilter(c.id));
+            const cats = g.cats
+              .filter((c) => matchesFilter(c.id))
+              .filter((c) => showHidden || !hiddenIds.has(c.id))
+              // Most-assigned first so the envelopes you still feed sit on top
+              // and the ones you barely touch sink to the bottom.
+              .sort((a, b) => (env.rowByCategory.get(b.id)?.assigned ?? 0) - (env.rowByCategory.get(a.id)?.assigned ?? 0));
             if (cats.length === 0) return null;
             const sub = cats.reduce(
               (acc, c) => {
@@ -1247,9 +1282,12 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
                       const fg = availColor(available, target);
                       // YNAB-style per-category bar: how "full" the envelope is
                       // toward its target (or its assignment when there's no
-                      // target). Overspent shows a full red bar.
+                      // target). When it's been fully spent or overspent the bar
+                      // reads full (you used the whole envelope) — only a truly
+                      // empty/untouched category shows an empty track.
                       const denom = target > 0 ? target : assigned;
-                      const barPct = available < 0 ? 100 : denom > 0 ? Math.max(0, Math.min(1, available / denom)) * 100 : 0;
+                      const fullySpent = available <= 0 && (assigned > 0 || activity > 0);
+                      const barPct = fullySpent ? 100 : denom > 0 ? Math.max(0, Math.min(1, available / denom)) * 100 : 0;
                       // YNAB-style status text under the name.
                       let statusText = '';
                       let statusColor = '#6B6459';
@@ -1343,11 +1381,13 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
           otherCategories={expenseCats.filter((c) => c.id !== detailCat.id)}
           editable={editable}
           isFeatured={prefs.featured_category_id === detailCat.id}
+          isHidden={hiddenIds.has(detailCat.id)}
           format={format}
           onClose={() => setDetailCat(null)}
           onAssign={(n) => assignOne(detailCat.id, n)}
           onSetTarget={(amount, cadence, date, targetType) => saveTarget.mutate({ categoryId: detailCat.id, amount, cadence, date, targetType })}
           onToggleFeatured={() => updatePrefs.mutate({ featured_category_id: prefs.featured_category_id === detailCat.id ? undefined : detailCat.id })}
+          onToggleHidden={() => toggleHidden(detailCat.id)}
           onMove={(toCat, amount) => moveMoney(detailCat.id, toCat, amount)}
           onRenameCategory={(name, icon) => renameCategory.mutate({ categoryId: detailCat.id, name, icon })}
           groups={groupCats}

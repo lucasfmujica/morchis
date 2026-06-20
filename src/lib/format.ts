@@ -8,7 +8,7 @@ export function formatARS(amount: number): string {
     currency: 'ARS',
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
-  }).format(amount);
+  }).format(amount || 0); // `|| 0` collapses -0 so we never render "-$ 0"
 }
 
 export function formatUSD(amount: number): string {
@@ -17,7 +17,7 @@ export function formatUSD(amount: number): string {
     currency: 'USD',
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
-  }).format(amount);
+  }).format(amount || 0); // `|| 0` collapses -0 so we never render "-US$ 0"
 }
 
 /**
