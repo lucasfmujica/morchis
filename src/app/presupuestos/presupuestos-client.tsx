@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
@@ -108,12 +108,14 @@ function CategoryDetailSheet({
   editable,
   isFeatured,
   isHidden,
+  isAutoFund,
   format,
   onClose,
   onAssign,
   onSetTarget,
   onToggleFeatured,
   onToggleHidden,
+  onToggleAutoFund,
   onMove,
   onRenameCategory,
   groups,
@@ -131,12 +133,14 @@ function CategoryDetailSheet({
   editable: boolean;
   isFeatured: boolean;
   isHidden: boolean;
+  isAutoFund: boolean;
   format: (ars: number) => string;
   onClose: () => void;
   onAssign: (n: number) => void;
   onSetTarget: (amount: number, cadence: 'monthly' | 'by_date' | 'weekly', date: string | null, targetType: 'refill' | 'set_aside') => void;
   onToggleFeatured: () => void;
   onToggleHidden: () => void;
+  onToggleAutoFund: () => void;
   onMove: (toCategoryId: string, amount: number) => void;
   onRenameCategory: (name: string, icon: string) => void;
   groups: EnvelopeCategory[];
@@ -343,9 +347,25 @@ function CategoryDetailSheet({
                 style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: '#ECE5DC' }}
               />
             )}
-            <button onClick={() => onSetTarget(tAmt, tMode, tMode === 'by_date' ? (tDate || null) : null, tType)} className="w-full py-2.5 rounded-xl text-sm font-bold text-white mb-4" style={{ background: '#7EC8A4' }}>
+            <button onClick={() => onSetTarget(tAmt, tMode, tMode === 'by_date' ? (tDate || null) : null, tType)} className="w-full py-2.5 rounded-xl text-sm font-bold text-white mb-3" style={{ background: '#7EC8A4' }}>
               Guardar meta
             </button>
+
+            {/* Auto-carry: a monthly/weekly budget funds itself each new month so
+                you don't have to re-assign it by hand. Only meaningful for a
+                "Presupuesto del mes" (set_aside) — a refill target already implies
+                topping up, and a by-date goal is one-off. */}
+            {tMode !== 'by_date' && tType === 'set_aside' && (
+              <>
+                <button onClick={onToggleAutoFund} className="w-full flex items-center justify-between px-4 py-3 rounded-2xl mb-1.5 border-2" style={{ background: isAutoFund ? '#E4F2EA' : '#F9F5F0', borderColor: isAutoFund ? '#7EC8A4' : '#ECE5DC' }}>
+                  <span className="text-sm font-bold" style={{ color: '#2D2D2D' }}>🔁 Repetir cada {tMode === 'weekly' ? 'semana' : 'mes'}</span>
+                  <span className="text-xs font-bold" style={{ color: isAutoFund ? '#5BA886' : '#6B6459' }}>{isAutoFund ? 'Sí' : 'No'}</span>
+                </button>
+                <p className="text-[11px] mb-4" style={{ color: '#6B6459' }}>
+                  Cada {tMode === 'weekly' ? 'semana' : 'mes'} nuevo se asigna este presupuesto solo, sin que tengas que hacerlo a mano. Lo dejás seteado una vez y vale para todos los meses.
+                </p>
+              </>
+            )}
 
             {/* Feature this category as the Home goal */}
             <button onClick={onToggleFeatured} className="w-full py-2.5 rounded-xl text-sm font-bold mb-3" style={{ background: isFeatured ? '#E4F2EA' : '#F9F5F0', color: isFeatured ? '#5BA886' : '#6B6459' }}>
@@ -898,7 +918,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   const pickerCats = useMemo(() => env.categories.filter((c) => !c.is_group), [env.categories]);
 
   // Spotlight prefs (Top Priorities + expected income) live in notification_prefs.
-  type Prefs = { priority_category_ids?: string[]; expected_income?: number; featured_category_id?: string; hidden_category_ids?: string[] };
+  type Prefs = { priority_category_ids?: string[]; expected_income?: number; featured_category_id?: string; hidden_category_ids?: string[]; auto_fund_category_ids?: string[] };
   const prefsQ = useQuery({
     queryKey: ['profile-prefs', profile.id],
     queryFn: async () => {
@@ -916,6 +936,15 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
     const next = new Set(hiddenIds);
     if (next.has(categoryId)) next.delete(categoryId); else next.add(categoryId);
     updatePrefs.mutate({ hidden_category_ids: [...next] });
+  };
+  // Categories whose monthly/weekly budget should re-fund itself each new month
+  // (auto-carry). Stored as a pref so there's no schema change; the effect below
+  // applies it on the current month.
+  const autoFundIds = useMemo(() => new Set(prefs.auto_fund_category_ids ?? []), [prefs.auto_fund_category_ids]);
+  const toggleAutoFund = (categoryId: string) => {
+    const next = new Set(autoFundIds);
+    if (next.has(categoryId)) next.delete(categoryId); else next.add(categoryId);
+    updatePrefs.mutate({ auto_fund_category_ids: [...next] });
   };
   const updatePrefs = useMutation({
     mutationFn: async (patch: Partial<Prefs>) => {
@@ -1003,6 +1032,32 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['envelope', profile.id] }),
   });
+
+  // Auto-carry: when you land on the CURRENT month, any category flagged
+  // "Repetir cada mes" (a set_aside budget) that hasn't been assigned yet this
+  // month gets funded to its target automatically — so the budget you set once
+  // applies every month without re-assigning by hand. We only touch a category
+  // whose assignment is still 0 (so we never clobber a manual amount you set on
+  // purpose), and once per month per mount.
+  const autoFilledMonth = useRef<string | null>(null);
+  useEffect(() => {
+    if (!editable || env.isLoading || month !== monthKey()) return;
+    if (autoFilledMonth.current === month) return;
+    // Targets load on their own query; if we have flagged categories but no
+    // target map yet, wait for it rather than marking the month done.
+    if (autoFundIds.size > 0 && env.targetInfoByCategory.size === 0) return;
+    const updates: { categoryId: string; assigned: number }[] = [];
+    for (const id of autoFundIds) {
+      const info = env.targetInfoByCategory.get(id);
+      if (!info || info.cadence === 'by_date' || info.targetType !== 'set_aside') continue;
+      const t = env.targetByCategory.get(id) ?? 0;
+      const assigned = env.rowByCategory.get(id)?.assigned ?? 0;
+      if (t > 0 && assigned <= 0) updates.push({ categoryId: id, assigned: t });
+    }
+    autoFilledMonth.current = month;
+    if (updates.length) bulkAssign.mutate(updates);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editable, month, env.isLoading, autoFundIds, env.targetInfoByCategory, env.targetByCategory, env.rowByCategory]);
 
   const createCategory = useMutation({
     mutationFn: async ({ name, icon, isGroup }: { name: string; icon: string; isGroup?: boolean }) => {
@@ -1367,7 +1422,10 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
                             {c.icon}
                           </span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{c.name}</p>
+                            <p className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>
+                              {c.name}
+                              {autoFundIds.has(c.id) && <span title="Se repite cada mes" className="ml-1 text-[10px]" style={{ color: '#5BA886' }}>🔁</span>}
+                            </p>
                             {statusText && (
                               <p className="text-[10px] font-semibold" style={{ color: statusColor }}>{statusText}</p>
                             )}
@@ -1434,12 +1492,14 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
           editable={editable}
           isFeatured={prefs.featured_category_id === detailCat.id}
           isHidden={hiddenIds.has(detailCat.id)}
+          isAutoFund={autoFundIds.has(detailCat.id)}
           format={format}
           onClose={() => setDetailCat(null)}
           onAssign={(n) => assignOne(detailCat.id, n)}
           onSetTarget={(amount, cadence, date, targetType) => saveTarget.mutate({ categoryId: detailCat.id, amount, cadence, date, targetType })}
           onToggleFeatured={() => updatePrefs.mutate({ featured_category_id: prefs.featured_category_id === detailCat.id ? undefined : detailCat.id })}
           onToggleHidden={() => toggleHidden(detailCat.id)}
+          onToggleAutoFund={() => toggleAutoFund(detailCat.id)}
           onMove={(toCat, amount) => moveMoney(detailCat.id, toCat, amount)}
           onRenameCategory={(name, icon) => renameCategory.mutate({ categoryId: detailCat.id, name, icon })}
           groups={groupCats}
