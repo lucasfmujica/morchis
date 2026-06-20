@@ -30,3 +30,12 @@ export function weekRange(d: Date = new Date()): { start: string; end: string } 
 export function shortDM(iso: string): string {
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 }
+
+const MONTHS_ABBR = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+/** Human "D mmm" for display (e.g. "7 jul"), no leading zero on the day. */
+export function shortDayMonth(iso: string): string {
+  const day = parseInt(iso.slice(8, 10), 10);
+  const month = parseInt(iso.slice(5, 7), 10) - 1;
+  return `${day} ${MONTHS_ABBR[month] ?? ''}`.trim();
+}

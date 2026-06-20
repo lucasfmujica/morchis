@@ -333,95 +333,119 @@ export default function TicketClient({ profile }: { profile: Profile }) {
         {/* Review */}
         {status === 'review' && receipt && (
           <>
+            {/* Merchant + the hero total */}
             <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-              <div className="flex gap-3 mb-3">
-                <input
-                  value={receipt.merchant}
-                  onChange={(e) => setReceipt({ ...receipt, merchant: e.target.value })}
-                  className="flex-1 px-3 py-2 rounded-xl border text-sm font-bold outline-none"
-                  style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
-                  placeholder="Comercio"
-                />
-                <input
-                  type="date"
-                  value={receipt.date}
-                  onChange={(e) => setReceipt({ ...receipt, date: e.target.value })}
-                  className="px-3 py-2 rounded-xl border text-sm outline-none"
-                  style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
-                />
-              </div>
-              <div className="flex items-center gap-3 mb-3">
-                <span className="text-xs font-semibold" style={{ color: '#6B6459' }}>Total</span>
+              <input
+                value={receipt.merchant}
+                onChange={(e) => setReceipt({ ...receipt, merchant: e.target.value })}
+                className="w-full text-lg font-black outline-none bg-transparent"
+                style={{ color: '#2D2D2D' }}
+                placeholder="Comercio"
+              />
+              <input
+                type="date"
+                value={receipt.date}
+                onChange={(e) => setReceipt({ ...receipt, date: e.target.value })}
+                className="mt-0.5 text-xs outline-none bg-transparent"
+                style={{ color: '#6B6459' }}
+              />
+
+              <div className="flex items-end justify-between gap-3 mt-4 pt-4" style={{ borderTop: '1px solid #F1ECE4' }}>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: '#A89B8C' }}>Total</p>
+                  <MoneyInput
+                    value={receipt.total}
+                    onChange={(n) => setReceipt({ ...receipt, total: n })}
+                    className="w-full text-3xl font-black outline-none bg-transparent tabular-nums"
+                    style={{ color: '#FF7F6B' }}
+                  />
+                </div>
                 {/* Currency toggle — the AI detects it, but you can correct it. */}
                 <button
                   onClick={() => setReceipt({ ...receipt, currency: receipt.currency === 'USD' ? 'ARS' : 'USD' })}
-                  className="text-xs font-bold px-3 py-1.5 rounded-xl border"
+                  className="text-sm font-black px-4 py-2 rounded-2xl shrink-0"
                   style={{
-                    borderColor: receipt.currency === 'USD' ? '#FF7F6B' : '#7EC8A4',
-                    color: receipt.currency === 'USD' ? '#FF7F6B' : '#7EC8A4',
+                    background: receipt.currency === 'USD' ? '#FFF1EE' : '#E4F2EA',
+                    color: receipt.currency === 'USD' ? '#FF7F6B' : '#5BA886',
                   }}
                 >
-                  {receipt.currency}
+                  {receipt.currency} ⇄
                 </button>
-                <MoneyInput
-                  value={receipt.total}
-                  onChange={(n) => setReceipt({ ...receipt, total: n })}
-                  className="flex-1 px-3 py-2 rounded-xl border text-base font-black outline-none"
-                  style={{ borderColor: '#ECE5DC', color: '#FF7F6B' }}
-                />
               </div>
-              <select
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border text-sm bg-white outline-none"
-                style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
-              >
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
-                ))}
-              </select>
-              {/* Which account paid + whether the expense is split with the partner */}
-              <select
-                value={accountId}
-                onChange={(e) => setAccountId(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border text-sm bg-white outline-none mt-2"
-                style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
-              >
-                <option value="none">💳 Sin cuenta</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>{a.type === 'credit' ? '💳' : '🏦'} {a.name}</option>
-                ))}
-              </select>
+
+              {receipt.items.length > 0 && Math.abs(itemsSum - receipt.total) > Math.max(50, receipt.total * 0.05) && (
+                <p className="text-[11px] mt-3" style={{ color: '#B8860B' }}>
+                  ⚠️ La suma de productos ({fmt(itemsSum)}) no coincide con el total. Revisá los ítems.
+                </p>
+              )}
+            </div>
+
+            {/* Category, account + split */}
+            <div className="rounded-3xl p-5 flex flex-col gap-3" style={{ background: '#FFFFFF' }}>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide mb-1.5" style={{ color: '#A89B8C' }}>Categoría</p>
+                <select
+                  value={categoryId}
+                  onChange={(e) => setCategoryId(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-2xl border text-sm bg-white outline-none"
+                  style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+                >
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide mb-1.5" style={{ color: '#A89B8C' }}>Cuenta</p>
+                {/* Which account paid + whether the expense is split with the partner */}
+                <select
+                  value={accountId}
+                  onChange={(e) => setAccountId(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-2xl border text-sm bg-white outline-none"
+                  style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+                >
+                  <option value="none">💳 Sin cuenta</option>
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>{a.type === 'credit' ? '💳' : '🏦'} {a.name}</option>
+                  ))}
+                </select>
+              </div>
               {partner && (
                 <button
                   onClick={() => setIsShared(!isShared)}
-                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-sm mt-2"
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-2xl border text-sm"
                   style={{ borderColor: isShared ? '#7EC8A4' : '#ECE5DC', background: isShared ? '#F0FAF5' : '#FFFFFF' }}
                 >
                   <span style={{ color: '#2D2D2D' }}>👫 Compartido con {partnerName} (50/50)</span>
-                  <span className="font-bold" style={{ color: isShared ? '#7EC8A4' : '#C4B9AE' }}>{isShared ? 'Sí' : 'No'}</span>
+                  <span
+                    className="text-xs font-black px-2.5 py-1 rounded-full"
+                    style={{ background: isShared ? '#7EC8A4' : '#F1ECE4', color: isShared ? '#FFFFFF' : '#A89B8C' }}
+                  >
+                    {isShared ? 'Sí' : 'No'}
+                  </span>
                 </button>
-              )}
-              {receipt.items.length > 0 && Math.abs(itemsSum - receipt.total) > Math.max(50, receipt.total * 0.05) && (
-                <p className="text-[11px] mt-2" style={{ color: '#B8860B' }}>
-                  ⚠️ La suma de productos ({fmt(itemsSum)}) no coincide con el total. Revisá los ítems.
-                </p>
               )}
             </div>
 
             {/* Group breakdown */}
             {groupTotals.length > 0 && (
               <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-                <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>En qué se fue</p>
-                <div className="flex flex-col gap-2">
+                <p className="text-xs font-bold uppercase tracking-wide mb-4" style={{ color: '#6B6459' }}>En qué se fue</p>
+                <div className="flex flex-col gap-3.5">
                   {groupTotals.map(({ g, total }) => {
                     const meta = GROUP_META[g] ?? GROUP_META.otros;
+                    const pct = Math.round((total / itemsSum) * 100);
                     return (
-                      <div key={g} className="flex items-center gap-2">
-                        <span>{meta.icon}</span>
-                        <span className="text-sm capitalize flex-1" style={{ color: '#2D2D2D' }}>{g}</span>
-                        <span className="text-xs font-semibold" style={{ color: '#6B6459' }}>{Math.round((total / itemsSum) * 100)}%</span>
-                        <span className="text-sm font-bold w-24 text-right" style={{ color: meta.color }}>{fmt(total)}</span>
+                      <div key={g}>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className="text-sm">{meta.icon}</span>
+                          <span className="text-sm capitalize flex-1 truncate" style={{ color: '#2D2D2D' }}>{g}</span>
+                          <span className="text-[11px] font-semibold tabular-nums" style={{ color: '#A89B8C' }}>{pct}%</span>
+                          <span className="text-sm font-bold tabular-nums" style={{ color: meta.color }}>{fmt(total)}</span>
+                        </div>
+                        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#F1ECE4' }}>
+                          <div className="h-full rounded-full" style={{ width: `${Math.max(pct, 3)}%`, background: meta.color }} />
+                        </div>
                       </div>
                     );
                   })}

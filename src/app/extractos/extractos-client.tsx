@@ -29,11 +29,11 @@ interface Statement {
   file_path: string | null;
 }
 
-const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
-  uploaded: { label: 'Subido', color: '#6B6459', bg: '#ECE5DC' },
-  parsing: { label: 'Analizando…', color: '#5BA886', bg: '#E4F2EA' },
-  parsed: { label: 'Listo', color: '#5BA886', bg: '#E4F2EA' },
-  failed: { label: 'Error', color: '#E5604C', bg: '#FFE7E2' },
+const STATUS_LABELS: Record<string, { label: string; color: string; bg: string; icon: string }> = {
+  uploaded: { label: 'Subido', color: '#6B6459', bg: '#ECE5DC', icon: '📄' },
+  parsing: { label: 'Analizando…', color: '#5BA886', bg: '#E4F2EA', icon: '⚙️' },
+  parsed: { label: 'Listo', color: '#5BA886', bg: '#E4F2EA', icon: '✅' },
+  failed: { label: 'Error', color: '#E5604C', bg: '#FFE7E2', icon: '⚠️' },
 };
 
 export default function ExtractosClient({
@@ -225,24 +225,30 @@ export default function ExtractosClient({
                 <button
                   key={s.id}
                   onClick={() => router.push(`/extractos/${s.id}`)}
-                  className="w-full flex items-center gap-3 px-4 py-4 text-left"
+                  className="w-full flex items-center gap-3 px-4 py-4 text-left active:bg-[#F9F5F0] transition-colors"
                   style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}
                 >
-                  <span className="text-2xl">🧾</span>
+                  <span
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0"
+                    style={{ background: badge.bg }}
+                  >
+                    <span className={s.status === 'parsing' ? 'animate-spin' : ''}>{badge.icon}</span>
+                  </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold" style={{ color: '#2D2D2D' }}>
-                      {fmtDate(s.created_at)}
+                    <p className="text-sm font-bold truncate" style={{ color: '#2D2D2D' }}>
+                      {accounts.find((a) => a.id === s.account_id)?.name ?? 'Sin cuenta'}
                     </p>
                     <p className="text-xs mt-0.5" style={{ color: '#6B6459' }}>
-                      {accounts.find((a) => a.id === s.account_id)?.name ?? 'Sin cuenta'}
+                      {fmtDate(s.created_at)}
                     </p>
                   </div>
                   <span
-                    className="text-[11px] font-bold px-2.5 py-1 rounded-full"
+                    className="text-[11px] font-bold px-2.5 py-1 rounded-full shrink-0"
                     style={{ background: badge.bg, color: badge.color }}
                   >
                     {badge.label}
                   </span>
+                  <span className="text-base shrink-0" style={{ color: '#C4B9AE' }}>›</span>
                 </button>
               );
             })}

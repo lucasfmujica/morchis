@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase';
 import { formatARS, formatUSD, parseMoney } from '@/lib/format';
 import { useFx } from '@/hooks/useFx';
 import { useEnvelope } from '@/hooks/useEnvelope';
-import { toLocalISO, monthKey } from '@/lib/date';
+import { toLocalISO, monthKey, shortDayMonth } from '@/lib/date';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { SecondaryButton } from '@/components/SecondaryButton';
@@ -233,7 +233,7 @@ function UpcomingBills({ rules, availableByCat, onEdit }: { rules: Rule[]; avail
                   )}
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <p className="text-xs font-semibold" style={{ color: soon ? '#E5604C' : '#6B6459' }}>{whenLabel(d)}</p>
+                  <p className="text-xs font-semibold" style={{ color: soon ? '#E5604C' : '#6B6459' }}>{whenLabel(d)} · {shortDayMonth(r.next_run!)}</p>
                   {funded === true && (
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#E4F2EA', color: '#5BA886' }}>Fondeado ✓</span>
                   )}
@@ -992,64 +992,71 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
   );
 
   function RuleCard({ rule }: { rule: Rule }) {
+    const schedule =
+      rule.cadence === 'weekly'
+        ? `${CADENCE_LABEL[rule.cadence]} · ${WEEKDAYS[rule.anchor_day ?? 0]}`
+        : `${CADENCE_LABEL[rule.cadence]} · ${rule.anchor_day === 31 ? 'último día' : `día ${rule.anchor_day}`}`;
     return (
       <div
-        className="flex items-center gap-3 px-5 py-4"
-        style={{ borderTop: '1px solid #ECE5DC' }}
+        className="flex items-center px-5 py-3.5"
+        style={{ borderTop: '1px solid #ECE5DC', opacity: rule.active ? 1 : 0.55 }}
       >
-        <div
-          className="w-9 h-9 rounded-full flex items-center justify-center text-lg flex-shrink-0"
-          style={{ background: rule.direction === 'income' ? '#E4F2EA' : '#FFE7E2' }}
+        {/* Tap the row to edit — frees up width so labels don't truncate */}
+        <button
+          onClick={() => setEditRule(rule)}
+          aria-label={`Editar ${rule.label}`}
+          className="flex items-center gap-3 flex-1 min-w-0 text-left active:scale-[0.99] transition-transform"
         >
-          {rule.direction === 'income' ? '💰' : '📤'}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <p className="font-bold text-sm truncate" style={{ color: '#2D2D2D' }}>{rule.label}</p>
-            {rule.is_variable && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: '#FBF1D8', color: '#B8860B' }}>
-                estimado
-              </span>
-            )}
+          <div
+            className="w-9 h-9 rounded-full flex items-center justify-center text-lg flex-shrink-0"
+            style={{ background: rule.direction === 'income' ? '#E4F2EA' : '#FFE7E2' }}
+          >
+            {rule.direction === 'income' ? '💰' : '📤'}
           </div>
-          <p className="text-xs" style={{ color: '#6B6459' }}>
-            {rule.cadence === 'weekly'
-              ? `${CADENCE_LABEL[rule.cadence]} · ${WEEKDAYS[rule.anchor_day ?? 0]}`
-              : `${CADENCE_LABEL[rule.cadence]} · ${rule.anchor_day === 31 ? 'último día' : `día ${rule.anchor_day}`}`}
-            {rule.next_run ? ` · próx. ${rule.next_run}` : ''}
-            {!rule.active ? ' · inactiva' : ''}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <p className="font-bold text-sm truncate" style={{ color: '#2D2D2D' }}>{rule.label}</p>
+              {rule.is_variable && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: '#FBF1D8', color: '#B8860B' }}>
+                  estimado
+                </span>
+              )}
+              {!rule.active && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: '#F0EDE8', color: '#6B6459' }}>
+                  inactiva
+                </span>
+              )}
+            </div>
+            <p className="text-xs truncate" style={{ color: '#6B6459' }}>
+              {schedule}
+              {rule.active && rule.next_run ? ` · próx. ${shortDayMonth(rule.next_run)}` : ''}
+            </p>
+          </div>
+          <p
+            className="font-black text-sm flex-shrink-0 ml-1"
+            style={{ color: rule.direction === 'income' ? '#7EC8A4' : '#FF7F6B' }}
+          >
+            {rule.direction === 'income' ? '+' : '-'}{fmtMoney(rule.amount, rule.currency)}
           </p>
-        </div>
-        <p
-          className="font-black text-sm flex-shrink-0"
-          style={{ color: rule.direction === 'income' ? '#7EC8A4' : '#FF7F6B' }}
-        >
-          {rule.direction === 'income' ? '+' : '-'}{fmtMoney(rule.amount, rule.currency)}
-        </p>
-        <div className="flex gap-1 ml-2 flex-shrink-0">
+        </button>
+        <div className="flex items-center gap-0.5 pl-2 flex-shrink-0">
           {rule.active && rule.next_run && (
             <button
               onClick={() => skipMutation.mutate(rule)}
               disabled={skipMutation.isPending}
               aria-label={`Saltar próxima de ${rule.label}`}
               title="Saltar próxima ocurrencia"
-              className="text-xs px-2 py-1 rounded-lg border"
-              style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
+              className="w-8 h-8 rounded-full flex items-center justify-center text-xs active:bg-[#F0EDE8] transition-colors"
+              style={{ color: '#6B6459' }}
             >
               ⏭
             </button>
           )}
           <button
-            onClick={() => setEditRule(rule)}
-            className="text-xs px-2 py-1 rounded-lg border"
-            style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
-          >
-            ✏️
-          </button>
-          <button
             onClick={() => setConfirmDeleteRule(rule)}
-            className="text-xs px-2 py-1 rounded-lg border"
-            style={{ borderColor: '#FFE7E2', color: '#FF7F6B' }}
+            aria-label={`Eliminar ${rule.label}`}
+            className="w-8 h-8 rounded-full flex items-center justify-center text-xs active:bg-[#FFE7E2] transition-colors"
+            style={{ color: '#FF7F6B' }}
           >
             🗑
           </button>
@@ -1173,10 +1180,11 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
         {/* Income rules */}
         {income.length > 0 && (
           <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
-            <div className="px-5 py-3" style={{ borderBottom: '1px solid #ECE5DC' }}>
+            <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid #ECE5DC' }}>
               <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#7EC8A4' }}>
                 Ingresos fijos
               </p>
+              <span className="text-xs font-bold" style={{ color: '#C4B9AE' }}>{income.length}</span>
             </div>
             {income.map((r) => <RuleCard key={r.id} rule={r} />)}
           </div>
@@ -1185,10 +1193,11 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
         {/* Expense rules */}
         {expenses.length > 0 && (
           <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
-            <div className="px-5 py-3" style={{ borderBottom: '1px solid #ECE5DC' }}>
+            <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid #ECE5DC' }}>
               <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#FF7F6B' }}>
                 Gastos fijos
               </p>
+              <span className="text-xs font-bold" style={{ color: '#C4B9AE' }}>{expenses.length}</span>
             </div>
             {expenses.map((r) => <RuleCard key={r.id} rule={r} />)}
           </div>
