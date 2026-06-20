@@ -44,6 +44,7 @@ type Tx = {
   scope: string;
   is_shared: boolean;
   is_fixed: boolean;
+  cleared: boolean;
   merchant: string | null;
   occurred_on: string;
   profile_id: string;
@@ -124,7 +125,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     queryFn: async () => {
       const { data } = await supabase
         .from('accounts')
-        .select('id, name, type, owner_profile_id, initial_balance')
+        .select('id, name, type, currency, owner_profile_id, initial_balance, reconciled_balance, last_reconciled_at')
         .eq('household_id', profile.household_id)
         .eq('archived', false)
         .order('name');
@@ -149,7 +150,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     queryFn: async () => {
       let query = supabase
         .from('transactions')
-        .select('id, amount, type, currency, category_id, account_id, transfer_account_id, scope, is_shared, is_fixed, merchant, occurred_on, profile_id, installment_number, installment_total, categories:category_id(name, icon)')
+        .select('id, amount, type, currency, category_id, account_id, transfer_account_id, scope, is_shared, is_fixed, cleared, merchant, occurred_on, profile_id, installment_number, installment_total, categories:category_id(name, icon)')
         .eq('household_id', profile.household_id);
       if (!fetchAll) query = query.gte('occurred_on', prevMonthStart);
       const { data } = await query
@@ -230,6 +231,56 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     }
     return map;
   }, [filterAccount, accounts, transactions]);
+
+  // Cleared balance = initial + only the cleared transactions, for reconciliation.
+  const selectedAccount = filterAccount === 'all' ? null : accounts.find((a) => a.id === filterAccount) ?? null;
+  const clearedBalance = useMemo(() => {
+    if (!selectedAccount) return null;
+    let bal = (selectedAccount as { initial_balance?: number }).initial_balance ?? 0;
+    for (const t of transactions) {
+      if (!t.cleared) continue;
+      if (t.account_id === filterAccount) bal += t.type === 'income' ? t.amount : -t.amount;
+      else if (t.type === 'transfer' && t.transfer_account_id === filterAccount) bal += t.amount;
+    }
+    return Math.round(bal);
+  }, [selectedAccount, filterAccount, transactions]);
+
+  const [reconcileOpen, setReconcileOpen] = useState(false);
+  const [bankBal, setBankBal] = useState('');
+  async function toggleCleared(tx: Tx) {
+    const { error } = await supabase.from('transactions').update({ cleared: !tx.cleared }).eq('id', tx.id);
+    if (error) { toast.error('No se pudo actualizar'); return; }
+    qc.invalidateQueries({ queryKey: ['transactions'] });
+  }
+  async function doReconcile() {
+    if (!selectedAccount || clearedBalance == null) return;
+    const bank = Number(bankBal);
+    if (!Number.isFinite(bank) || bankBal.trim() === '') { toast.error('Ingresá el saldo del banco'); return; }
+    const diff = Math.round(bank - clearedBalance);
+    if (diff !== 0) {
+      const { error: e1 } = await supabase.from('transactions').insert({
+        household_id: profile.household_id,
+        profile_id: profile.id,
+        account_id: filterAccount,
+        type: diff > 0 ? 'income' : 'expense',
+        amount: Math.abs(diff),
+        currency: (selectedAccount as { currency?: string }).currency ?? 'ARS',
+        occurred_on: todayISO(),
+        merchant: 'Ajuste de conciliación',
+        cleared: true,
+        scope: 'personal',
+      });
+      if (e1) { toast.error('No se pudo crear el ajuste'); return; }
+    }
+    const { error: e2 } = await supabase.from('accounts').update({ reconciled_balance: bank, last_reconciled_at: new Date().toISOString() }).eq('id', filterAccount);
+    if (e2) { toast.error('No se pudo conciliar'); return; }
+    toast.success(diff === 0 ? '¡Conciliado! Todo cuadra. ✓' : `Conciliado · ajuste de ${formatARS(Math.abs(diff))}`);
+    setReconcileOpen(false);
+    setBankBal('');
+    qc.invalidateQueries({ queryKey: ['transactions'] });
+    qc.invalidateQueries({ queryKey: ['accounts-mov'] });
+    qc.invalidateQueries({ queryKey: ['envelope-tx'] });
+  }
 
   const grouped = useMemo(() => {
     const map = new Map<string, Tx[]>();
@@ -552,6 +603,22 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
         )}
       </div>
 
+      {/* Reconcile banner (single account) */}
+      {selectedAccount && clearedBalance != null && (
+        <div className="mx-4 mb-3 rounded-2xl p-4 flex items-center justify-between gap-3" style={{ background: '#FFFFFF' }}>
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Saldo conciliado · {selectedAccount.name}</p>
+            <p className="text-lg font-black tabular-nums" style={{ color: '#2D2D2D' }}>{formatARS(clearedBalance)}</p>
+            {selectedAccount.last_reconciled_at && (
+              <p className="text-[10px]" style={{ color: '#A89E90' }}>Última conciliación: {new Date(selectedAccount.last_reconciled_at).toLocaleDateString('es-AR')}</p>
+            )}
+          </div>
+          <button onClick={() => { setBankBal(String(clearedBalance)); setReconcileOpen(true); }} className="shrink-0 px-3 py-2 rounded-xl text-xs font-bold" style={{ background: '#E4F2EA', color: '#5BA886' }}>
+            Conciliar
+          </button>
+        </div>
+      )}
+
       {/* Transactions grouped by day */}
       <div className="px-4 flex flex-col gap-4">
         {grouped.length === 0 && (
@@ -596,6 +663,16 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                       style={{ borderColor: selected.has(tx.id) ? '#5BA886' : '#D9CFC2', background: selected.has(tx.id) ? '#5BA886' : '#FFFFFF' }}
                     >
                       {selected.has(tx.id) ? '✓' : ''}
+                    </span>
+                  )}
+                  {filterAccount !== 'all' && !selectMode && (
+                    <span
+                      onClick={(e) => { e.stopPropagation(); void toggleCleared(tx); }}
+                      title={tx.cleared ? 'Conciliado' : 'Marcar como conciliado'}
+                      className="shrink-0 w-5 h-5 rounded-full border flex items-center justify-center text-white text-[11px]"
+                      style={{ borderColor: tx.cleared ? '#5BA886' : '#D9CFC2', background: tx.cleared ? '#5BA886' : '#FFFFFF' }}
+                    >
+                      {tx.cleared ? '✓' : ''}
                     </span>
                   )}
                   <span className="relative text-2xl shrink-0">
@@ -690,6 +767,39 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reconcile sheet */}
+      {reconcileOpen && selectedAccount && clearedBalance != null && (
+        <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={() => setReconcileOpen(false)}>
+          <div className="w-full rounded-t-3xl p-6" style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
+            <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
+            <h2 className="text-lg font-black mb-1" style={{ color: '#2D2D2D' }}>Conciliar {selectedAccount.name}</h2>
+            <p className="text-xs mb-4" style={{ color: '#6B6459' }}>
+              Saldo de los movimientos marcados ✓: <b>{formatARS(clearedBalance)}</b>. Ingresá el saldo real que muestra el banco hoy; si hay diferencia, creamos un ajuste.
+            </p>
+            <label className="text-[11px] font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Saldo real del banco</label>
+            <input
+              type="number"
+              inputMode="numeric"
+              value={bankBal}
+              onChange={(e) => setBankBal(e.target.value)}
+              className="w-full mt-1 mb-3 px-4 py-3 rounded-2xl text-base font-bold border-2 outline-none"
+              style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: '#ECE5DC' }}
+            />
+            {bankBal.trim() !== '' && Number.isFinite(Number(bankBal)) && (() => {
+              const diff = Math.round(Number(bankBal) - clearedBalance);
+              return (
+                <p className="text-xs mb-3" style={{ color: diff === 0 ? '#5BA886' : '#C79A2B' }}>
+                  {diff === 0 ? '✓ Coincide, no hace falta ajuste.' : `Se creará un ajuste de ${formatARS(Math.abs(diff))} (${diff > 0 ? 'ingreso' : 'gasto'}).`}
+                </p>
+              );
+            })()}
+            <button onClick={doReconcile} className="w-full py-3 rounded-2xl text-sm font-bold text-white" style={{ background: '#5BA886' }}>
+              Conciliar
+            </button>
           </div>
         </div>
       )}

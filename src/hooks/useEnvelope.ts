@@ -12,6 +12,7 @@ import { useFx } from '@/hooks/useFx';
 import { toArs, isFixedExpense, BUDGET_EXPENSE_SELECT } from '@/lib/budgets';
 import { todayISO, monthKey } from '@/lib/date';
 import type { AccountTx } from '@/lib/accounts';
+import { ageOfMoneyDays, type CashFlow } from '@/lib/ageOfMoney';
 import {
   onBudgetCashArs,
   activityByCategoryMonth,
@@ -49,10 +50,11 @@ export interface EnvelopeCategory {
 
 /** Target info per category (monthly amount or a by-date savings goal). */
 export interface TargetInfo {
-  cadence: 'monthly' | 'by_date';
-  totalArs: number; // by_date: total to reach; monthly: the monthly amount
+  cadence: 'monthly' | 'by_date' | 'weekly';
+  targetType: 'refill' | 'set_aside'; // refill = top up to X; set_aside = assign X more
+  totalArs: number; // by_date: total to reach; monthly/weekly: the amount per period
   targetDate: string | null;
-  neededThisMonth: number; // the effective monthly target (drives the colour)
+  neededThisMonth: number; // how much more to assign this month to stay on track
   pctComplete: number; // available / totalArs, 0..1 (mainly for goals)
 }
 
@@ -63,19 +65,24 @@ export interface EnvelopeSummary {
   spent: number; // Σ spent this month
 }
 
+export type AutoAssignStrategy = 'last_assigned' | 'last_spent' | 'avg3_spent' | 'reset_available';
+
 export interface UseEnvelopeResult {
   rows: EnvelopeRow[];
   rowByCategory: Map<string, EnvelopeRow>;
   categories: EnvelopeCategory[];
   targetByCategory: Map<string, number>; // effective monthly target (ARS) per category
+  neededByCategory: Map<string, number>; // how much more to assign this month per category
   targetInfoByCategory: Map<string, TargetInfo>;
   summary: EnvelopeSummary;
   assignedFutureByMonth: { month: string; assigned: number }[]; // months after the current real month
   cash: number; // on-budget cash now (ARS) for the viewed person
+  ageOfMoney: number | null; // Age of Money in days (FIFO), null if not enough data
   assignedTotal: number; // Σ assigned this month (ARS)
   readyToAssign: number; // Para asignar — GLOBAL (across all months) (ARS)
   transactionsForCategory: (categoryId: string) => EnvelopeDetailTx[];
   lastMonthStats: (categoryId: string) => { assigned: number; activity: number };
+  autoAssignAmounts: (strategy: AutoAssignStrategy) => Map<string, number>;
   isLoading: boolean;
   refetch: () => void;
 }
@@ -90,6 +97,12 @@ function monthEndISO(month: string): string {
   const [y, m] = month.split('-').map(Number);
   const last = new Date(y, m, 0).getDate();
   return `${month}-${String(last).padStart(2, '0')}`;
+}
+
+// Fractional number of weeks in a month (≈4.29–4.43), for weekly targets.
+function weeksInMonth(month: string): number {
+  const [y, m] = month.split('-').map(Number);
+  return new Date(y, m, 0).getDate() / 7;
 }
 
 // Inclusive months from `fromMonth` ('YYYY-MM') to the month of `toDateISO`,
@@ -176,12 +189,12 @@ export function useEnvelope(
     },
   });
 
-  const targetsQ = useQuery<{ category_id: string; target_amount: number; currency: string; cadence: string; target_date: string | null }[]>({
+  const targetsQ = useQuery<{ category_id: string; target_amount: number; currency: string; cadence: string; target_date: string | null; target_type: string | null }[]>({
     queryKey: ['envelope-targets', targetProfileId],
     queryFn: async () => {
       const { data } = await supabase
         .from('category_targets')
-        .select('category_id, target_amount, currency, cadence, target_date')
+        .select('category_id, target_amount, currency, cadence, target_date, target_type')
         .eq('profile_id', targetProfileId);
       return data ?? [];
     },
@@ -205,6 +218,23 @@ export function useEnvelope(
     receivableByTx.set(d.transaction_id, (receivableByTx.get(d.transaction_id) ?? 0) + toArs(d.amount, d.currency, arsPerUsd));
   }
 
+  // Age of Money: FIFO-match cash inflows (income into on-budget accounts) to
+  // outflows (my share of expenses).
+  const accountById = new Map(accounts.map((a) => [a.id, a]));
+  const cashFlows: CashFlow[] = [];
+  for (const t of tx) {
+    if (t.type === 'income') {
+      const acc = t.account_id ? accountById.get(t.account_id) : undefined;
+      if (acc && acc.on_budget && acc.type !== 'credit' && !acc.archived && acc.owner_profile_id === targetProfileId) {
+        cashFlows.push({ date: t.occurred_on, dir: 'in', ars: toArs(t.amount, t.currency, arsPerUsd) });
+      }
+    } else if (t.type === 'expense') {
+      const share = expenseShareArs(t, targetProfileId, arsPerUsd, receivableByTx.get(t.id) ?? 0);
+      if (share > 0) cashFlows.push({ date: t.occurred_on, dir: 'out', ars: share });
+    }
+  }
+  const ageOfMoney = ageOfMoneyDays(cashFlows);
+
   const activity = activityByCategoryMonth(tx, targetProfileId, arsPerUsd, paymentCategoryByAccount, receivableByTx);
   const rows = envelopeRowsForMonth(assignments, activity, month, arsPerUsd);
   const rowByCategory = new Map(rows.map((r) => [r.categoryId, r]));
@@ -213,22 +243,35 @@ export function useEnvelope(
   const cash = onBudgetCashArs(accounts, tx as unknown as AccountTx[], targetProfileId, today, arsPerUsd);
   const assignedTotal = rows.reduce((s, r) => s + r.assigned, 0);
 
-  // Targets: effective monthly target per category (a monthly amount, or the
-  // needed-this-month slice of a by-date savings goal), plus rich info.
+  // Targets. `targetByCategory` = the effective MONTHLY target amount (for "Cost
+  // to Be Me" and the colour); `neededByCategory` = how much MORE to assign this
+  // month to stay on track (refill = fill `available` up to X; set_aside = assign
+  // X regardless of what's there; weekly = X×weeks; by_date = the per-month slice).
   const targetByCategory = new Map<string, number>();
+  const neededByCategory = new Map<string, number>();
   const targetInfoByCategory = new Map<string, TargetInfo>();
   for (const t of targets) {
     const totalArs = toArs(t.target_amount, t.currency, arsPerUsd);
     const avail = available.get(t.category_id) ?? 0;
-    const cadence = t.cadence === 'by_date' ? 'by_date' : 'monthly';
-    let needed = totalArs;
+    const cadence: TargetInfo['cadence'] = t.cadence === 'by_date' ? 'by_date' : t.cadence === 'weekly' ? 'weekly' : 'monthly';
+    const targetType: TargetInfo['targetType'] = t.target_type === 'set_aside' ? 'set_aside' : 'refill';
+    const assignedThisMonth = rowByCategory.get(t.category_id)?.assigned ?? 0;
+    let monthlyTarget = cadence === 'weekly' ? Math.round(totalArs * weeksInMonth(month)) : totalArs;
+    let needed: number;
     if (cadence === 'by_date') {
       const monthsLeft = monthsUntil(month, t.target_date);
-      needed = Math.max(0, Math.round((totalArs - avail) / monthsLeft));
+      monthlyTarget = Math.max(0, Math.round((totalArs - avail) / monthsLeft));
+      needed = monthlyTarget;
+    } else if (targetType === 'set_aside') {
+      needed = Math.max(0, monthlyTarget - assignedThisMonth);
+    } else {
+      needed = Math.max(0, monthlyTarget - avail);
     }
-    targetByCategory.set(t.category_id, needed);
+    targetByCategory.set(t.category_id, monthlyTarget);
+    neededByCategory.set(t.category_id, needed);
     targetInfoByCategory.set(t.category_id, {
       cadence,
+      targetType,
       totalArs,
       targetDate: t.target_date,
       neededThisMonth: needed,
@@ -239,10 +282,8 @@ export function useEnvelope(
   // Plan summary (this month).
   let totalTargets = 0;
   let underfunded = 0;
-  for (const [catId, needed] of targetByCategory) {
-    totalTargets += needed;
-    underfunded += Math.max(0, needed - (available.get(catId) ?? 0));
-  }
+  for (const [, x] of targetByCategory) totalTargets += x;
+  for (const [, needed] of neededByCategory) underfunded += needed;
   const spent = rows.reduce((s, r) => s + Math.max(0, r.activity), 0);
   const summary: EnvelopeSummary = { totalTargets, underfunded, assigned: assignedTotal, spent };
 
@@ -278,19 +319,50 @@ export function useEnvelope(
     activity: activity.get(`${categoryId}__${prevMonth}`) ?? 0,
   });
 
+  // Quick auto-assign strategies (YNAB-style). Returns the new `assigned` amount
+  // (this month) per expense category for the chosen strategy. The caller bulk-
+  // upserts these into budget_months.
+  const autoAssignAmounts = (strategy: AutoAssignStrategy): Map<string, number> => {
+    const p1 = shiftMonth(month, -1), p2 = shiftMonth(month, -2), p3 = shiftMonth(month, -3);
+    const out = new Map<string, number>();
+    for (const c of categories) {
+      if (c.kind !== 'expense') continue;
+      let amt = 0;
+      if (strategy === 'last_assigned') {
+        amt = assignments
+          .filter((a) => a.category_id === c.id && a.month === p1)
+          .reduce((s, a) => s + toArs(a.assigned, a.currency, arsPerUsd), 0);
+      } else if (strategy === 'last_spent') {
+        amt = activity.get(`${c.id}__${p1}`) ?? 0;
+      } else if (strategy === 'avg3_spent') {
+        amt = Math.round(((activity.get(`${c.id}__${p1}`) ?? 0) + (activity.get(`${c.id}__${p2}`) ?? 0) + (activity.get(`${c.id}__${p3}`) ?? 0)) / 3);
+      } else if (strategy === 'reset_available') {
+        // Set assigned so available becomes 0: newAssigned = currentAssigned − available.
+        const row = rowByCategory.get(c.id);
+        amt = Math.round((row?.assigned ?? 0) - (row?.available ?? 0));
+      }
+      if (strategy === 'reset_available') out.set(c.id, Math.max(0, amt));
+      else if (amt > 0) out.set(c.id, amt);
+    }
+    return out;
+  };
+
   return {
     rows,
     rowByCategory,
     categories,
     targetByCategory,
+    neededByCategory,
     targetInfoByCategory,
     summary,
     assignedFutureByMonth,
     cash,
+    ageOfMoney,
     assignedTotal,
     readyToAssign: readyToAssign(cash, globalAvailable),
     transactionsForCategory,
     lastMonthStats,
+    autoAssignAmounts,
     isLoading: categoriesQ.isLoading || accountsQ.isLoading || txQ.isLoading || assignmentsQ.isLoading,
     refetch: () => {
       void assignmentsQ.refetch();

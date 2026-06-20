@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
-import { useEnvelope, type EnvelopeCategory, type EnvelopeDetailTx, type UseEnvelopeResult, type TargetInfo } from '@/hooks/useEnvelope';
+import { useEnvelope, type EnvelopeCategory, type EnvelopeDetailTx, type UseEnvelopeResult, type TargetInfo, type AutoAssignStrategy } from '@/hooks/useEnvelope';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { MoneyInput } from '@/components/MoneyInput';
@@ -119,13 +119,14 @@ function CategoryDetailSheet({
   format: (ars: number) => string;
   onClose: () => void;
   onAssign: (n: number) => void;
-  onSetTarget: (amount: number, cadence: 'monthly' | 'by_date', date: string | null) => void;
+  onSetTarget: (amount: number, cadence: 'monthly' | 'by_date' | 'weekly', date: string | null, targetType: 'refill' | 'set_aside') => void;
   onToggleFeatured: () => void;
   onMove: (toCategoryId: string, amount: number) => void;
 }) {
   const [moveTo, setMoveTo] = useState('');
   const [moveAmt, setMoveAmt] = useState(0);
-  const [tMode, setTMode] = useState<'monthly' | 'by_date'>(targetInfo?.cadence ?? 'monthly');
+  const [tMode, setTMode] = useState<'monthly' | 'by_date' | 'weekly'>(targetInfo?.cadence ?? 'monthly');
+  const [tType, setTType] = useState<'refill' | 'set_aside'>(targetInfo?.targetType ?? 'refill');
   const [tAmt, setTAmt] = useState(targetInfo?.totalArs ?? 0);
   const [tDate, setTDate] = useState(targetInfo?.targetDate ?? '');
   const fg = availColor(row.available, target);
@@ -169,16 +170,21 @@ function CategoryDetailSheet({
 
         {/* Goal/target status */}
         {targetInfo && (
-          <div className="rounded-2xl p-4 mb-4 text-center" style={{ background: row.available >= targetInfo.totalArs && targetInfo.totalArs > 0 ? '#E4F2EA' : '#F9F5F0' }}>
-            {row.available >= targetInfo.totalArs && targetInfo.totalArs > 0 ? (
-              <p className="text-sm font-bold" style={{ color: '#5BA886' }}>✓ ¡Meta cumplida!</p>
-            ) : targetInfo.cadence === 'by_date' ? (
-              <p className="text-sm" style={{ color: '#6B6459' }}>
-                Faltan <b>{format(targetInfo.totalArs - row.available)}</b>{targetInfo.targetDate ? ` para ${fmtGoalDate(targetInfo.targetDate)}` : ''} · necesitás <b style={{ color: '#C79A2B' }}>{format(targetInfo.neededThisMonth)}</b> este mes
-              </p>
+          <div className="rounded-2xl p-4 mb-4 text-center" style={{ background: targetInfo.neededThisMonth <= 0 ? '#E4F2EA' : '#F9F5F0' }}>
+            {targetInfo.cadence === 'by_date' ? (
+              row.available >= targetInfo.totalArs && targetInfo.totalArs > 0 ? (
+                <p className="text-sm font-bold" style={{ color: '#5BA886' }}>✓ ¡Meta cumplida!</p>
+              ) : (
+                <p className="text-sm" style={{ color: '#6B6459' }}>
+                  Faltan <b>{format(targetInfo.totalArs - row.available)}</b>{targetInfo.targetDate ? ` para ${fmtGoalDate(targetInfo.targetDate)}` : ''} · necesitás <b style={{ color: '#C79A2B' }}>{format(targetInfo.neededThisMonth)}</b> este mes
+                </p>
+              )
             ) : (
               <p className="text-sm" style={{ color: '#6B6459' }}>
-                Meta mensual {format(targetInfo.totalArs)} · faltan <b style={{ color: '#C79A2B' }}>{format(Math.max(0, targetInfo.totalArs - row.available))}</b>
+                {targetInfo.cadence === 'weekly' ? 'Meta semanal ' : 'Meta mensual '}{format(targetInfo.totalArs)}
+                {targetInfo.neededThisMonth > 0
+                  ? <> · {targetInfo.targetType === 'set_aside' ? 'falta apartar' : 'faltan'} <b style={{ color: '#C79A2B' }}>{format(targetInfo.neededThisMonth)}</b> este mes</>
+                  : <span style={{ color: '#5BA886' }}> · al día este mes ✓</span>}
               </p>
             )}
           </div>
@@ -240,12 +246,21 @@ function CategoryDetailSheet({
             {/* Target — monthly amount or a by-date savings goal */}
             <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: '#6B6459' }}>Meta</p>
             <div className="flex rounded-xl overflow-hidden mb-2 p-1 gap-1" style={{ background: '#ECE5DC' }}>
-              {([{ k: 'monthly', l: 'Mensual' }, { k: 'by_date', l: 'Por fecha' }] as const).map((o) => (
+              {([{ k: 'monthly', l: 'Mensual' }, { k: 'weekly', l: 'Semanal' }, { k: 'by_date', l: 'Por fecha' }] as const).map((o) => (
                 <button key={o.k} onClick={() => setTMode(o.k)} className="flex-1 py-1.5 text-xs font-bold rounded-lg" style={{ background: tMode === o.k ? '#FFFFFF' : 'transparent', color: tMode === o.k ? '#2D2D2D' : '#6B6459' }}>{o.l}</button>
               ))}
             </div>
+            {tMode !== 'by_date' && (
+              <div className="flex rounded-xl overflow-hidden mb-2 p-1 gap-1" style={{ background: '#ECE5DC' }}>
+                {([{ k: 'refill', l: 'Rellenar hasta' }, { k: 'set_aside', l: 'Apartar' }] as const).map((o) => (
+                  <button key={o.k} onClick={() => setTType(o.k)} className="flex-1 py-1.5 text-[11px] font-bold rounded-lg" style={{ background: tType === o.k ? '#FFFFFF' : 'transparent', color: tType === o.k ? '#2D2D2D' : '#6B6459' }}>{o.l}</button>
+                ))}
+              </div>
+            )}
             <p className="text-[11px] mb-1.5" style={{ color: '#6B6459' }}>
-              {tMode === 'monthly' ? 'Lo que querés tener disponible cada mes (0 = sin meta).' : 'Total a juntar para una fecha (meta de ahorro).'}
+              {tMode === 'by_date'
+                ? 'Total a juntar para una fecha (meta de ahorro).'
+                : `${tMode === 'weekly' ? 'Monto por semana' : 'Monto por mes'}. ${tType === 'refill' ? 'Rellenar = llevar el disponible hasta ese monto.' : 'Apartar = asignar ese monto de nuevo cada período.'}`}
             </p>
             {suggested > 0 && tMode === 'monthly' && (
               <button onClick={() => setTAmt(suggested)} className="text-xs font-bold px-3 py-2 rounded-xl mb-2" style={{ background: '#E7EFFB', color: '#5B8DEF' }}>
@@ -268,7 +283,7 @@ function CategoryDetailSheet({
                 style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: '#ECE5DC' }}
               />
             )}
-            <button onClick={() => onSetTarget(tAmt, tMode, tMode === 'by_date' ? (tDate || null) : null)} className="w-full py-2.5 rounded-xl text-sm font-bold text-white mb-4" style={{ background: '#7EC8A4' }}>
+            <button onClick={() => onSetTarget(tAmt, tMode, tMode === 'by_date' ? (tDate || null) : null, tType)} className="w-full py-2.5 rounded-xl text-sm font-bold text-white mb-4" style={{ background: '#7EC8A4' }}>
               Guardar meta
             </button>
 
@@ -572,6 +587,24 @@ function SpotlightView({
         </div>
       </section>
 
+      {/* Age of Money */}
+      {env.ageOfMoney != null && (
+        <section className="rounded-3xl p-5 flex items-center gap-4" style={{ background: '#FFFFFF' }}>
+          <span className="text-3xl shrink-0">🕰️</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Antigüedad del dinero</p>
+            <p className="text-2xl font-black leading-tight" style={{ color: '#2D2D2D' }}>{env.ageOfMoney} días</p>
+            <p className="text-[11px]" style={{ color: '#6B6459' }}>
+              {env.ageOfMoney < 30
+                ? 'Vivís bastante al día — apuntá a 30+ días de colchón.'
+                : env.ageOfMoney < 60
+                  ? 'Buen colchón: gastás plata que entró hace semanas.'
+                  : 'Gran colchón: gastás plata de hace más de un mes. 🎉'}
+            </p>
+          </div>
+        </section>
+      )}
+
       {/* Monthly Summary */}
       <section>
         <p className="text-xs font-bold uppercase tracking-wide mb-2 px-1" style={{ color: '#6B6459' }}>Resumen del mes</p>
@@ -656,6 +689,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   const [tab, setTab] = useState<'categories' | 'spotlight'>('categories');
   const [view, setView] = useState<'mine' | 'partner'>('mine');
   const [filter, setFilter] = useState<string>('all'); // 'all'|'overspent'|'underfunded'|'overfunded'|'available'|`view:<id>`
+  const [autoMenuOpen, setAutoMenuOpen] = useState(false);
   const [newViewOpen, setNewViewOpen] = useState(false);
   const [prioritiesOpen, setPrioritiesOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -837,9 +871,9 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   });
 
   const saveTarget = useMutation({
-    mutationFn: async ({ categoryId, amount, cadence, date }: { categoryId: string; amount: number; cadence: 'monthly' | 'by_date'; date: string | null }) => {
+    mutationFn: async ({ categoryId, amount, cadence, date, targetType }: { categoryId: string; amount: number; cadence: 'monthly' | 'by_date' | 'weekly'; date: string | null; targetType: 'refill' | 'set_aside' }) => {
       const { error } = await supabase.from('category_targets').upsert(
-        { household_id: profile.household_id, profile_id: profile.id, category_id: categoryId, target_amount: amount, cadence, target_date: cadence === 'by_date' ? date : null, currency: 'ARS' },
+        { household_id: profile.household_id, profile_id: profile.id, category_id: categoryId, target_amount: amount, cadence, target_date: cadence === 'by_date' ? date : null, target_type: cadence === 'by_date' ? 'refill' : targetType, currency: 'ARS' },
         { onConflict: 'profile_id,category_id' },
       );
       if (error) throw error;
@@ -869,25 +903,25 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   }
   function autoAssignTargets() {
     const updates: { categoryId: string; assigned: number }[] = [];
-    for (const [catId, target] of env.targetByCategory) {
-      if (target <= 0) continue;
+    for (const [catId, needed] of env.neededByCategory) {
+      if (needed <= 0) continue;
       const r = env.rowByCategory.get(catId);
-      const assigned = r?.assigned ?? 0;
-      const available = r?.available ?? 0;
-      if (available < target) updates.push({ categoryId: catId, assigned: assigned + (target - available) });
+      updates.push({ categoryId: catId, assigned: (r?.assigned ?? 0) + needed });
     }
     if (updates.length) bulkAssign.mutate(updates);
+  }
+  function applyAutoAssign(strategy: AutoAssignStrategy) {
+    const updates = [...env.autoAssignAmounts(strategy).entries()].map(([categoryId, assigned]) => ({ categoryId, assigned }));
+    if (updates.length) bulkAssign.mutate(updates);
+    setAutoMenuOpen(false);
   }
 
   const overspentCount = env.rows.filter((r) => r.available < 0).length;
   const underfundedCount = useMemo(() => {
     let n = 0;
-    for (const [catId, target] of env.targetByCategory) {
-      if (target <= 0) continue;
-      if ((env.rowByCategory.get(catId)?.available ?? 0) < target) n++;
-    }
+    for (const [, needed] of env.neededByCategory) if (needed > 0) n++;
     return n;
-  }, [env.targetByCategory, env.rowByCategory]);
+  }, [env.neededByCategory]);
 
   // Counts for the focused-view chips.
   const chipCounts = useMemo(() => {
@@ -960,17 +994,36 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
             retroactivamente lo que ya saliste gastando y partir en cero (no te baja “Para asignar”).
           </p>
         )}
-        {editable && (overspentCount > 0 || underfundedCount > 0) && (
-          <div className="flex flex-wrap gap-2 mt-3">
-            {overspentCount > 0 && (
-              <button onClick={coverOverspent} className="text-xs font-bold px-3 py-2 rounded-xl" style={{ background: '#FFE7E2', color: '#E5604C' }}>
-                Cubrir lo ya gastado ({overspentCount})
+        {editable && (
+          <div className="mt-3">
+            <div className="flex flex-wrap gap-2">
+              {overspentCount > 0 && (
+                <button onClick={coverOverspent} className="text-xs font-bold px-3 py-2 rounded-xl" style={{ background: '#FFE7E2', color: '#E5604C' }}>
+                  Cubrir lo ya gastado ({overspentCount})
+                </button>
+              )}
+              {underfundedCount > 0 && (
+                <button onClick={autoAssignTargets} className="text-xs font-bold px-3 py-2 rounded-xl" style={{ background: '#FDF1D8', color: '#B8860B' }}>
+                  Asignar a metas ({underfundedCount})
+                </button>
+              )}
+              <button onClick={() => setAutoMenuOpen((v) => !v)} className="text-xs font-bold px-3 py-2 rounded-xl" style={{ background: '#E4F2EA', color: '#5BA886' }}>
+                ⚡ Auto-asignar {autoMenuOpen ? '▴' : '▾'}
               </button>
-            )}
-            {underfundedCount > 0 && (
-              <button onClick={autoAssignTargets} className="text-xs font-bold px-3 py-2 rounded-xl" style={{ background: '#FDF1D8', color: '#B8860B' }}>
-                Asignar a metas ({underfundedCount})
-              </button>
+            </div>
+            {autoMenuOpen && (
+              <div className="mt-2 flex flex-col gap-1 rounded-2xl p-2" style={{ background: '#F9F5F0' }}>
+                {([
+                  { k: 'last_assigned', label: 'Igual que el mes pasado (asignado)' },
+                  { k: 'last_spent', label: 'Gastado el mes pasado' },
+                  { k: 'avg3_spent', label: 'Promedio de gasto (3 meses)' },
+                  { k: 'reset_available', label: 'Resetear disponible a 0' },
+                ] as const).map((o) => (
+                  <button key={o.k} onClick={() => applyAutoAssign(o.k)} className="text-left text-xs font-semibold px-3 py-2 rounded-xl" style={{ background: '#FFFFFF', color: '#2D2D2D' }}>
+                    {o.label}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         )}
@@ -1197,7 +1250,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
           format={format}
           onClose={() => setDetailCat(null)}
           onAssign={(n) => assignOne(detailCat.id, n)}
-          onSetTarget={(amount, cadence, date) => saveTarget.mutate({ categoryId: detailCat.id, amount, cadence, date })}
+          onSetTarget={(amount, cadence, date, targetType) => saveTarget.mutate({ categoryId: detailCat.id, amount, cadence, date, targetType })}
           onToggleFeatured={() => updatePrefs.mutate({ featured_category_id: prefs.featured_category_id === detailCat.id ? undefined : detailCat.id })}
           onMove={(toCat, amount) => moveMoney(detailCat.id, toCat, amount)}
         />

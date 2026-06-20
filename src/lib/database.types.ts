@@ -25,9 +25,11 @@ export type Database = {
           id: string
           initial_balance: number
           name: string
+          last_reconciled_at: string | null
           on_budget: boolean
           owner_profile_id: string | null
           payment_category_id: string | null
+          reconciled_balance: number | null
           statement_ars: number | null
           statement_usd: number | null
           type: string
@@ -42,9 +44,11 @@ export type Database = {
           id?: string
           initial_balance?: number
           name: string
+          last_reconciled_at?: string | null
           on_budget?: boolean
           owner_profile_id?: string | null
           payment_category_id?: string | null
+          reconciled_balance?: number | null
           statement_ars?: number | null
           statement_usd?: number | null
           type: string
@@ -59,9 +63,11 @@ export type Database = {
           id?: string
           initial_balance?: number
           name?: string
+          last_reconciled_at?: string | null
           on_budget?: boolean
           owner_profile_id?: string | null
           payment_category_id?: string | null
+          reconciled_balance?: number | null
           statement_ars?: number | null
           statement_usd?: number | null
           type?: string
@@ -339,6 +345,7 @@ export type Database = {
           profile_id: string
           target_amount: number
           target_date: string | null
+          target_type: string | null
           updated_at: string
         }
         Insert: {
@@ -351,6 +358,7 @@ export type Database = {
           profile_id: string
           target_amount?: number
           target_date?: string | null
+          target_type?: string | null
           updated_at?: string
         }
         Update: {
@@ -363,6 +371,7 @@ export type Database = {
           profile_id?: string
           target_amount?: number
           target_date?: string | null
+          target_type?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -1221,6 +1230,7 @@ export type Database = {
           account_id: string | null
           amount: number
           category_id: string | null
+          cleared: boolean
           created_at: string
           currency: string
           description: string | null
@@ -1245,6 +1255,7 @@ export type Database = {
           account_id?: string | null
           amount: number
           category_id?: string | null
+          cleared?: boolean
           created_at?: string
           currency?: string
           description?: string | null
@@ -1269,6 +1280,7 @@ export type Database = {
           account_id?: string | null
           amount?: number
           category_id?: string | null
+          cleared?: boolean
           created_at?: string
           currency?: string
           description?: string | null
