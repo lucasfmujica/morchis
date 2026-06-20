@@ -1097,8 +1097,8 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
         </div>
       )}
 
-      {/* "Para asignar" banner + quick actions (sticky so it stays in view) */}
-      <div className="mx-4 mb-4 rounded-3xl p-5 sticky top-1 z-20" style={{ background: rtaBg, boxShadow: '0 6px 20px -12px rgba(45,45,45,0.5)' }}>
+      {/* "Para asignar" banner + quick actions (scrolls with the page) */}
+      <div className="mx-4 mb-4 rounded-3xl p-5" style={{ background: rtaBg, boxShadow: '0 6px 20px -12px rgba(45,45,45,0.5)' }}>
         <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>
           {editable ? 'Para asignar' : `Para asignar · ${partner?.nickname || 'Pareja'}`}
         </p>
@@ -1207,14 +1207,6 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
         )}
       </div>
 
-      {/* Column legend */}
-      <div className="flex items-center gap-2 px-7 mb-1">
-        <span className="flex-1" />
-        <span className="w-[4.25rem] text-right text-[9px] font-bold uppercase tracking-wide" style={{ color: '#A89B8C' }}>Asignado</span>
-        <span className="w-[4.25rem] text-right text-[9px] font-bold uppercase tracking-wide" style={{ color: '#A89B8C' }}>Gastado</span>
-        <span className="w-[4.25rem] text-right text-[9px] font-bold uppercase tracking-wide" style={{ color: '#A89B8C' }}>Disp.</span>
-      </div>
-
       <div className="px-4 flex flex-col gap-4">
         {env.isLoading ? (
           <div className="rounded-3xl p-8 text-center text-sm" style={{ background: '#FFFFFF', color: '#6B6459' }}>Cargando…</div>
@@ -1239,9 +1231,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
                 <button onClick={() => toggleGroup(g.key)} className="w-full flex items-center gap-2 px-3 mb-1.5">
                   <span className="text-[10px]" style={{ color: '#6B6459' }}>{isCollapsed ? '▸' : '▾'}</span>
                   <p className="flex-1 text-left text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>{g.title}</p>
-                  <span className="w-[4.25rem] text-right text-[11px] font-bold tabular-nums" style={{ color: '#6B6459' }}>{fmtCell(sub.assigned)}</span>
-                  <span className="w-[4.25rem] text-right text-[11px] font-bold tabular-nums" style={{ color: '#6B6459' }}>{fmtCell(sub.activity)}</span>
-                  <span className="w-[4.25rem] text-right text-[11px] font-black tabular-nums" style={{ color: availColor(sub.available, 0) }}>{fmtCell(sub.available)}</span>
+                  <span className="text-[12px] font-black tabular-nums" style={{ color: availColor(sub.available, 0) }}>{fmtCell(sub.available)}</span>
                 </button>
 
                 {!isCollapsed && (
@@ -1296,24 +1286,9 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
                               <div className="h-full rounded-full transition-all" style={{ width: `${barPct}%`, background: fg }} />
                             </div>
                           </div>
-                          {/* Asignado (editable, doesn't open the detail) */}
-                          <div className="w-[4.25rem] text-right" onClick={(e) => e.stopPropagation()}>
-                            {editable ? (
-                              <MoneyField
-                                key={`${c.id}-${month}-${assigned}`}
-                                value={assigned}
-                                onCommit={(n) => assignOne(c.id, n)}
-                                placeholder="0"
-                                className="w-full bg-transparent text-right text-[13px] font-semibold tabular-nums outline-none rounded px-1 -mx-1 border-b border-dashed border-[#D9CFC2] focus:bg-[#EEF6F1] focus:border-[#7EC8A4] transition-colors"
-                                style={{ color: assigned > 0 ? '#2D2D2D' : '#A89B8C' }}
-                              />
-                            ) : (
-                              <span className="text-[13px] font-semibold tabular-nums" style={{ color: assigned > 0 ? '#2D2D2D' : '#A89B8C' }}>{fmtCell(assigned)}</span>
-                            )}
-                          </div>
-                          <span className="w-[4.25rem] text-right text-[13px] tabular-nums" style={{ color: '#6B6459' }}>{activity < 0 ? `+${fmtCell(-activity)}` : fmtCell(activity)}</span>
-                          <span className="w-[4.25rem] flex justify-end">
-                            <span className="inline-block px-1.5 py-0.5 rounded-full text-[11px] font-black tabular-nums" style={{ background: availPill(available, target).bg, color: fg }}>
+                          {/* YNAB mobile: only the Available pill; tap the row to assign. */}
+                          <span className="shrink-0">
+                            <span className="inline-block px-2.5 py-1 rounded-full text-sm font-black tabular-nums" style={{ background: availPill(available, target).bg, color: fg }}>
                               {fmtCell(available)}
                             </span>
                           </span>
