@@ -98,15 +98,13 @@ async function fetchAll(admin:SupabaseClient,hid:string):Promise<Data>{
   const y=now.getUTCFullYear(),m=now.getUTCMonth();
   const m0=iso(y,m,1),m1=iso(y,m+1,1),m3=iso(y,m-3,1);
   const expSel='id,category_id,categories(name),profile_id,scope,is_shared,amount,currency,usd_rate_snapshot,merchant,occurred_on,splits(payer_profile_id,ower_profile_id,amount)';
-  const [cr,hr,ir,recR,budR,goalR,savR,prR,debtR,fxR]=await Promise.all([
+  const [cr,hr,ir,recR,tgtR,bmR,savR,prR,debtR,fxR]=await Promise.all([
     admin.from('transactions').select(expSel).eq('household_id',hid).eq('type','expense').gte('occurred_on',m0).lt('occurred_on',m1),
     admin.from('transactions').select(expSel).eq('household_id',hid).eq('type','expense').gte('occurred_on',m3).lt('occurred_on',m0),
     admin.from('transactions').select('amount,currency,usd_rate_snapshot').eq('household_id',hid).eq('type','income').gte('occurred_on',m0).lt('occurred_on',m1),
-    // goal_id is null filters out goal auto-contributions — they're committed
-    // savings, not fixed expenses.
-    admin.from('recurring_rules').select('label,amount,currency,cadence,scope,profile_id,categories(name)').eq('household_id',hid).eq('active',true).eq('direction','expense').is('goal_id',null),
-    admin.from('budgets').select('amount,currency,scope,profile_id,categories(name)').eq('household_id',hid).eq('active',true),
-    admin.from('goals').select('name,target_amount,current_amount,target_currency,deadline,scope,profile_id').eq('household_id',hid).eq('archived',false),
+    admin.from('recurring_rules').select('label,amount,currency,cadence,scope,profile_id,categories(name)').eq('household_id',hid).eq('active',true).eq('direction','expense'),
+    admin.from('category_targets').select('category_id,target_amount,currency,target_date,profile_id,categories(name,is_goal)').eq('household_id',hid),
+    admin.from('budget_months').select('category_id,assigned,currency').eq('household_id',hid),
     admin.from('savings_goals').select('target_pct').order('month',{ascending:false}).limit(1).maybeSingle(),
     admin.from('profiles').select('id,nickname,display_name,notification_prefs').eq('household_id',hid),
     // Linked friend-debts net out of the expense's real cost regardless of
@@ -117,10 +115,16 @@ async function fetchAll(admin:SupabaseClient,hid:string):Promise<Data>{
   ]);
   const debtByTx:Record<string,Debt[]>={};
   for(const d of (debtR.data??[]) as Debt[]){if(!d.transaction_id)continue;(debtByTx[d.transaction_id]??=[]).push(d);}
+  const blue=Number(fxR.data?.ars_per_usd??1200);
+  const tgts=(tgtR.data??[]) as {category_id:string;target_amount:number;currency:string;target_date:string|null;profile_id:string|null;categories:{name:string;is_goal:boolean}|null}[];
+  const bms=(bmR.data??[]) as {category_id:string;assigned:number;currency:string}[];
+  const sumAssigned=(catId:string)=>bms.filter(a=>a.category_id===catId).reduce((s,a)=>s+toArs(a.assigned,a.currency,null,blue),0);
   return {
     curr:(cr.data??[]) as Exp[], hist:(hr.data??[]) as Exp[], income:(ir.data??[]) as Data['income'],
-    rec:(recR.data??[]) as Data['rec'], buds:(budR.data??[]) as Data['buds'], goals:(goalR.data??[]) as Data['goals'],
-    debtByTx, targetPct:Number(savR.data?.target_pct??20), blue:Number(fxR.data?.ars_per_usd??1200),
+    rec:(recR.data??[]) as Data['rec'],
+    buds:tgts.filter(t=>!t.categories?.is_goal).map(t=>({amount:t.target_amount,currency:t.currency,scope:'personal',profile_id:t.profile_id,categories:t.categories?{name:t.categories.name}:null})),
+    goals:tgts.filter(t=>t.categories?.is_goal).map(t=>({name:t.categories!.name,target_amount:toArs(t.target_amount,t.currency,null,blue),current_amount:sumAssigned(t.category_id),target_currency:'ARS',deadline:t.target_date,scope:'personal',profile_id:t.profile_id})),
+    debtByTx, targetPct:Number(savR.data?.target_pct??20), blue,
     profiles:(prR.data??[]) as Profile[],
   };
 }
