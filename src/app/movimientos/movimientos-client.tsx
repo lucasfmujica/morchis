@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { useFx } from '@/hooks/useFx';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
+import { ReceiptItemsSheet } from '@/components/ReceiptItemsSheet';
 import { BottomNav } from '@/components/BottomNav';
 import { EmptyState } from '@/components/EmptyState';
 import { exportTransactionsToCSV } from '@/lib/csvExport';
@@ -50,6 +51,7 @@ type Tx = {
   merchant: string | null;
   occurred_on: string;
   profile_id: string;
+  source: string | null;
   installment_number: number | null;
   installment_total: number | null;
   categories: { name: string; icon: string } | null;
@@ -158,7 +160,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     queryFn: async () => {
       let query = supabase
         .from('transactions')
-        .select('id, amount, type, currency, category_id, account_id, transfer_account_id, scope, is_shared, is_fixed, cleared, flag, merchant, occurred_on, profile_id, installment_number, installment_total, categories:category_id(name, icon)')
+        .select('id, amount, type, currency, category_id, account_id, transfer_account_id, scope, is_shared, is_fixed, cleared, flag, merchant, occurred_on, profile_id, source, installment_number, installment_total, categories:category_id(name, icon)')
         .eq('household_id', profile.household_id);
       if (!fetchAll) query = query.gte('occurred_on', prevMonthStart);
       const { data } = await query
@@ -168,6 +170,23 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       return (data as Tx[]) ?? [];
     },
   });
+
+  // Which transactions actually have scanned line-items, so we only badge the
+  // ones whose detail is worth opening (a single-charge receipt has none). One
+  // light query of just the FK column, deduped into a Set client-side.
+  const { data: itemTxIds = new Set<string>() } = useQuery<Set<string>>({
+    queryKey: ['transaction-item-ids', profile.household_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('transaction_items')
+        .select('transaction_id')
+        .eq('household_id', profile.household_id);
+      return new Set((data ?? []).map((r) => r.transaction_id as string));
+    },
+  });
+
+  // Per-purchase detail (scanned products) for a tapped movement.
+  const [itemsTx, setItemsTx] = useState<Tx | null>(null);
 
   // Visibility rule: each user only sees their own personal movements plus the
   // shared household ones. The partner's personal movements never show here.
@@ -727,6 +746,15 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                           Cuota {tx.installment_number}/{tx.installment_total}
                         </span>
                       )}
+                      {!selectMode && itemTxIds.has(tx.id) && (
+                        <span
+                          onClick={(e) => { e.stopPropagation(); setItemsTx(tx); }}
+                          className="text-xs px-1.5 py-0.5 rounded-md font-semibold cursor-pointer"
+                          style={{ background: '#FBF1D8', color: '#C79A2B' }}
+                        >
+                          🧾 Productos
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="text-right flex-shrink-0">
@@ -837,6 +865,17 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
         categories={categories}
         accounts={accounts}
         editTx={editTx}
+      />
+
+      <ReceiptItemsSheet
+        open={!!itemsTx}
+        onClose={() => setItemsTx(null)}
+        householdId={profile.household_id}
+        transactionId={itemsTx?.id ?? null}
+        merchant={itemsTx?.merchant ?? null}
+        total={itemsTx?.amount ?? 0}
+        currency={itemsTx?.currency ?? 'ARS'}
+        occurredOn={itemsTx?.occurred_on ?? todayISO()}
       />
     </div>
   );

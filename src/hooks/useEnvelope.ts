@@ -211,9 +211,17 @@ export function useEnvelope(
   const debts = debtsQ.data ?? [];
   const targets = targetsQ.data ?? [];
 
+  // Only the viewed person's OWN credit cards get the YNAB payment-envelope move
+  // (spending on your card sets aside cash to pay it later). Your share of a
+  // purchase on someone else's card is NOT a card liability for you — what you
+  // owe that card's owner is already tracked in the couple/debt balance, so
+  // reserving it here too would double-count it and strand it in a "Pago …"
+  // envelope you never pay down.
   const paymentCategoryByAccount = new Map<string, string>();
   for (const a of accounts) {
-    if (a.type === 'credit' && a.payment_category_id) paymentCategoryByAccount.set(a.id, a.payment_category_id);
+    if (a.type === 'credit' && a.payment_category_id && a.owner_profile_id === targetProfileId) {
+      paymentCategoryByAccount.set(a.id, a.payment_category_id);
+    }
   }
 
   // Only the STILL-OUTSTANDING part of a receivable depresses your share: when a

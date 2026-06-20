@@ -315,6 +315,7 @@ export function AddTransactionSheet({
   // the save path can tell whether the split really needs rewriting.
   useEffect(() => {
     if (!open || !editTx) return;
+    if (!editTx.id) { console.error('DEBUG editTx missing id:', JSON.stringify(editTx)); }
     let cancelled = false;
     (async () => {
       const { data: row } = await supabase
@@ -376,6 +377,11 @@ export function AddTransactionSheet({
         // The category detail screen lists movements under this key — without
         // it, deleting from there looks like a no-op until a full reload.
         'category-tx',
+        // The envelope budget (/presupuestos) derives its activity from these —
+        // without them, re-categorising or editing a gasto only shows up after
+        // reopening the app.
+        'envelope-tx',
+        'envelope',
       ].map((key) => qc.invalidateQueries({ queryKey: [key] })),
     );
   }

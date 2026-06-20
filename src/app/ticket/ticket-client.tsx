@@ -9,6 +9,7 @@ import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { formatARS, formatUSD } from '@/lib/format';
 import { triggerBudgetAlerts } from '@/lib/notifyBudgets';
+import { ITEM_GROUPS as GROUPS, ITEM_GROUP_META as GROUP_META } from '@/lib/itemGroups';
 import { toast } from 'sonner';
 import Link from 'next/link';
 
@@ -35,22 +36,6 @@ interface Receipt {
   suggested_category: string;
   items: Item[];
 }
-
-const GROUPS = ['frutas y verduras', 'carnes y fiambres', 'lácteos y huevos', 'almacén', 'panadería', 'bebidas', 'snacks', 'limpieza', 'cuidado personal', 'hogar', 'mascotas', 'otros'];
-const GROUP_META: Record<string, { icon: string; color: string }> = {
-  'frutas y verduras': { icon: '🥬', color: '#7EC8A4' },
-  'carnes y fiambres': { icon: '🥩', color: '#E8806B' },
-  'lácteos y huevos': { icon: '🥚', color: '#F2C94C' },
-  almacén: { icon: '🫙', color: '#B5926B' },
-  panadería: { icon: '🥖', color: '#D9A05B' },
-  bebidas: { icon: '🥤', color: '#6FA8DC' },
-  snacks: { icon: '🍫', color: '#F5A623' },
-  limpieza: { icon: '🧼', color: '#5C9CE6' },
-  'cuidado personal': { icon: '🧴', color: '#E89AC7' },
-  hogar: { icon: '🏠', color: '#B084CC' },
-  mascotas: { icon: '🐾', color: '#A0855B' },
-  otros: { icon: '🏷️', color: '#C4B9AE' },
-};
 
 export default function TicketClient({ profile }: { profile: Profile }) {
   const supabase = createClient();

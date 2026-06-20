@@ -1288,14 +1288,18 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
                       const available = row?.available ?? 0;
                       const target = env.targetByCategory.get(c.id) ?? 0;
                       const fg = availColor(available, target);
-                      // YNAB-style per-category bar: how "full" the envelope is
-                      // toward its target (or its assignment when there's no
-                      // target). When it's been fully spent or overspent the bar
-                      // reads full (you used the whole envelope) — only a truly
-                      // empty/untouched category shows an empty track.
-                      const denom = target > 0 ? target : assigned;
-                      const fullySpent = available <= 0 && (assigned > 0 || activity > 0);
-                      const barPct = fullySpent ? 100 : denom > 0 ? Math.max(0, Math.min(1, available / denom)) * 100 : 0;
+                      // What was in the envelope this month: assignment + carry-over.
+                      const pool = activity + Math.max(0, available);
+                      // Per-category bar fill:
+                      //  - Savings goals fill as you FUND them (progress toward the goal).
+                      //  - Regular envelopes fill as you SPEND them (gasto vs what's in
+                      //    the envelope), so $180k de $200k se ve casi lleno, no casi
+                      //    vacío. Overspent = barra llena.
+                      const barPct = c.is_goal && target > 0
+                        ? Math.max(0, Math.min(1, available / target)) * 100
+                        : available < 0
+                          ? 100
+                          : pool > 0 ? Math.min(1, activity / pool) * 100 : 0;
                       // YNAB-style status text under the name.
                       let statusText = '';
                       let statusColor = '#6B6459';
@@ -1306,9 +1310,8 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
                       else if (activity <= 0) { statusText = 'Financiado'; statusColor = '#5BA886'; }
                       else {
                         // YNAB "spent X of Y": Y is what was in the envelope this
-                        // month (assignment + carry-over = activity + leftover). A
-                        // fully-drained envelope reads "· todo".
-                        const pool = activity + Math.max(0, available);
+                        // month (assignment + carry-over = `pool`). A fully-drained
+                        // envelope reads "· todo".
                         statusText = `Gastaste ${fmtCell(activity)} de ${fmtCell(pool)}${available <= 0 ? ' · todo' : ''}`;
                         statusColor = '#6B6459';
                       }
