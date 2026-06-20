@@ -54,11 +54,13 @@ function availColor(available: number, target: number): string {
   return '#A89B8C';
 }
 
-// The YNAB-style available "pill": colour + a matching soft background tint.
+// The available "pill": a solid green capsule when funded (the happy state
+// pops), a soft tint for the warning/zero states.
 function availPill(available: number, target: number): { bg: string; fg: string } {
-  const fg = availColor(available, target);
-  const bg = fg === '#E5604C' ? '#FFE7E2' : fg === '#C79A2B' ? '#FBF0D6' : fg === '#5BA886' ? '#E4F2EA' : '#ECE5DC';
-  return { bg, fg };
+  const c = availColor(available, target);
+  if (c === '#5BA886') return { bg: '#5BA886', fg: '#FFFFFF' }; // funded → filled green
+  const bg = c === '#E5604C' ? '#FFE7E2' : c === '#C79A2B' ? '#FBF0D6' : '#ECE5DC';
+  return { bg, fg: c };
 }
 
 // A plain right-aligned money field (no boxy "tag") that commits on blur. The
@@ -199,7 +201,7 @@ function CategoryDetailSheet({
           ))}
           <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: '1px solid #ECE5DC' }}>
             <span className="text-sm font-bold" style={{ color: '#2D2D2D' }}>Disponible</span>
-            <span className="text-sm font-black px-2.5 py-1 rounded-full tabular-nums" style={{ background: availPill(row.available, target).bg, color: fg }}>{format(row.available)}</span>
+            <span className="text-sm font-black px-2.5 py-1 rounded-full tabular-nums" style={{ background: availPill(row.available, target).bg, color: availPill(row.available, target).fg }}>{format(row.available)}</span>
           </div>
         </div>
 
@@ -1288,7 +1290,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
                           </div>
                           {/* YNAB mobile: only the Available pill; tap the row to assign. */}
                           <span className="shrink-0">
-                            <span className="inline-block px-2.5 py-1 rounded-full text-sm font-black tabular-nums" style={{ background: availPill(available, target).bg, color: fg }}>
+                            <span className="inline-block px-2.5 py-1 rounded-full text-sm font-black tabular-nums" style={{ background: availPill(available, target).bg, color: availPill(available, target).fg }}>
                               {fmtCell(available)}
                             </span>
                           </span>

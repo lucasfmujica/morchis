@@ -467,9 +467,9 @@ export default function AnalisisClient({
       </div>
 
       <div className="px-4 flex flex-col gap-4">
-        {/* Net worth */}
+        {/* Net worth hero */}
         <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6B6459' }}>Patrimonio</p>
+          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6B6459' }}>💰 Patrimonio</p>
           <div className="flex items-end justify-between mb-3">
             <p className="text-3xl font-black leading-none" style={{ color: '#2D2D2D', fontVariantNumeric: 'tabular-nums' }}>
               {formatARS(currentNetWorth)}
@@ -484,37 +484,39 @@ export default function AnalisisClient({
             )}
           </div>
           <SingleBars rows={nwRows} color="#7EC8A4" />
-          {/* Composition: on-budget cash vs tracking vs card debt */}
-          <div className="mt-4 pt-3" style={{ borderTop: '1px solid #ECE5DC' }}>
-            {(() => {
-              const total = Math.max(1, composition.onBudget + composition.tracking);
-              return (
-                <>
-                  <div className="flex h-2.5 rounded-full overflow-hidden mb-3" style={{ background: '#F1ECE4' }}>
-                    <div style={{ width: `${(composition.onBudget / total) * 100}%`, background: '#7EC8A4' }} />
-                    <div style={{ width: `${(composition.tracking / total) * 100}%`, background: '#6FA8DC' }} />
+        </div>
+
+        {/* Composition: on-budget cash vs tracking vs card debt */}
+        <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>🧩 Composición</p>
+          {(() => {
+            const total = Math.max(1, composition.onBudget + composition.tracking);
+            return (
+              <>
+                <div className="flex h-2.5 rounded-full overflow-hidden mb-3" style={{ background: '#F1ECE4' }}>
+                  <div style={{ width: `${(composition.onBudget / total) * 100}%`, background: '#7EC8A4' }} />
+                  <div style={{ width: `${(composition.tracking / total) * 100}%`, background: '#6FA8DC' }} />
+                </div>
+                {[
+                  { label: '💵 En presupuesto', v: composition.onBudget, c: '#5BA886' },
+                  { label: '👁️ Seguimiento', v: composition.tracking, c: '#5B8DEF' },
+                  { label: '💳 Deuda tarjetas (ciclo)', v: -composition.cardDebt, c: '#E5604C' },
+                ].map((r) => (
+                  <div key={r.label} className="flex items-center justify-between py-1">
+                    <span className="text-sm" style={{ color: '#6B6459' }}>{r.label}</span>
+                    <span className="text-sm font-black tabular-nums" style={{ color: r.c }}>{formatARS(r.v)}</span>
                   </div>
-                  {[
-                    { label: '💵 En presupuesto', v: composition.onBudget, c: '#5BA886' },
-                    { label: '👁️ Seguimiento', v: composition.tracking, c: '#5B8DEF' },
-                    { label: '💳 Deuda tarjetas (ciclo)', v: -composition.cardDebt, c: '#E5604C' },
-                  ].map((r) => (
-                    <div key={r.label} className="flex items-center justify-between py-1">
-                      <span className="text-sm" style={{ color: '#6B6459' }}>{r.label}</span>
-                      <span className="text-sm font-black tabular-nums" style={{ color: r.c }}>{formatARS(r.v)}</span>
-                    </div>
-                  ))}
-                </>
-              );
-            })()}
-          </div>
+                ))}
+              </>
+            );
+          })()}
         </div>
 
         {/* Savings rate vs target */}
         {savingsVsTarget.rate != null && (
           <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Ahorro vs meta</p>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>🎯 Ahorro vs meta</p>
               <span className="text-xs font-bold" style={{ color: savingsVsTarget.rate >= savingsVsTarget.target ? '#5BA886' : '#C79A2B' }}>
                 {Math.round(savingsVsTarget.rate * 100)}% / meta {Math.round(savingsVsTarget.target * 100)}%
               </span>
@@ -606,7 +608,7 @@ export default function AnalisisClient({
           )}
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>
-              Ingresos vs gastos · {trendRange === '12M' ? '12 meses' : '6 meses'}
+              📈 Ingresos vs gastos · {trendRange === '12M' ? '12 meses' : '6 meses'}
             </p>
             <div className="flex rounded-full p-0.5 gap-0.5" style={{ background: '#ECE5DC' }}>
               {(['6M', '12M'] as const).map((r) => (
@@ -677,7 +679,7 @@ export default function AnalisisClient({
         {/* Per-person comparison */}
         {personRows.length > 1 && (
           <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>Quién gastó qué · este mes</p>
+            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>👥 Quién gastó qué · este mes</p>
             <div className="flex flex-col gap-3">
               {personRows.map((p, i) => (
                 <div key={p.id}>
@@ -698,7 +700,7 @@ export default function AnalisisClient({
         {subRows.length > 0 && (
           <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
             <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Suscripciones · este mes</p>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>📡 Suscripciones · este mes</p>
               <span className="text-xs font-black" style={{ color: '#FF7F6B' }}>{formatARS(subsTotal)}</span>
             </div>
             <div className="flex flex-col gap-2">
