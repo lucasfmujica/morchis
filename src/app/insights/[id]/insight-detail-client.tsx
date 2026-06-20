@@ -366,7 +366,7 @@ function CategoryInsightSection({
           </div>
         )}
 
-        <Link href="/analisis/categorias" className="block text-xs font-bold mt-3" style={{ color: '#5BA886' }}>
+        <Link href="/analisis" className="block text-xs font-bold mt-3" style={{ color: '#5BA886' }}>
           Ver todo el detalle de {matchedCat.name} →
         </Link>
       </div>

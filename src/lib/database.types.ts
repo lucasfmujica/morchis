@@ -204,6 +204,7 @@ export type Database = {
           id: string
           is_default: boolean
           is_goal: boolean
+          is_group: boolean
           kind: string
           name: string
           parent_id: string | null
@@ -215,6 +216,7 @@ export type Database = {
           id?: string
           is_default?: boolean
           is_goal?: boolean
+          is_group?: boolean
           kind?: string
           name: string
           parent_id?: string | null
@@ -226,6 +228,7 @@ export type Database = {
           id?: string
           is_default?: boolean
           is_goal?: boolean
+          is_group?: boolean
           kind?: string
           name?: string
           parent_id?: string | null

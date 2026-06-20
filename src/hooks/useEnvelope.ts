@@ -46,6 +46,7 @@ export interface EnvelopeCategory {
   parent_id: string | null;
   color: string | null;
   is_goal: boolean;
+  is_group: boolean;
 }
 
 /** Target info per category (monthly amount or a by-date savings goal). */
@@ -127,12 +128,15 @@ export function useEnvelope(
   // month) and through the viewed month (so future-month carryover works).
   const asOfRows = monthEnd > today ? monthEnd : today;
 
+  // Distinct key (not the shared ['categories']) so the budget's richer select
+  // — which needs parent_id/is_goal/is_group for groups & rings — isn't clobbered
+  // by the many lightweight ['categories'] consumers across the app.
   const categoriesQ = useQuery<EnvelopeCategory[]>({
-    queryKey: ['categories', householdId],
+    queryKey: ['envelope-categories', householdId],
     queryFn: async () => {
       const { data } = await supabase
         .from('categories')
-        .select('id, name, icon, kind, parent_id, color, is_goal')
+        .select('id, name, icon, kind, parent_id, color, is_goal, is_group')
         .eq('household_id', householdId)
         .order('name');
       return (data ?? []) as EnvelopeCategory[];

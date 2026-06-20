@@ -105,6 +105,8 @@ function CategoryDetailSheet({
   onToggleFeatured,
   onMove,
   onRenameCategory,
+  groups,
+  onMoveToGroup,
 }: {
   category: EnvelopeCategory;
   row: RowData;
@@ -124,6 +126,8 @@ function CategoryDetailSheet({
   onToggleFeatured: () => void;
   onMove: (toCategoryId: string, amount: number) => void;
   onRenameCategory: (name: string, icon: string) => void;
+  groups: EnvelopeCategory[];
+  onMoveToGroup: (groupId: string | null) => void;
 }) {
   const [moveTo, setMoveTo] = useState('');
   const [moveAmt, setMoveAmt] = useState(0);
@@ -161,6 +165,22 @@ function CategoryDetailSheet({
             <input value={cIcon} onChange={(e) => setCIcon(e.target.value)} maxLength={2} className="w-12 text-center rounded-xl border-2 outline-none py-2 text-lg" style={{ borderColor: '#ECE5DC', background: '#F9F5F0' }} />
             <input value={cName} onChange={(e) => setCName(e.target.value)} placeholder="Nombre" className="flex-1 rounded-xl border-2 outline-none px-3 text-sm font-bold" style={{ borderColor: '#ECE5DC', background: '#F9F5F0', color: '#2D2D2D' }} />
             <button onClick={() => { if (cName.trim()) { onRenameCategory(cName.trim(), cIcon || category.icon); setEditingName(false); } }} className="px-4 rounded-xl text-sm font-bold text-white" style={{ background: '#7EC8A4' }}>OK</button>
+          </div>
+        )}
+        {editingName && editable && groups.length > 0 && (
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-xs font-bold shrink-0" style={{ color: '#6B6459' }}>Grupo</span>
+            <select
+              value={category.parent_id ?? ''}
+              onChange={(e) => onMoveToGroup(e.target.value || null)}
+              className="flex-1 rounded-xl border-2 outline-none px-3 py-2 text-sm font-bold bg-white"
+              style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+            >
+              <option value="">Sin grupo</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>{g.icon} {g.name}</option>
+              ))}
+            </select>
           </div>
         )}
 
@@ -371,9 +391,10 @@ const CATEGORY_ICONS = [
   '💼', '💵', '📱', '💻', '👗', '💅', '🎮', '🎁', '🐾', '🌿', '⚽', '💡',
 ];
 
-function NewCategorySheet({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string, icon: string) => void }) {
+function NewCategorySheet({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string, icon: string, isGroup: boolean) => void }) {
   const [name, setName] = useState('');
   const [icon, setIcon] = useState('🏷️');
+  const [isGroup, setIsGroup] = useState(false);
   return (
     <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
       <div
@@ -409,12 +430,22 @@ function NewCategorySheet({ onClose, onCreate }: { onClose: () => void; onCreate
         </div>
 
         <button
-          onClick={() => { if (name.trim()) { onCreate(name.trim(), icon); onClose(); } }}
+          onClick={() => setIsGroup((v) => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 rounded-2xl mb-4 border-2"
+          style={{ background: isGroup ? '#E4F2EA' : '#F9F5F0', borderColor: isGroup ? '#7EC8A4' : '#ECE5DC' }}
+        >
+          <span className="text-sm font-bold" style={{ color: '#2D2D2D' }}>📂 Es un grupo (encabezado)</span>
+          <span className="text-xs font-bold" style={{ color: isGroup ? '#5BA886' : '#6B6459' }}>{isGroup ? 'Sí' : 'No'}</span>
+        </button>
+        <p className="text-[11px] mb-4 -mt-2" style={{ color: '#6B6459' }}>Un grupo agrupa categorías (no se le asigna plata).</p>
+
+        <button
+          onClick={() => { if (name.trim()) { onCreate(name.trim(), icon, isGroup); onClose(); } }}
           disabled={!name.trim()}
           className="w-full py-4 rounded-2xl font-bold text-white"
           style={{ background: name.trim() ? '#7EC8A4' : '#C4B9AE' }}
         >
-          Crear categoría
+          {isGroup ? 'Crear grupo' : 'Crear categoría'}
         </button>
       </div>
     </div>
@@ -788,27 +819,50 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   }, [accounts]);
 
   const groups = useMemo(() => {
-    const general: EnvelopeCategory[] = [];
+    // Group headers (is_group) are the YNAB-style master categories; leaf
+    // categories nest under them via parent_id. Card-payment envelopes get their
+    // own "Tarjetas" group; leaves with no group fall under "Sin grupo".
+    const headerById = new Map<string, EnvelopeCategory>();
+    for (const c of env.categories) if (c.is_group) headerById.set(c.id, c);
+    const byGroup = new Map<string, EnvelopeCategory[]>();
     const cards: EnvelopeCategory[] = [];
+    const ungrouped: EnvelopeCategory[] = [];
     for (const c of env.categories) {
-      if (c.kind !== 'expense') continue;
+      if (c.kind !== 'expense' || c.is_group) continue;
       if (paymentCatOwner.has(c.id)) {
         if (paymentCatOwner.get(c.id) === targetProfileId) cards.push(c);
         continue;
       }
-      general.push(c);
+      if (c.parent_id && headerById.has(c.parent_id)) {
+        let arr = byGroup.get(c.parent_id);
+        if (!arr) { arr = []; byGroup.set(c.parent_id, arr); }
+        arr.push(c);
+      } else {
+        ungrouped.push(c);
+      }
     }
     const byName = (a: EnvelopeCategory, b: EnvelopeCategory) => a.name.localeCompare(b.name);
-    general.sort(byName);
-    cards.sort(byName);
-    return [
-      { key: 'general', title: 'Categorías', cats: general },
-      ...(cards.length ? [{ key: 'cards', title: '💳 Tarjetas', cats: cards }] : []),
-    ];
+    const ORDER = ['Fijos', 'Variables', 'Ocio', 'Ahorro y metas'];
+    const headers = [...headerById.values()].sort((a, b) => {
+      const ia = ORDER.indexOf(a.name), ib = ORDER.indexOf(b.name);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.name.localeCompare(b.name);
+    });
+    const result: { key: string; title: string; cats: EnvelopeCategory[] }[] = [];
+    for (const h of headers) {
+      const cats = (byGroup.get(h.id) ?? []).sort(byName);
+      if (cats.length) result.push({ key: h.id, title: `${h.icon} ${h.name}`, cats });
+    }
+    if (cards.length) result.push({ key: 'cards', title: '💳 Tarjetas', cats: cards.sort(byName) });
+    if (ungrouped.length) result.push({ key: 'ungrouped', title: 'Sin grupo', cats: ungrouped.sort(byName) });
+    return result;
   }, [env.categories, paymentCatOwner, targetProfileId]);
 
   // All expense categories (for the "move to another envelope" picker).
-  const expenseCats = useMemo(() => env.categories.filter((c) => c.kind === 'expense'), [env.categories]);
+  const expenseCats = useMemo(() => env.categories.filter((c) => c.kind === 'expense' && !c.is_group), [env.categories]);
+  // Group headers (is_group) for the "move to group" picker in the detail sheet.
+  const groupCats = useMemo(() => env.categories.filter((c) => c.is_group).sort((a, b) => a.name.localeCompare(b.name)), [env.categories]);
+  // Categories pickable for a transaction (exclude group headers).
+  const pickerCats = useMemo(() => env.categories.filter((c) => !c.is_group), [env.categories]);
 
   // Spotlight prefs (Top Priorities + expected income) live in notification_prefs.
   type Prefs = { priority_category_ids?: string[]; expected_income?: number; featured_category_id?: string };
@@ -909,13 +963,13 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   });
 
   const createCategory = useMutation({
-    mutationFn: async ({ name, icon }: { name: string; icon: string }) => {
+    mutationFn: async ({ name, icon, isGroup }: { name: string; icon: string; isGroup?: boolean }) => {
       const { error } = await supabase
         .from('categories')
-        .insert({ household_id: profile.household_id, name, icon, kind: 'expense', is_default: false });
+        .insert({ household_id: profile.household_id, name, icon, kind: 'expense', is_default: false, is_group: !!isGroup });
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['categories', profile.household_id] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['categories', profile.household_id] }); qc.invalidateQueries({ queryKey: ['envelope-categories', profile.household_id] }); },
   });
 
   const renameCategory = useMutation({
@@ -923,7 +977,15 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
       const { error } = await supabase.from('categories').update({ name, icon }).eq('id', categoryId);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['categories', profile.household_id] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['categories', profile.household_id] }); qc.invalidateQueries({ queryKey: ['envelope-categories', profile.household_id] }); },
+  });
+
+  const moveToGroup = useMutation({
+    mutationFn: async ({ categoryId, groupId }: { categoryId: string; groupId: string | null }) => {
+      const { error } = await supabase.from('categories').update({ parent_id: groupId }).eq('id', categoryId);
+      if (error) throw error;
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['categories', profile.household_id] }); qc.invalidateQueries({ queryKey: ['envelope-categories', profile.household_id] }); },
   });
 
   const saveTarget = useMutation({
@@ -939,6 +1001,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['envelope-targets', profile.id] });
       qc.invalidateQueries({ queryKey: ['categories', profile.household_id] });
+      qc.invalidateQueries({ queryKey: ['envelope-categories', profile.household_id] });
     },
   });
 
@@ -1285,7 +1348,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
         onClose={closeSheet}
         householdId={profile.household_id}
         profileId={profile.id}
-        categories={env.categories}
+        categories={pickerCats}
         accounts={activeAccounts}
       />
 
@@ -1310,13 +1373,15 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
           onToggleFeatured={() => updatePrefs.mutate({ featured_category_id: prefs.featured_category_id === detailCat.id ? undefined : detailCat.id })}
           onMove={(toCat, amount) => moveMoney(detailCat.id, toCat, amount)}
           onRenameCategory={(name, icon) => renameCategory.mutate({ categoryId: detailCat.id, name, icon })}
+          groups={groupCats}
+          onMoveToGroup={(groupId) => moveToGroup.mutate({ categoryId: detailCat.id, groupId })}
         />
       )}
 
       {newCatOpen && (
         <NewCategorySheet
           onClose={() => setNewCatOpen(false)}
-          onCreate={(name, icon) => createCategory.mutate({ name, icon })}
+          onCreate={(name, icon, isGroup) => createCategory.mutate({ name, icon, isGroup })}
         />
       )}
 
