@@ -10,6 +10,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { EmptyState } from '@/components/EmptyState';
 import { exportTransactionsToCSV } from '@/lib/csvExport';
 import { formatARS } from '@/lib/format';
+import { FLAG_COLORS, flagHex } from '@/lib/flags';
 import { todayISO, toLocalISO, weekRange, shortDM } from '@/lib/date';
 import {
   BarChart,
@@ -45,6 +46,7 @@ type Tx = {
   is_shared: boolean;
   is_fixed: boolean;
   cleared: boolean;
+  flag: string | null;
   merchant: string | null;
   occurred_on: string;
   profile_id: string;
@@ -95,6 +97,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   const [filterAccount, setFilterAccount] = useState<string>('all');
   const [filterMinAmount, setFilterMinAmount] = useState<number>(0);
   const [filterFixed, setFilterFixed] = useState<boolean | null>(null);
+  const [filterFlag, setFilterFlag] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -150,7 +153,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     queryFn: async () => {
       let query = supabase
         .from('transactions')
-        .select('id, amount, type, currency, category_id, account_id, transfer_account_id, scope, is_shared, is_fixed, cleared, merchant, occurred_on, profile_id, installment_number, installment_total, categories:category_id(name, icon)')
+        .select('id, amount, type, currency, category_id, account_id, transfer_account_id, scope, is_shared, is_fixed, cleared, flag, merchant, occurred_on, profile_id, installment_number, installment_total, categories:category_id(name, icon)')
         .eq('household_id', profile.household_id);
       if (!fetchAll) query = query.gte('occurred_on', prevMonthStart);
       const { data } = await query
@@ -204,10 +207,11 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
         if (filterCategory !== 'all' && tx.category_id !== filterCategory) return false;
         if (filterAccount !== 'all' && tx.account_id !== filterAccount && tx.transfer_account_id !== filterAccount) return false;
         if (filterFixed === true && !tx.is_fixed) return false;
+        if (filterFlag && tx.flag !== filterFlag) return false;
         if (filterMinAmount > 0 && toArs(tx.amount, tx.currency) < filterMinAmount) return false;
         return true;
       }),
-    [searched, filterCategory, filterAccount, filterFixed, filterMinAmount, toArs],
+    [searched, filterCategory, filterAccount, filterFixed, filterFlag, filterMinAmount, toArs],
   );
 
   // Running balance per tx for a single selected account (statement-style).
@@ -244,6 +248,10 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     }
     return Math.round(bal);
   }, [selectedAccount, filterAccount, transactions]);
+
+  // After reconciling, cleared transactions up to that date are locked.
+  const reconciledCutoff = (selectedAccount as { last_reconciled_at?: string | null } | null)?.last_reconciled_at?.slice(0, 10) ?? null;
+  const isLocked = (tx: Tx) => tx.cleared && reconciledCutoff != null && tx.occurred_on <= reconciledCutoff;
 
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const [bankBal, setBankBal] = useState('');
@@ -545,12 +553,12 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
             onClick={() => setShowAdvanced((v) => !v)}
             className="px-3 py-1.5 rounded-full text-xs font-bold border"
             style={{
-              background: filterAccount !== 'all' || filterMinAmount > 0 || filterFixed === true ? '#2D2D2D' : '#FFFFFF',
+              background: filterAccount !== 'all' || filterMinAmount > 0 || filterFixed === true || !!filterFlag ? '#2D2D2D' : '#FFFFFF',
               borderColor: '#ECE5DC',
-              color: filterAccount !== 'all' || filterMinAmount > 0 || filterFixed === true ? '#FFFFFF' : '#6B6459',
+              color: filterAccount !== 'all' || filterMinAmount > 0 || filterFixed === true || !!filterFlag ? '#FFFFFF' : '#6B6459',
             }}
           >
-            ⚙️ Filtros{filterAccount !== 'all' || filterMinAmount > 0 || filterFixed === true ? ' •' : ''}
+            ⚙️ Filtros{filterAccount !== 'all' || filterMinAmount > 0 || filterFixed === true || !!filterFlag ? ' •' : ''}
           </button>
           <button
             onClick={() => { setSelectMode((v) => !v); setSelected(new Set()); }}
@@ -599,6 +607,13 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                 📌 Solo fijos
               </button>
             </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold" style={{ color: '#6B6459' }}>Flag</span>
+              <button onClick={() => setFilterFlag(null)} className="w-6 h-6 rounded-full border flex items-center justify-center text-[10px]" style={{ borderColor: filterFlag === null ? '#2D2D2D' : '#ECE5DC', color: '#6B6459' }}>○</button>
+              {FLAG_COLORS.map((f) => (
+                <button key={f.key} onClick={() => setFilterFlag(filterFlag === f.key ? null : f.key)} title={f.label} className="w-6 h-6 rounded-full" style={{ background: f.hex, outline: filterFlag === f.key ? '2px solid #2D2D2D' : 'none', outlineOffset: '1px' }} />
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -640,6 +655,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                   className="w-full flex items-center gap-3 px-4 py-3.5 text-left animate-in fade-in slide-in-from-bottom-2 duration-200"
                   style={{
                     borderTop: i > 0 ? '1px solid #ECE5DC' : 'none',
+                    borderLeft: flagHex(tx.flag) ? `4px solid ${flagHex(tx.flag)}` : undefined,
                     animationDelay: `${i * 30}ms`,
                     background: selectMode && selected.has(tx.id) ? '#E4F2EA' : undefined,
                   }}
@@ -667,12 +683,12 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                   )}
                   {filterAccount !== 'all' && !selectMode && (
                     <span
-                      onClick={(e) => { e.stopPropagation(); void toggleCleared(tx); }}
-                      title={tx.cleared ? 'Conciliado' : 'Marcar como conciliado'}
+                      onClick={(e) => { e.stopPropagation(); if (!isLocked(tx)) void toggleCleared(tx); }}
+                      title={isLocked(tx) ? 'Conciliado (bloqueado)' : tx.cleared ? 'Conciliado' : 'Marcar como conciliado'}
                       className="shrink-0 w-5 h-5 rounded-full border flex items-center justify-center text-white text-[11px]"
-                      style={{ borderColor: tx.cleared ? '#5BA886' : '#D9CFC2', background: tx.cleared ? '#5BA886' : '#FFFFFF' }}
+                      style={{ borderColor: tx.cleared ? '#5BA886' : '#D9CFC2', background: tx.cleared ? '#5BA886' : '#FFFFFF', cursor: isLocked(tx) ? 'default' : 'pointer' }}
                     >
-                      {tx.cleared ? '✓' : ''}
+                      {isLocked(tx) ? '🔒' : tx.cleared ? '✓' : ''}
                     </span>
                   )}
                   <span className="relative text-2xl shrink-0">

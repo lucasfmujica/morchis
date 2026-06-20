@@ -11,6 +11,7 @@ import { formatARS, formatUSD, usdToArs, arsToUsd, parseMoney, roundMoney, forma
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { todayISO, toLocalISO } from '@/lib/date';
 import { triggerBudgetAlerts } from '@/lib/notifyBudgets';
+import { FLAG_COLORS } from '@/lib/flags';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -57,6 +58,7 @@ interface EditTx {
   scope: string;
   is_shared: boolean;
   is_fixed?: boolean;
+  flag?: string | null;
   merchant: string | null;
   occurred_on: string;
   installment_total?: number | null;
@@ -209,6 +211,7 @@ export function AddTransactionSheet({
   // Fixed expense (rent, psychologist, etc.): excluded from the weekly total
   // limit, but still counts in category budgets and monthly totals.
   const [isFixed, setIsFixed] = useState(false);
+  const [flag, setFlag] = useState<string | null>(null);
   // Who actually fronted the money. Only meaningful for a "Hogar" movement:
   // a "Mío"/partner movement is paid by that same person. Decoupling this from
   // the owner is what lets a household expense be paid by either person (and
@@ -258,6 +261,7 @@ export function AddTransactionSheet({
         setOwner(ownerOf(editTx));
         setIsShared(editTx.is_shared);
         setIsFixed(editTx.is_fixed ?? false);
+        setFlag(editTx.flag ?? null);
         // profile_id is the payer, so a movement whose profile isn't mine was
         // paid by my partner.
         setPaidBy(editTx.profile_id && editTx.profile_id !== profileId ? 'partner' : 'me');
@@ -275,6 +279,7 @@ export function AddTransactionSheet({
         setOwner('me');
         setIsShared(false);
         setIsFixed(false);
+        setFlag(null);
         setPaidBy('me');
         setMerchant('');
         setDate(todayISO());
@@ -638,6 +643,7 @@ export function AddTransactionSheet({
         is_shared: sharedEffective,
         // Only expenses can be "fixed"; income/transfers never are.
         is_fixed: txType === 'expense' ? isFixed : false,
+        flag,
         source: 'manual' as const,
       };
 
@@ -1152,6 +1158,14 @@ export function AddTransactionSheet({
               className="px-3 py-2 rounded-xl text-xs font-bold border bg-white"
               style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
             />
+
+            {/* Colour flag */}
+            <div className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl border" style={{ borderColor: '#ECE5DC' }}>
+              <button type="button" onClick={() => setFlag(null)} title="Sin flag" className="w-5 h-5 rounded-full border flex items-center justify-center text-[10px]" style={{ borderColor: flag === null ? '#2D2D2D' : '#ECE5DC', color: '#6B6459' }}>○</button>
+              {FLAG_COLORS.map((f) => (
+                <button key={f.key} type="button" onClick={() => setFlag(f.key)} title={f.label} className="w-5 h-5 rounded-full" style={{ background: f.hex, outline: flag === f.key ? '2px solid #2D2D2D' : 'none', outlineOffset: '1px' }} />
+              ))}
+            </div>
           </div>
           )}
 

@@ -1232,6 +1232,7 @@ export type Database = {
           category_id: string | null
           cleared: boolean
           created_at: string
+          flag: string | null
           currency: string
           description: string | null
           household_id: string
@@ -1257,6 +1258,7 @@ export type Database = {
           category_id?: string | null
           cleared?: boolean
           created_at?: string
+          flag?: string | null
           currency?: string
           description?: string | null
           household_id: string
@@ -1282,6 +1284,7 @@ export type Database = {
           category_id?: string | null
           cleared?: boolean
           created_at?: string
+          flag?: string | null
           currency?: string
           description?: string | null
           household_id?: string
