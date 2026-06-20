@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
+import { toast } from 'sonner';
 import { useFx } from '@/hooks/useFx';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { BottomNav } from '@/components/BottomNav';
@@ -89,6 +90,14 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     return r === 'week' || r === 'month' ? r : 'all';
   });
   const [showChart, setShowChart] = useState(false);
+  // Advanced filters + bulk-select mode.
+  const [filterAccount, setFilterAccount] = useState<string>('all');
+  const [filterMinAmount, setFilterMinAmount] = useState<number>(0);
+  const [filterFixed, setFilterFixed] = useState<boolean | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkCatOpen, setBulkCatOpen] = useState(false);
 
   const week = weekRange(new Date());
   const monthPrefix = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
@@ -103,7 +112,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     queryFn: async () => {
       const { data } = await supabase
         .from('categories')
-        .select('id, name, icon, kind, color')
+        .select('id, name, icon, kind, color, parent_id, is_goal')
         .eq('household_id', profile.household_id)
         .order('name');
       return data ?? [];
@@ -111,11 +120,11 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   });
 
   const { data: accounts = [] } = useQuery({
-    queryKey: ['accounts', profile.household_id],
+    queryKey: ['accounts-mov', profile.household_id],
     queryFn: async () => {
       const { data } = await supabase
         .from('accounts')
-        .select('id, name, type, owner_profile_id')
+        .select('id, name, type, owner_profile_id, initial_balance')
         .eq('household_id', profile.household_id)
         .eq('archived', false)
         .order('name');
@@ -134,7 +143,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   // "Histórico" does (same 'all' discriminator in the query key).
   const prevMonthStart = toLocalISO(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1));
   const searchActive = debouncedSearch.trim().length > 0;
-  const fetchAll = filterRange === 'all' || searchActive;
+  const fetchAll = filterRange === 'all' || searchActive || filterAccount !== 'all';
   const { data: transactions = [] } = useQuery<Tx[]>({
     queryKey: ['transactions', profile.household_id, fetchAll ? 'all' : 'recent'],
     queryFn: async () => {
@@ -190,11 +199,37 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
 
   const filtered = useMemo(
     () =>
-      filterCategory === 'all'
-        ? searched
-        : searched.filter((tx) => tx.category_id === filterCategory),
-    [searched, filterCategory],
+      searched.filter((tx) => {
+        if (filterCategory !== 'all' && tx.category_id !== filterCategory) return false;
+        if (filterAccount !== 'all' && tx.account_id !== filterAccount && tx.transfer_account_id !== filterAccount) return false;
+        if (filterFixed === true && !tx.is_fixed) return false;
+        if (filterMinAmount > 0 && toArs(tx.amount, tx.currency) < filterMinAmount) return false;
+        return true;
+      }),
+    [searched, filterCategory, filterAccount, filterFixed, filterMinAmount, toArs],
   );
+
+  // Running balance per tx for a single selected account (statement-style).
+  const runningBalance = useMemo(() => {
+    if (filterAccount === 'all') return null;
+    const acc = accounts.find((a) => a.id === filterAccount);
+    if (!acc) return null;
+    const rows = transactions
+      .filter((t) => t.account_id === filterAccount || (t.type === 'transfer' && t.transfer_account_id === filterAccount))
+      .sort((a, b) => a.occurred_on.localeCompare(b.occurred_on) || (a.id < b.id ? -1 : 1));
+    const map = new Map<string, number>();
+    let bal = (acc as { initial_balance?: number }).initial_balance ?? 0;
+    for (const t of rows) {
+      if (t.account_id === filterAccount) {
+        if (t.type === 'income') bal += t.amount;
+        else bal -= t.amount; // expense or transfer-out
+      } else {
+        bal += t.amount; // transfer-in (destination)
+      }
+      map.set(t.id, bal);
+    }
+    return map;
+  }, [filterAccount, accounts, transactions]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, Tx[]>();
@@ -266,6 +301,36 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   }
 
   const acctName = (id: string | null) => accounts.find((a) => a.id === id)?.name ?? '—';
+
+  // Bulk actions on the selected rows.
+  const qc = useQueryClient();
+  const invalidateMoney = () => {
+    qc.invalidateQueries({ queryKey: ['transactions'] });
+    qc.invalidateQueries({ queryKey: ['envelope-tx'] });
+    qc.invalidateQueries({ queryKey: ['envelope'] });
+  };
+  async function bulkUpdate(patch: { category_id?: string; is_fixed?: boolean }, label: string) {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    const { error } = await supabase.from('transactions').update(patch).in('id', ids);
+    if (error) { toast.error('No se pudo actualizar'); return; }
+    toast.success(`${ids.length} ${label}`);
+    setSelected(new Set());
+    setSelectMode(false);
+    setBulkCatOpen(false);
+    invalidateMoney();
+  }
+  async function bulkDelete() {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    if (!window.confirm(`¿Borrar ${ids.length} movimiento(s)? No se puede deshacer.`)) return;
+    const { error } = await supabase.from('transactions').delete().in('id', ids);
+    if (error) { toast.error('No se pudo borrar'); return; }
+    toast.success(`${ids.length} movimiento(s) borrados`);
+    setSelected(new Set());
+    setSelectMode(false);
+    invalidateMoney();
+  }
   // Category (envelope) colour per transaction, to dot the icon and tint the name.
   const catColorById = new Map(categories.map((c) => [c.id, (c.color as string | null) ?? null]));
 
@@ -422,6 +487,69 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
             </span>
           )}
         </div>
+
+        {/* Advanced filters + bulk-select toggle */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="px-3 py-1.5 rounded-full text-xs font-bold border"
+            style={{
+              background: filterAccount !== 'all' || filterMinAmount > 0 || filterFixed === true ? '#2D2D2D' : '#FFFFFF',
+              borderColor: '#ECE5DC',
+              color: filterAccount !== 'all' || filterMinAmount > 0 || filterFixed === true ? '#FFFFFF' : '#6B6459',
+            }}
+          >
+            ⚙️ Filtros{filterAccount !== 'all' || filterMinAmount > 0 || filterFixed === true ? ' •' : ''}
+          </button>
+          <button
+            onClick={() => { setSelectMode((v) => !v); setSelected(new Set()); }}
+            className="px-3 py-1.5 rounded-full text-xs font-bold border ml-auto"
+            style={{
+              background: selectMode ? '#5BA886' : '#FFFFFF',
+              borderColor: selectMode ? '#5BA886' : '#ECE5DC',
+              color: selectMode ? '#FFFFFF' : '#6B6459',
+            }}
+          >
+            {selectMode ? 'Cancelar' : '☑️ Seleccionar'}
+          </button>
+        </div>
+        {showAdvanced && (
+          <div className="flex flex-col gap-2 p-3 rounded-2xl" style={{ background: '#F9F5F0' }}>
+            <select
+              value={filterAccount}
+              onChange={(e) => setFilterAccount(e.target.value)}
+              className="px-3 py-2 rounded-xl text-xs font-bold border bg-white outline-none"
+              style={{ borderColor: filterAccount !== 'all' ? '#7EC8A4' : '#ECE5DC', color: '#2D2D2D' }}
+            >
+              <option value="all">Todas las cuentas</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                inputMode="numeric"
+                placeholder="Monto mínimo ($)"
+                value={filterMinAmount || ''}
+                onChange={(e) => setFilterMinAmount(Number(e.target.value) || 0)}
+                className="flex-1 px-3 py-2 rounded-xl text-xs border bg-white outline-none"
+                style={{ borderColor: filterMinAmount > 0 ? '#7EC8A4' : '#ECE5DC', color: '#2D2D2D' }}
+              />
+              <button
+                onClick={() => setFilterFixed(filterFixed === true ? null : true)}
+                className="px-3 py-2 rounded-xl text-xs font-bold border whitespace-nowrap"
+                style={{
+                  background: filterFixed === true ? '#FBF1D8' : '#FFFFFF',
+                  borderColor: filterFixed === true ? '#F5A623' : '#ECE5DC',
+                  color: filterFixed === true ? '#C79A2B' : '#6B6459',
+                }}
+              >
+                📌 Solo fijos
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Transactions grouped by day */}
@@ -446,12 +574,30 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                   style={{
                     borderTop: i > 0 ? '1px solid #ECE5DC' : 'none',
                     animationDelay: `${i * 30}ms`,
+                    background: selectMode && selected.has(tx.id) ? '#E4F2EA' : undefined,
                   }}
                   onClick={() => {
-                    setEditTx(tx);
-                    setSheetOpen(true);
+                    if (selectMode) {
+                      setSelected((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(tx.id)) next.delete(tx.id);
+                        else next.add(tx.id);
+                        return next;
+                      });
+                    } else {
+                      setEditTx(tx);
+                      setSheetOpen(true);
+                    }
                   }}
                 >
+                  {selectMode && (
+                    <span
+                      className="shrink-0 w-5 h-5 rounded-md border flex items-center justify-center text-white text-xs"
+                      style={{ borderColor: selected.has(tx.id) ? '#5BA886' : '#D9CFC2', background: selected.has(tx.id) ? '#5BA886' : '#FFFFFF' }}
+                    >
+                      {selected.has(tx.id) ? '✓' : ''}
+                    </span>
+                  )}
                   <span className="relative text-2xl shrink-0">
                     {tx.type !== 'transfer' && tx.category_id && catColorById.get(tx.category_id) && (
                       <span className="absolute -left-0.5 top-1 w-1.5 h-1.5 rounded-full" style={{ background: catColorById.get(tx.category_id)! }} />
@@ -493,6 +639,9 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                       {tx.type === 'expense' ? '-' : tx.type === 'transfer' ? '' : '+'}{format(toArs(tx.amount, tx.currency))}
                     </p>
                     <p className="text-xs" style={{ color: '#6B6459' }}>{secondary(toArs(tx.amount, tx.currency))}</p>
+                    {runningBalance && (
+                      <p className="text-[10px] tabular-nums" style={{ color: '#A89E90' }}>saldo {formatARS(runningBalance.get(tx.id) ?? 0)}</p>
+                    )}
                   </div>
                 </button>
               ))}
@@ -513,6 +662,37 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
         categories={categories}
         format={format}
       />
+
+      {/* Bulk action bar */}
+      {selectMode && selected.size > 0 && (
+        <div className="fixed left-0 right-0 z-40 px-4" style={{ bottom: 'calc(76px + env(safe-area-inset-bottom))' }}>
+          <div className="rounded-2xl shadow-lg flex items-center gap-2 p-2" style={{ background: '#2D2D2D' }}>
+            <span className="text-xs font-bold px-1.5 shrink-0" style={{ color: '#FFFFFF' }}>{selected.size} sel.</span>
+            <button onClick={() => setBulkCatOpen(true)} className="flex-1 px-3 py-2 rounded-xl text-xs font-bold" style={{ background: '#5BA886', color: '#FFFFFF' }}>Categorizar</button>
+            <button onClick={() => bulkUpdate({ is_fixed: true }, 'marcados como fijos')} className="px-3 py-2 rounded-xl text-xs font-bold" style={{ background: '#F5A623', color: '#FFFFFF' }}>📌 Fijo</button>
+            <button onClick={bulkDelete} className="px-3 py-2 rounded-xl text-xs font-bold" style={{ background: '#FF7F6B', color: '#FFFFFF' }}>🗑️</button>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk categorize picker */}
+      {bulkCatOpen && (
+        <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={() => setBulkCatOpen(false)}>
+          <div className="w-full rounded-t-3xl p-6 max-h-[70vh] overflow-y-auto" style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
+            <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
+            <h2 className="text-lg font-black mb-1" style={{ color: '#2D2D2D' }}>Asignar categoría</h2>
+            <p className="text-xs mb-4" style={{ color: '#6B6459' }}>A {selected.size} movimiento(s) seleccionados.</p>
+            <div className="flex flex-col gap-1">
+              {categories.filter((c) => c.kind === 'expense').map((c) => (
+                <button key={c.id} onClick={() => bulkUpdate({ category_id: c.id }, `movidos a ${c.name}`)} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-left" style={{ background: '#F9F5F0' }}>
+                  <span className="text-xl">{c.icon}</span>
+                  <span className="text-sm font-semibold" style={{ color: '#2D2D2D' }}>{c.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <BottomNav onFab={(type) => { setEditTx(null); setFabType(type); setSheetOpen(true); }} />
 

@@ -224,7 +224,7 @@ export default function HomeClient({
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],
     queryFn: async () => {
-      const { data } = await supabase.from('categories').select('id, name, icon, kind, color').eq('household_id', profile.household_id).order('name');
+      const { data } = await supabase.from('categories').select('id, name, icon, kind, color, parent_id, is_goal').eq('household_id', profile.household_id).order('name');
       return data ?? [];
     },
     // Categories rarely change; keep them fresh for half an hour.
@@ -239,7 +239,7 @@ export default function HomeClient({
     queryFn: async () => {
       const { data } = await supabase
         .from('accounts')
-        .select('id, name, type, currency, archived, initial_balance, owner_profile_id')
+        .select('id, name, type, currency, archived, initial_balance, owner_profile_id, on_budget')
         .eq('household_id', profile.household_id)
         .order('name');
       return (data ?? []) as (AccountRow & { name: string })[];

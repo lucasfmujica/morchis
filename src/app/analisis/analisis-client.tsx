@@ -8,7 +8,7 @@ import { useInflation } from '@/hooks/useInflation';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { MonthlyBars, SingleBars, lastSixMonths } from '@/components/MonthlyBars';
-import { netWorthAt, type AccountRow, type AccountTx } from '@/lib/accounts';
+import { netWorthAt, assetBalance, cardMonthSpend, type AccountRow, type AccountTx } from '@/lib/accounts';
 import { myShareArs, type SplitRow } from '@/lib/budgets';
 import { toLocalISO } from '@/lib/date';
 import { formatARS } from '@/lib/format';
@@ -51,6 +51,8 @@ export default function AnalisisClient({
   const [constantPesos, setConstantPesos] = useState(true);
   // Month shown in the spending breakdown (null = the latest/current month).
   const [breakdownMonth, setBreakdownMonth] = useState<string | null>(null);
+  // Category whose 6-month spend trend is being drilled into (null = closed).
+  const [drillCat, setDrillCat] = useState<{ id: string; name: string; icon: string } | null>(null);
   // scope: 'me' (Mío) | 'all' (Nuestro) | 'partner' — default to "Mío"
   const [scope, setScope] = useState<'me' | 'all' | 'partner'>('me');
   const scopeProfileId =
@@ -98,7 +100,7 @@ export default function AnalisisClient({
     queryFn: async () => {
       const { data } = await supabase
         .from('categories')
-        .select('id, name, icon, color, kind')
+        .select('id, name, icon, color, kind, parent_id, is_goal')
         .eq('household_id', profile.household_id)
         .order('name');
       return data ?? [];
@@ -134,14 +136,14 @@ export default function AnalisisClient({
     },
   });
 
-  const { data: accounts = [] } = useQuery<AccountRow[]>({
+  const { data: accounts = [] } = useQuery<(AccountRow & { on_budget: boolean })[]>({
     queryKey: ['accounts-full', profile.household_id],
     queryFn: async () => {
       const { data } = await supabase
         .from('accounts')
-        .select('id, type, currency, archived, initial_balance, owner_profile_id')
+        .select('id, type, currency, archived, initial_balance, owner_profile_id, on_budget')
         .eq('household_id', profile.household_id);
-      return (data ?? []) as AccountRow[];
+      return (data ?? []) as (AccountRow & { on_budget: boolean })[];
     },
   });
 
@@ -154,6 +156,17 @@ export default function AnalisisClient({
         .eq('household_id', profile.household_id)
         .not('account_id', 'is', null);
       return (data ?? []) as AccountTx[];
+    },
+  });
+
+  const { data: savingsTargetRows = [] } = useQuery({
+    queryKey: ['savings_goals', profile.household_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('savings_goals')
+        .select('month, target_pct')
+        .eq('household_id', profile.household_id);
+      return data ?? [];
     },
   });
 
@@ -332,6 +345,42 @@ export default function AnalisisClient({
     return avgInc >= avgExp;
   }, [trendRows, currentKey]);
 
+  // Net-worth composition: on-budget cash vs tracking (off-budget) vs card debt.
+  const composition = useMemo(() => {
+    let onBudget = 0, tracking = 0, cardDebt = 0;
+    const monthStart = `${currentKey}-01`;
+    for (const a of accounts) {
+      if (a.archived) continue;
+      if (a.type === 'credit') {
+        cardDebt += cardMonthSpend(accountTx, a.id, monthStart, todayStr);
+        continue;
+      }
+      const bal = assetBalance(accountTx, a.id, a.initial_balance ?? 0, todayStr);
+      const ars = a.currency === 'USD' && arsPerUsd > 0 ? bal * arsPerUsd : bal;
+      if (a.on_budget) onBudget += ars; else tracking += ars;
+    }
+    return { onBudget: Math.round(onBudget), tracking: Math.round(tracking), cardDebt: Math.round(cardDebt) };
+  }, [accounts, accountTx, arsPerUsd, currentKey, todayStr]);
+
+  // Savings rate this month vs the household target (savings_goals.target_pct).
+  const savingsVsTarget = useMemo(() => {
+    const cur = trendRows.find((r) => r.key === currentKey);
+    const rate = cur && cur.income > 0 ? (cur.income - cur.expense) / cur.income : null;
+    const target = (savingsTargetRows.find((s) => s.month === currentKey)?.target_pct ?? 20) / 100;
+    return { rate, target };
+  }, [trendRows, currentKey, savingsTargetRows]);
+
+  // 6-month spend line for one category (this person's share) — for the drill sheet.
+  const categoryTrend = (catId: string) =>
+    trendMonths.map((m) => {
+      let v = 0;
+      for (const t of allTxns) {
+        if (t.type !== 'expense' || t.category_id !== catId || !t.occurred_on.startsWith(m.key)) continue;
+        v += expenseShareArs(t, scopeProfileId);
+      }
+      return { key: m.key, label: m.label, value: Math.round(v) };
+    });
+
   // "Total del año" — sum of the 12 trend months (already constant-pesos
   // adjusted when the toggle is on). Only shown in the 12M view.
   const yearTotals = useMemo(() => {
@@ -435,7 +484,49 @@ export default function AnalisisClient({
             )}
           </div>
           <SingleBars rows={nwRows} color="#7EC8A4" />
+          {/* Composition: on-budget cash vs tracking vs card debt */}
+          <div className="mt-4 pt-3" style={{ borderTop: '1px solid #ECE5DC' }}>
+            {(() => {
+              const total = Math.max(1, composition.onBudget + composition.tracking);
+              return (
+                <>
+                  <div className="flex h-2.5 rounded-full overflow-hidden mb-3" style={{ background: '#F1ECE4' }}>
+                    <div style={{ width: `${(composition.onBudget / total) * 100}%`, background: '#7EC8A4' }} />
+                    <div style={{ width: `${(composition.tracking / total) * 100}%`, background: '#6FA8DC' }} />
+                  </div>
+                  {[
+                    { label: '💵 En presupuesto', v: composition.onBudget, c: '#5BA886' },
+                    { label: '👁️ Seguimiento', v: composition.tracking, c: '#5B8DEF' },
+                    { label: '💳 Deuda tarjetas (ciclo)', v: -composition.cardDebt, c: '#E5604C' },
+                  ].map((r) => (
+                    <div key={r.label} className="flex items-center justify-between py-1">
+                      <span className="text-sm" style={{ color: '#6B6459' }}>{r.label}</span>
+                      <span className="text-sm font-black tabular-nums" style={{ color: r.c }}>{formatARS(r.v)}</span>
+                    </div>
+                  ))}
+                </>
+              );
+            })()}
+          </div>
         </div>
+
+        {/* Savings rate vs target */}
+        {savingsVsTarget.rate != null && (
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Ahorro vs meta</p>
+              <span className="text-xs font-bold" style={{ color: savingsVsTarget.rate >= savingsVsTarget.target ? '#5BA886' : '#C79A2B' }}>
+                {Math.round(savingsVsTarget.rate * 100)}% / meta {Math.round(savingsVsTarget.target * 100)}%
+              </span>
+            </div>
+            <div className="h-3 rounded-full overflow-hidden" style={{ background: '#ECE5DC' }}>
+              <div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(100, savingsVsTarget.rate * 100))}%`, background: savingsVsTarget.rate >= savingsVsTarget.target ? '#7EC8A4' : '#F5A623' }} />
+            </div>
+            <p className="text-[11px] mt-2" style={{ color: '#6B6459' }}>
+              {savingsVsTarget.rate >= savingsVsTarget.target ? '¡Vas por arriba de tu meta de ahorro! 🎉' : 'Estás por debajo de tu meta de ahorro de este mes.'}
+            </p>
+          </div>
+        )}
 
         {/* Spending breakdown — total + segmented bar + per-category % bars */}
         <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
@@ -484,7 +575,7 @@ export default function AnalisisClient({
                 {catRows.map((r) => {
                   const pct = Math.round((r.value / monthExpense) * 100);
                   return (
-                    <Link key={r.id} href={`/categorias/${r.id}`} className="flex items-center gap-3 py-2.5">
+                    <button key={r.id} onClick={() => setDrillCat({ id: r.id, name: r.cat!.name, icon: r.cat!.icon })} className="flex items-center gap-3 py-2.5 text-left w-full">
                       <span className="text-xl shrink-0">{r.cat!.icon}</span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
@@ -498,7 +589,7 @@ export default function AnalisisClient({
                           <span className="text-[11px] font-semibold tabular-nums w-8 text-right" style={{ color: '#6B6459' }}>{pct}%</span>
                         </div>
                       </div>
-                    </Link>
+                    </button>
                   );
                 })}
               </div>
@@ -660,6 +751,23 @@ export default function AnalisisClient({
           )}
         </div>
       </div>
+
+      {drillCat && (
+        <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={() => setDrillCat(null)}>
+          <div className="w-full rounded-t-3xl p-6" style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
+            <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-2xl">{drillCat.icon}</span>
+              <h2 className="text-lg font-black" style={{ color: '#2D2D2D' }}>{drillCat.name}</h2>
+            </div>
+            <p className="text-xs mb-4" style={{ color: '#6B6459' }}>Gasto de los últimos {trendMonths.length} meses (tu parte)</p>
+            <SingleBars rows={categoryTrend(drillCat.id)} color="#FF7F6B" />
+            <Link href={`/categorias/${drillCat.id}`} className="block text-center text-xs font-bold mt-4 pt-3" style={{ color: '#5BA886', borderTop: '1px solid #ECE5DC' }}>
+              Ver historial completo →
+            </Link>
+          </div>
+        </div>
+      )}
 
       <BottomNav onFab={(type) => { setFabType(type); setSheetOpen(true); }} />
       <AddTransactionSheet
