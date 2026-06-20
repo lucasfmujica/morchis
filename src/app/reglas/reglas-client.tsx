@@ -173,7 +173,7 @@ function daysUntil(dateStr: string): number {
   return Math.round((d.getTime() - today.getTime()) / 86400000);
 }
 
-function UpcomingBills({ rules, onEdit }: { rules: Rule[]; onEdit: (r: Rule) => void }) {
+function UpcomingBills({ rules, availableByCat, onEdit }: { rules: Rule[]; availableByCat: Map<string, number>; onEdit: (r: Rule) => void }) {
   const { arsPerUsd } = useFx();
   const upcoming = rules
     .filter((r) => r.active && r.next_run != null && daysUntil(r.next_run) >= 0 && daysUntil(r.next_run) <= 35)
@@ -201,6 +201,15 @@ function UpcomingBills({ rules, onEdit }: { rules: Rule[]; onEdit: (r: Rule) => 
         {upcoming.map((r) => {
           const d = daysUntil(r.next_run!);
           const soon = d <= 3;
+          // Funding status: only for categorized expenses. Approximate — `available`
+          // is per category, so multiple bills in one category share it.
+          const amountArs = toArs(r.amount, r.currency, arsPerUsd);
+          const funded = r.direction === 'expense' && r.category_id != null
+            ? (availableByCat.get(r.category_id) ?? 0) >= amountArs
+            : null;
+          const shortfall = r.direction === 'expense' && r.category_id != null
+            ? Math.max(0, amountArs - (availableByCat.get(r.category_id) ?? 0))
+            : 0;
           return (
             <button
               key={r.id}
@@ -215,8 +224,23 @@ function UpcomingBills({ rules, onEdit }: { rules: Rule[]; onEdit: (r: Rule) => 
                 {r.direction === 'income' ? '💰' : '📤'}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold truncate" style={{ color: '#2D2D2D' }}>{r.label}</p>
-                <p className="text-xs font-semibold" style={{ color: soon ? '#E5604C' : '#6B6459' }}>{whenLabel(d)}</p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-bold truncate" style={{ color: '#2D2D2D' }}>{r.label}</p>
+                  {r.is_variable && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: '#FBF1D8', color: '#B8860B' }}>
+                      recordatorio
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs font-semibold" style={{ color: soon ? '#E5604C' : '#6B6459' }}>{whenLabel(d)}</p>
+                  {funded === true && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#E4F2EA', color: '#5BA886' }}>Fondeado ✓</span>
+                  )}
+                  {funded === false && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#FBF1D8', color: '#B8860B' }}>Falta {formatARS(shortfall)}</span>
+                  )}
+                </div>
               </div>
               <p className="text-sm font-black flex-shrink-0" style={{ color: r.direction === 'income' ? '#7EC8A4' : '#FF7F6B' }}>
                 {r.direction === 'income' ? '+' : '-'}{fmtMoney(r.amount, r.currency)}
@@ -356,12 +380,16 @@ function targetFromRule(amount: number, cadence: string): { cadence: 'monthly' |
 function RuleForm({
   initial,
   accounts,
+  categories,
+  existingTargetCats,
   onSave,
   onCancel,
 }: {
   initial?: Partial<Rule>;
   accounts: AccountOption[];
-  onSave: (data: RuleFormData) => void;
+  categories: CategoryOption[];
+  existingTargetCats: Set<string>;
+  onSave: (data: RuleFormData, reserveInBudget: boolean) => void;
   onCancel: () => void;
 }) {
   const [direction, setDirection] = useState<'income' | 'expense'>(
@@ -379,6 +407,18 @@ function RuleForm({
   const [scope, setScope] = useState(initial?.scope ?? 'personal');
   const [active, setActive] = useState(initial?.active ?? true);
   const [accountId, setAccountId] = useState<string>(initial?.account_id ?? '');
+  const [categoryId, setCategoryId] = useState<string>(initial?.category_id ?? '');
+  const [isVariable, setIsVariable] = useState(initial?.is_variable ?? false);
+  // For a new rule, default to reserving in the budget; when editing, only
+  // default on if that category already has a target (don't silently re-create
+  // one the user deleted).
+  const [reserveInBudget, setReserveInBudget] = useState(
+    initial?.id ? existingTargetCats.has(initial.category_id ?? '') : true,
+  );
+
+  // Only expense categories are pickable for an expense rule, income for income;
+  // master groups (Fijos/Variables/…) are never a leaf category for a tx.
+  const pickableCategories = categories.filter((c) => !c.is_group && c.kind === direction);
 
   function handleSave() {
     const amount = parseMoney(amountStr);
@@ -386,12 +426,12 @@ function RuleForm({
       toast.error('Completá el nombre y el monto.');
       return;
     }
-    // Clamp to the valid range: weekday 0..6 for weekly, day-of-month 1..28
-    // otherwise. The input advertises max 28 but accepts any typed value, and
-    // days 29-31 overflow nextRunFromAnchor's Date math and drift in the cron.
+    // Clamp to the valid range: weekday 0..6 for weekly, day-of-month 1..31
+    // otherwise (31 = último día del mes; nextRunFromAnchor and the cron both
+    // clamp it to the actual month length).
     const parsed = parseInt(anchorDay, 10);
     const minAnchor = cadence === 'weekly' ? 0 : 1;
-    const maxAnchor = cadence === 'weekly' ? 6 : 28;
+    const maxAnchor = cadence === 'weekly' ? 6 : 31;
     const anchor = Math.min(maxAnchor, Math.max(minAnchor, Number.isNaN(parsed) ? minAnchor : parsed));
     if (!Number.isNaN(parsed) && anchor !== parsed) {
       toast(`Día ajustado a ${anchor} (el rango válido es ${minAnchor}–${maxAnchor}).`);
@@ -402,7 +442,10 @@ function RuleForm({
     const scheduleChanged = initial?.cadence !== cadence || initial?.anchor_day !== anchor;
     const next_run =
       initial?.next_run && !scheduleChanged ? initial.next_run : nextRunFromAnchor(cadence, anchor);
-    onSave({ direction, label: label.trim(), amount, currency, cadence, anchor_day: anchor, next_run, scope, active, category_id: initial?.category_id ?? null, account_id: accountId || null });
+    const category_id = categoryId || null;
+    // Reserving only applies to categorized expenses.
+    const reserve = direction === 'expense' && !!category_id && reserveInBudget;
+    onSave({ direction, label: label.trim(), amount, currency, cadence, anchor_day: anchor, next_run, scope, active, category_id, account_id: accountId || null, is_variable: isVariable }, reserve);
   }
 
   return (
@@ -511,15 +554,91 @@ function RuleForm({
             ))}
           </select>
         ) : (
-          <input
-            type="number"
-            min={1}
-            max={28}
-            value={anchorDay}
-            onChange={(e) => setAnchorDay(e.target.value)}
-            className="w-24 px-4 py-2 rounded-xl text-sm border outline-none"
-            style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
-          />
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              max={31}
+              value={anchorDay}
+              onChange={(e) => setAnchorDay(e.target.value)}
+              className="w-24 px-4 py-2 rounded-xl text-sm border outline-none"
+              style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+            />
+            <button
+              type="button"
+              onClick={() => setAnchorDay('31')}
+              className="text-xs font-bold px-3 py-2 rounded-xl border"
+              style={{
+                background: anchorDay === '31' ? '#E4F2EA' : '#FFFFFF',
+                borderColor: anchorDay === '31' ? '#7EC8A4' : '#ECE5DC',
+                color: anchorDay === '31' ? '#5BA886' : '#6B6459',
+              }}
+            >
+              Último día
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Category — where the materialized transaction lands in the budget */}
+      <div>
+        <p className="text-xs font-semibold mb-1" style={{ color: '#6B6459' }}>Categoría</p>
+        <select
+          value={categoryId}
+          onChange={(e) => setCategoryId(e.target.value)}
+          className="w-full px-4 py-2.5 rounded-xl text-sm border outline-none bg-white"
+          style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+        >
+          <option value="">Sin categoría</option>
+          {pickableCategories.map((c) => (
+            <option key={c.id} value={c.id}>{c.icon ? `${c.icon} ` : ''}{c.name}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Reserve in budget — sync a monthly target so "Para asignar" sets aside
+          money for this fixed expense (expenses with a category only). */}
+      {direction === 'expense' && categoryId && (
+        <button
+          type="button"
+          onClick={() => setReserveInBudget((v) => !v)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold border w-full text-left"
+          style={{
+            background: reserveInBudget ? '#E4F2EA' : '#FFFFFF',
+            borderColor: reserveInBudget ? '#7EC8A4' : '#ECE5DC',
+            color: reserveInBudget ? '#5BA886' : '#6B6459',
+          }}
+        >
+          {reserveInBudget ? '✓ ' : '○ '}Reservar en presupuesto
+          <span className="font-normal" style={{ color: '#6B6459' }}>· objetivo mensual en la categoría</span>
+        </button>
+      )}
+
+      {/* Fixed vs variable — variable rules are NOT auto-posted by the cron;
+          they show as a reminder so you enter the real amount yourself. */}
+      <div>
+        <p className="text-xs font-semibold mb-2" style={{ color: '#6B6459' }}>Tipo de monto</p>
+        <div className="flex rounded-2xl overflow-hidden" style={{ background: '#ECE5DC' }}>
+          {([['fijo', false], ['variable', true]] as const).map(([labelTxt, val]) => (
+            <button
+              key={labelTxt}
+              type="button"
+              onClick={() => setIsVariable(val)}
+              className="flex-1 py-2.5 text-sm font-bold transition-colors"
+              style={{
+                background: isVariable === val ? '#7EC8A4' : 'transparent',
+                color: isVariable === val ? '#FFFFFF' : '#6B6459',
+                borderRadius: '14px',
+              }}
+            >
+              {val ? 'Variable' : 'Fijo'}
+            </button>
+          ))}
+        </div>
+        {isVariable && (
+          <p className="text-[11px] mt-1.5" style={{ color: '#6B6459' }}>
+            No se registra solo: aparece como recordatorio para que cargues el monto real.
+          </p>
         )}
       </div>
 
@@ -595,7 +714,7 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],
     queryFn: async () => {
-      const { data } = await supabase.from('categories').select('id, name, icon, kind, color').eq('household_id', profile.household_id).order('name');
+      const { data } = await supabase.from('categories').select('id, name, icon, kind, color, is_group').eq('household_id', profile.household_id).order('name');
       return data ?? [];
     },
   });
@@ -616,7 +735,7 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('recurring_rules')
-        .select('id, direction, label, amount, currency, cadence, anchor_day, next_run, active, scope, profile_id, category_id, account_id')
+        .select('id, direction, label, amount, currency, cadence, anchor_day, next_run, active, scope, profile_id, category_id, account_id, is_variable')
         .eq('household_id', profile.household_id)
         .order('direction')
         .order('label');
@@ -704,32 +823,127 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
     return out.slice(0, 5);
   }, [scanTxs, rules, dismissedSubs, profile.id]);
 
+  // Current-month envelope, to show whether each upcoming bill's category is
+  // already funded and which categories already have a target.
+  const env = useEnvelope(profile.household_id, profile.id, monthKey());
+  const existingTargetCats = useMemo(
+    () => new Set(env.targetInfoByCategory.keys()),
+    [env.targetInfoByCategory],
+  );
+
+  // Active rules whose merchant still appears in spending but at a notably
+  // different amount than the rule records — likely a price change to review.
+  const priceChangeSuggestions = useMemo(() => {
+    const out: { ruleId: string; label: string; oldAmount: number; newAmount: number; currency: 'ARS' | 'USD'; categoryId: string | null; reserve: boolean; cadence: Rule['cadence'] }[] = [];
+    for (const r of rules) {
+      if (!r.active) continue;
+      const key = normalizeMerchant(r.label);
+      if (!key) continue;
+      const matches = scanTxs.filter(
+        (t) =>
+          (t.scope === 'household' || t.profile_id === profile.id) &&
+          t.currency === r.currency &&
+          t.merchant != null &&
+          (() => { const m = normalizeMerchant(t.merchant!); return m.includes(key) || key.includes(m); })(),
+      );
+      if (matches.length === 0) continue;
+      const latest = matches[0].amount; // query is most-recent-first
+      if (latest <= 0 || r.amount <= 0) continue;
+      const ratio = latest / r.amount;
+      if (ratio > 1.15 || ratio < 0.87) {
+        out.push({
+          ruleId: r.id,
+          label: r.label,
+          oldAmount: r.amount,
+          newAmount: latest,
+          currency: r.currency,
+          categoryId: r.category_id,
+          reserve: existingTargetCats.has(r.category_id ?? ''),
+          cadence: r.cadence,
+        });
+      }
+    }
+    return out.slice(0, 5);
+  }, [rules, scanTxs, profile.id, existingTargetCats]);
+
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['recurring_rules'] });
     qc.invalidateQueries({ queryKey: ['projection'] });
   };
 
+  // Mirror a rule into its category's monthly/weekly budget target so "Para
+  // asignar" reserves money for it. Non-destructive: callers only invoke this
+  // when the user opted in. The target belongs to the current user (each person
+  // budgets their own envelopes), keyed unique per (profile, category).
+  async function syncTargetFromRule(data: RuleFormData) {
+    if (data.direction !== 'expense' || !data.category_id) return;
+    const t = targetFromRule(data.amount, data.cadence);
+    const { error } = await supabase.from('category_targets').upsert(
+      {
+        household_id: profile.household_id,
+        profile_id: profile.id,
+        category_id: data.category_id,
+        target_amount: t.amount,
+        cadence: t.cadence,
+        target_date: null,
+        target_type: 'refill',
+        currency: data.currency,
+      },
+      { onConflict: 'profile_id,category_id' },
+    );
+    if (error) throw error;
+    qc.invalidateQueries({ queryKey: ['envelope-targets', profile.id] });
+  }
+
   const createMutation = useMutation({
-    mutationFn: async (data: RuleFormData) => {
+    mutationFn: async ({ data, reserve }: { data: RuleFormData; reserve: boolean }) => {
       const { error } = await supabase.from('recurring_rules').insert({
         ...data,
         household_id: profile.household_id,
         profile_id: profile.id,
-        is_variable: false,
       });
       if (error) throw error;
+      if (reserve) await syncTargetFromRule(data);
     },
     onSuccess: () => { toast.success('Regla creada ✓'); setShowForm(false); invalidate(); },
     onError: () => toast.error('No se pudo crear la regla.'),
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: RuleFormData }) => {
+    mutationFn: async ({ id, data, reserve }: { id: string; data: RuleFormData; reserve: boolean }) => {
       const { error } = await supabase.from('recurring_rules').update(data).eq('id', id);
       if (error) throw error;
+      if (reserve) await syncTargetFromRule(data);
     },
     onSuccess: () => { toast.success('Regla actualizada ✓'); setEditRule(null); invalidate(); },
     onError: () => toast.error('No se pudo actualizar la regla.'),
+  });
+
+  // Skip the next occurrence: advance next_run by one cycle without posting.
+  const skipMutation = useMutation({
+    mutationFn: async (rule: Rule) => {
+      const { error } = await supabase
+        .from('recurring_rules')
+        .update({ next_run: advanceNextRun(rule) })
+        .eq('id', rule.id);
+      if (error) throw error;
+    },
+    onSuccess: (_d, rule) => { toast.success(`Saltada la próxima de "${rule.label}"`); invalidate(); },
+    onError: () => toast.error('No se pudo saltar la ocurrencia.'),
+  });
+
+  // Update just a rule's amount from a detected price change (re-syncs the
+  // target when that category was already being reserved).
+  const updateAmountMutation = useMutation({
+    mutationFn: async (s: { ruleId: string; newAmount: number; categoryId: string | null; currency: 'ARS' | 'USD'; cadence: Rule['cadence']; reserve: boolean }) => {
+      const { error } = await supabase.from('recurring_rules').update({ amount: s.newAmount }).eq('id', s.ruleId);
+      if (error) throw error;
+      if (s.reserve && s.categoryId) {
+        await syncTargetFromRule({ direction: 'expense', category_id: s.categoryId, amount: s.newAmount, currency: s.currency, cadence: s.cadence } as RuleFormData);
+      }
+    },
+    onSuccess: () => { toast.success('Monto actualizado ✓'); invalidate(); },
+    onError: () => toast.error('No se pudo actualizar el monto.'),
   });
 
   // Pre-create a monthly rule from a detected subscription. The scope/profile
@@ -772,6 +986,10 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
   const cashRules = rules;
   const income = cashRules.filter((r) => r.direction === 'income');
   const expenses = cashRules.filter((r) => r.direction === 'expense');
+  const availableByCat = useMemo(
+    () => new Map([...env.rowByCategory].map(([id, r]) => [id, r.available] as [string, number])),
+    [env.rowByCategory],
+  );
 
   function RuleCard({ rule }: { rule: Rule }) {
     return (
@@ -786,11 +1004,18 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
           {rule.direction === 'income' ? '💰' : '📤'}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-bold text-sm truncate" style={{ color: '#2D2D2D' }}>{rule.label}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="font-bold text-sm truncate" style={{ color: '#2D2D2D' }}>{rule.label}</p>
+            {rule.is_variable && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: '#FBF1D8', color: '#B8860B' }}>
+                estimado
+              </span>
+            )}
+          </div>
           <p className="text-xs" style={{ color: '#6B6459' }}>
             {rule.cadence === 'weekly'
               ? `${CADENCE_LABEL[rule.cadence]} · ${WEEKDAYS[rule.anchor_day ?? 0]}`
-              : `${CADENCE_LABEL[rule.cadence]} · día ${rule.anchor_day}`}
+              : `${CADENCE_LABEL[rule.cadence]} · ${rule.anchor_day === 31 ? 'último día' : `día ${rule.anchor_day}`}`}
             {rule.next_run ? ` · próx. ${rule.next_run}` : ''}
             {!rule.active ? ' · inactiva' : ''}
           </p>
@@ -802,6 +1027,18 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
           {rule.direction === 'income' ? '+' : '-'}{fmtMoney(rule.amount, rule.currency)}
         </p>
         <div className="flex gap-1 ml-2 flex-shrink-0">
+          {rule.active && rule.next_run && (
+            <button
+              onClick={() => skipMutation.mutate(rule)}
+              disabled={skipMutation.isPending}
+              aria-label={`Saltar próxima de ${rule.label}`}
+              title="Saltar próxima ocurrencia"
+              className="text-xs px-2 py-1 rounded-lg border"
+              style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
+            >
+              ⏭
+            </button>
+          )}
           <button
             onClick={() => setEditRule(rule)}
             className="text-xs px-2 py-1 rounded-lg border"
@@ -830,10 +1067,39 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
 
       <div className="px-4 flex flex-col gap-4">
         {/* Upcoming bills this month — tap one to edit it */}
-        {!showForm && !editRule && <UpcomingBills rules={cashRules} onEdit={(r) => setEditRule(r)} />}
+        {!showForm && !editRule && <UpcomingBills rules={cashRules} availableByCat={availableByCat} onEdit={(r) => setEditRule(r)} />}
 
         {/* Monthly summary */}
         {!showForm && !editRule && cashRules.length > 0 && <FixedSummaryCard rules={cashRules} />}
+
+        {/* Price changes: an active rule's merchant now charges a different amount */}
+        {!showForm && !editRule && priceChangeSuggestions.length > 0 && (
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>
+              📈 Cambios de precio detectados
+            </p>
+            <div className="flex flex-col gap-2.5">
+              {priceChangeSuggestions.map((s) => (
+                <div key={s.ruleId} className="flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold truncate" style={{ color: '#2D2D2D' }}>{s.label}</p>
+                    <p className="text-xs" style={{ color: '#6B6459' }}>
+                      {fmtMoney(s.oldAmount, s.currency)} → <span className="font-bold" style={{ color: s.newAmount > s.oldAmount ? '#E5604C' : '#5BA886' }}>{fmtMoney(s.newAmount, s.currency)}</span>
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => updateAmountMutation.mutate({ ruleId: s.ruleId, newAmount: s.newAmount, categoryId: s.categoryId, currency: s.currency, cadence: s.cadence, reserve: s.reserve })}
+                    disabled={updateAmountMutation.isPending}
+                    className="flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full text-white"
+                    style={{ background: '#7EC8A4' }}
+                  >
+                    Actualizar regla
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Likely subscriptions: repeating merchant expenses without a rule */}
         {!showForm && !editRule && subscriptionSuggestions.length > 0 && (
@@ -876,7 +1142,9 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
         {showForm && !editRule && (
           <RuleForm
             accounts={accounts}
-            onSave={(data) => createMutation.mutate(data)}
+            categories={categories}
+            existingTargetCats={existingTargetCats}
+            onSave={(data, reserve) => createMutation.mutate({ data, reserve })}
             onCancel={() => setShowForm(false)}
           />
         )}
@@ -885,7 +1153,9 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
           <RuleForm
             initial={editRule}
             accounts={accounts}
-            onSave={(data) => updateMutation.mutate({ id: editRule.id, data })}
+            categories={categories}
+            existingTargetCats={existingTargetCats}
+            onSave={(data, reserve) => updateMutation.mutate({ id: editRule.id, data, reserve })}
             onCancel={() => setEditRule(null)}
           />
         )}
