@@ -43,22 +43,28 @@ function fmtGoalDate(iso: string): string {
   return new Date(iso + 'T00:00:00').toLocaleDateString('es-AR', { month: 'short', year: 'numeric' });
 }
 
-// Available colour with YNAB target awareness:
+// Available colour with goal awareness. `needed` is how much MORE you still
+// have to assign this month to be on track for the category's goal — already
+// computed per target type by the hook (refill = top up to X; set_aside = assign
+// a fresh X). Driving the colour off `needed` (not `available < target`) is what
+// makes a monthly spending budget read right: once you've assigned your full
+// "Sumar cada mes" amount, the envelope is green even after you've spent most of
+// it — it's not "below target".
 //   red    = overspent (negative)
-//   yellow = funded but below the monthly target
-//   green  = funded (and at/above target if there is one)
-//   grey   = zero with no target
-function availColor(available: number, target: number): string {
+//   yellow = still owe an assignment toward this month's goal
+//   green  = funded / on track
+//   grey   = zero with nothing pending
+function availColor(available: number, needed: number): string {
   if (available < 0) return '#E5604C';
-  if (target > 0 && available < target) return '#C79A2B';
+  if (needed > 0) return '#C79A2B';
   if (available > 0) return '#5BA886';
   return '#A89B8C';
 }
 
 // The available "pill": a solid green capsule when funded (the happy state
 // pops), a soft tint for the warning/zero states.
-function availPill(available: number, target: number): { bg: string; fg: string } {
-  const c = availColor(available, target);
+function availPill(available: number, needed: number): { bg: string; fg: string } {
+  const c = availColor(available, needed);
   if (c === '#5BA886') return { bg: '#5BA886', fg: '#FFFFFF' }; // funded → filled green
   const bg = c === '#E5604C' ? '#FFE7E2' : c === '#C79A2B' ? '#FBF0D6' : '#ECE5DC';
   return { bg, fg: c };
@@ -139,14 +145,22 @@ function CategoryDetailSheet({
   const [moveTo, setMoveTo] = useState('');
   const [moveAmt, setMoveAmt] = useState(0);
   const [tMode, setTMode] = useState<'monthly' | 'by_date' | 'weekly'>(targetInfo?.cadence ?? 'monthly');
-  const [tType, setTType] = useState<'refill' | 'set_aside'>(targetInfo?.targetType ?? 'refill');
+  // Default new budgets to a monthly spending budget (set_aside): for everyday
+  // categories that's what people mean by "tengo $X por mes para esto" — refill
+  // ("keep $X always available") is the niche case, so it's the opt-in.
+  const [tType, setTType] = useState<'refill' | 'set_aside'>(targetInfo?.targetType ?? 'set_aside');
   const [tAmt, setTAmt] = useState(targetInfo?.totalArs ?? 0);
   const [tDate, setTDate] = useState(targetInfo?.targetDate ?? '');
   const [editingName, setEditingName] = useState(false);
   const [cName, setCName] = useState(category.name);
   const [cIcon, setCIcon] = useState(category.icon);
-  const fg = availColor(row.available, target);
-  const toTarget = target > 0 ? target - row.available : 0;
+  // How much more to assign this month to be on track — already computed per
+  // target type by the hook (refill tops `available` up to X; set_aside assigns
+  // a fresh X regardless of what's left). Use it for the pill colour and the
+  // quick "fund the goal" button so a monthly budget doesn't ask you to re-fund
+  // what you already spent.
+  const needed = targetInfo?.neededThisMonth ?? 0;
+  const toTarget = needed;
   // Balance breakdown (YNAB style): what carried over vs what moved this month.
   const carryover = row.available - row.assigned + row.activity;
   const prevLabel = monthLabel(shiftMonth(month, -1));
@@ -206,7 +220,7 @@ function CategoryDetailSheet({
           ))}
           <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: '1px solid #ECE5DC' }}>
             <span className="text-sm font-bold" style={{ color: '#2D2D2D' }}>Disponible</span>
-            <span className="text-sm font-black px-2.5 py-1 rounded-full tabular-nums" style={{ background: availPill(row.available, target).bg, color: availPill(row.available, target).fg }}>{format(row.available)}</span>
+            <span className="text-sm font-black px-2.5 py-1 rounded-full tabular-nums" style={{ background: availPill(row.available, needed).bg, color: availPill(row.available, needed).fg }}>{format(row.available)}</span>
           </div>
         </div>
 
@@ -223,9 +237,11 @@ function CategoryDetailSheet({
               )
             ) : (
               <p className="text-sm" style={{ color: '#6B6459' }}>
-                {targetInfo.cadence === 'weekly' ? 'Meta semanal ' : 'Meta mensual '}{format(targetInfo.totalArs)}
+                {targetInfo.targetType === 'set_aside'
+                  ? (targetInfo.cadence === 'weekly' ? 'Presupuesto semanal ' : 'Presupuesto mensual ')
+                  : (targetInfo.cadence === 'weekly' ? 'Saldo fijo semanal ' : 'Saldo fijo mensual ')}{format(targetInfo.totalArs)}
                 {targetInfo.neededThisMonth > 0
-                  ? <> · {targetInfo.targetType === 'set_aside' ? 'falta sumar' : 'faltan'} <b style={{ color: '#C79A2B' }}>{format(targetInfo.neededThisMonth)}</b> este mes</>
+                  ? <> · {targetInfo.targetType === 'set_aside' ? 'falta asignar' : 'faltan'} <b style={{ color: '#C79A2B' }}>{format(targetInfo.neededThisMonth)}</b> este mes</>
                   : <span style={{ color: '#5BA886' }}> · al día este mes ✓</span>}
               </p>
             )}
@@ -294,7 +310,7 @@ function CategoryDetailSheet({
             </div>
             {tMode !== 'by_date' && (
               <div className="flex rounded-xl overflow-hidden mb-2 p-1 gap-1" style={{ background: '#ECE5DC' }}>
-                {([{ k: 'refill', l: 'Mantener disponible' }, { k: 'set_aside', l: 'Sumar cada mes' }] as const).map((o) => (
+                {([{ k: 'set_aside', l: 'Presupuesto del mes' }, { k: 'refill', l: 'Saldo fijo' }] as const).map((o) => (
                   <button key={o.k} onClick={() => setTType(o.k)} className="flex-1 py-1.5 text-[11px] font-bold rounded-lg" style={{ background: tType === o.k ? '#FFFFFF' : 'transparent', color: tType === o.k ? '#2D2D2D' : '#6B6459' }}>{o.l}</button>
                 ))}
               </div>
@@ -302,7 +318,9 @@ function CategoryDetailSheet({
             <p className="text-[11px] mb-1.5" style={{ color: '#6B6459' }}>
               {tMode === 'by_date'
                 ? 'Total a juntar para una fecha (meta de ahorro).'
-                : `${tMode === 'weekly' ? 'Monto por semana' : 'Monto por mes'}. ${tType === 'refill' ? 'Mantener = el disponible siempre llega a este monto (lo que sobra se queda).' : 'Sumar = se asigna este monto nuevo cada período, además de lo que ya había.'}`}
+                : tType === 'set_aside'
+                  ? `Cuánto querés gastar por ${tMode === 'weekly' ? 'semana' : 'mes'} acá. Cada ${tMode === 'weekly' ? 'semana' : 'mes'} arranca de nuevo con este monto fresco; lo que no gastes se suma al siguiente. Ideal para comer afuera, super, nafta.`
+                  : `Mantené siempre este monto disponible. Cuando gastás, lo reponés hasta volver a este monto (no se suma cada ${tMode === 'weekly' ? 'semana' : 'mes'}). Ideal para un colchón fijo.`}
             </p>
             {suggested > 0 && tMode === 'monthly' && (
               <button onClick={() => setTAmt(suggested)} className="text-xs font-bold px-3 py-2 rounded-xl mb-2" style={{ background: '#E7EFFB', color: '#5B8DEF' }}>
@@ -584,9 +602,9 @@ function SpotlightView({
   for (const r of env.rows) {
     const cat = catById.get(r.categoryId);
     if (!cat || cat.kind !== 'expense') continue;
-    const target = env.targetByCategory.get(r.categoryId) ?? 0;
+    const needed = env.neededByCategory.get(r.categoryId) ?? 0;
     if (r.available < 0) alerts.push({ cat, over: true, amount: -r.available });
-    else if (target > 0 && r.available < target) alerts.push({ cat, over: false, amount: target - r.available });
+    else if (needed > 0) alerts.push({ cat, over: false, amount: needed });
   }
   alerts.sort((a, b) => (a.over ? 0 : 1) - (b.over ? 0 : 1) || b.amount - a.amount);
 
@@ -600,8 +618,8 @@ function SpotlightView({
   const PriorityRow = ({ cat }: { cat: EnvelopeCategory }) => {
     const r = env.rowByCategory.get(cat.id);
     const available = r?.available ?? 0;
-    const target = env.targetByCategory.get(cat.id) ?? 0;
-    const pill = availPill(available, target);
+    const needed = env.neededByCategory.get(cat.id) ?? 0;
+    const pill = availPill(available, needed);
     return (
       <div className="flex items-center gap-3 rounded-2xl px-4 py-3" style={{ background: '#FFFFFF' }}>
         <span className="text-lg">{cat.icon}</span>
@@ -961,9 +979,10 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
     const r = env.rowByCategory.get(catId);
     const available = r?.available ?? 0;
     const target = env.targetByCategory.get(catId) ?? 0;
+    const needed = env.neededByCategory.get(catId) ?? 0;
     if (filter === 'overspent') return available < 0;
-    if (filter === 'underfunded') return target > 0 && available >= 0 && available < target;
-    if (filter === 'overfunded') return target > 0 && available > target;
+    if (filter === 'underfunded') return available >= 0 && needed > 0;
+    if (filter === 'overfunded') return target > 0 && needed <= 0 && available > target;
     if (filter === 'available') return available > 0;
     return true;
   }
@@ -1071,13 +1090,14 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
     for (const c of expenseCats) {
       const a = env.rowByCategory.get(c.id)?.available ?? 0;
       const t = env.targetByCategory.get(c.id) ?? 0;
+      const needed = env.neededByCategory.get(c.id) ?? 0;
       if (a < 0) overspent++;
-      else if (t > 0 && a < t) underfunded++;
-      if (t > 0 && a > t) overfunded++;
+      else if (needed > 0) underfunded++;
+      if (t > 0 && needed <= 0 && a > t) overfunded++;
       if (a > 0) available++;
     }
     return { overspent, underfunded, overfunded, available };
-  }, [expenseCats, env.rowByCategory, env.targetByCategory]);
+  }, [expenseCats, env.rowByCategory, env.targetByCategory, env.neededByCategory]);
 
   const rta = env.readyToAssign;
   // "Para asignar" = tu efectivo on-budget − lo ya guardado en categorías (el
@@ -1287,7 +1307,17 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
                       const activity = row?.activity ?? 0;
                       const available = row?.available ?? 0;
                       const target = env.targetByCategory.get(c.id) ?? 0;
-                      const fg = availColor(available, target);
+                      const info = env.targetInfoByCategory.get(c.id);
+                      // How much more to assign this month to be on track (per
+                      // target type — refill vs set_aside). Drives the colour and
+                      // the "falta" status so a fully-budgeted monthly budget
+                      // doesn't nag you to re-fund what you already spent.
+                      const needed = env.neededByCategory.get(c.id) ?? 0;
+                      const fg = availColor(available, needed);
+                      // A "Presupuesto del mes" (set_aside) is a spending budget:
+                      // once funded, it should read "spent X of budget", not
+                      // "Faltan" — that's the whole point of the type.
+                      const isMonthlyBudget = info?.targetType === 'set_aside' && info.cadence !== 'by_date';
                       // What was in the envelope this month: assignment + carry-over.
                       const pool = activity + Math.max(0, available);
                       // Per-category bar fill:
@@ -1304,7 +1334,12 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
                       let statusText = '';
                       let statusColor = '#6B6459';
                       if (available < 0) { statusText = `Sobregiraste ${fmtCell(-available)}`; statusColor = '#E5604C'; }
-                      else if (target > 0 && available < target) { statusText = `Faltan ${fmtCell(target - available)}`; statusColor = '#C79A2B'; }
+                      else if (needed > 0) { statusText = `${isMonthlyBudget ? 'Falta asignar' : 'Faltan'} ${fmtCell(needed)}`; statusColor = '#C79A2B'; }
+                      else if (isMonthlyBudget) {
+                        // Funded monthly budget → spend against the budget amount.
+                        statusText = activity > 0 ? `Gastaste ${fmtCell(activity)} de ${fmtCell(target)}${available <= 0 ? ' · todo' : ''}` : 'Financiado';
+                        statusColor = activity > 0 ? '#6B6459' : '#5BA886';
+                      }
                       else if (target > 0) { statusText = '✓ Meta cumplida'; statusColor = '#5BA886'; }
                       else if (assigned <= 0 && activity <= 0) { statusText = ''; }
                       else if (activity <= 0) { statusText = 'Financiado'; statusColor = '#5BA886'; }
@@ -1345,7 +1380,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
                           </div>
                           {/* YNAB mobile: only the Available pill; tap the row to assign. */}
                           <span className="shrink-0">
-                            <span className="inline-block px-2.5 py-1 rounded-full text-sm font-black tabular-nums" style={{ background: availPill(available, target).bg, color: availPill(available, target).fg }}>
+                            <span className="inline-block px-2.5 py-1 rounded-full text-sm font-black tabular-nums" style={{ background: availPill(available, needed).bg, color: availPill(available, needed).fg }}>
                               {fmtCell(available)}
                             </span>
                           </span>
