@@ -42,3 +42,6 @@ next-env.d.ts
 
 # ShipStudio metadata
 .shipstudio/
+
+# Playwright auth session (contains tokens — never commit)
+.auth/
