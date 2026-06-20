@@ -5,7 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { formatARS, formatUSD, parseMoney } from '@/lib/format';
 import { useFx } from '@/hooks/useFx';
-import { toLocalISO } from '@/lib/date';
+import { useEnvelope } from '@/hooks/useEnvelope';
+import { toLocalISO, monthKey } from '@/lib/date';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { SecondaryButton } from '@/components/SecondaryButton';
@@ -37,6 +38,7 @@ interface Rule {
   profile_id: string;
   category_id: string | null;
   account_id: string | null;
+  is_variable: boolean;
 }
 
 type RuleFormData = Omit<Rule, 'id' | 'profile_id'>;
@@ -46,6 +48,14 @@ interface AccountOption {
   name: string;
   type: string;
   owner_profile_id?: string | null;
+}
+
+interface CategoryOption {
+  id: string;
+  name: string;
+  icon: string | null;
+  kind: string;
+  is_group?: boolean | null;
 }
 
 // A rule's amount is stored in its own currency. Format it accordingly,
@@ -284,6 +294,15 @@ function FixedSummaryCard({ rules }: { rules: Rule[] }) {
   );
 }
 
+// A day-of-month for a given year/month, clamped to that month's length — mirrors
+// the cron's `least(anchor_day, last_day_of_month)`. Without this, anchor day 31
+// in February makes `new Date(year, 1, 31)` overflow into March and the schedule
+// drifts. So anchor_day 31 means "último día del mes".
+function dayOfMonth(year: number, month: number, day: number): Date {
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  return new Date(year, month, Math.min(day, lastDay));
+}
+
 function nextRunFromAnchor(cadence: string, anchorDay: number): string {
   // Compare against start-of-today so a rule created ON its anchor day gets
   // next_run = today: the cron posts rules with next_run <= current_date, so
@@ -294,8 +313,8 @@ function nextRunFromAnchor(cadence: string, anchorDay: number): string {
   const month = today.getMonth();
 
   if (cadence === 'monthly') {
-    let d = new Date(year, month, anchorDay);
-    if (d < today) d = new Date(year, month + 1, anchorDay);
+    let d = dayOfMonth(year, month, anchorDay);
+    if (d < today) d = dayOfMonth(year, month + 1, anchorDay);
     return toLocalISO(d);
   }
   if (cadence === 'weekly') {
@@ -306,12 +325,32 @@ function nextRunFromAnchor(cadence: string, anchorDay: number): string {
   }
   if (cadence === 'biweekly') {
     // Use anchor_day as day-of-month for first occurrence; second 14 days later
-    let d = new Date(year, month, anchorDay);
+    let d = dayOfMonth(year, month, anchorDay);
     if (d < today) d = new Date(d.getTime() + 14 * 86400000);
-    if (d < today) d = new Date(year, month + 1, anchorDay);
+    if (d < today) d = dayOfMonth(year, month + 1, anchorDay);
     return toLocalISO(d);
   }
   return toLocalISO(today);
+}
+
+// Advance next_run by one cycle WITHOUT posting — used to skip a single
+// occurrence. Mirrors the cron's advancement (+7 / +14 / same anchor day next
+// month, clamped to the month's length).
+function advanceNextRun(rule: Rule): string {
+  const base = new Date((rule.next_run ?? toLocalISO(new Date())) + 'T00:00:00');
+  if (rule.cadence === 'weekly') return toLocalISO(new Date(base.getTime() + 7 * 86400000));
+  if (rule.cadence === 'biweekly') return toLocalISO(new Date(base.getTime() + 14 * 86400000));
+  const anchor = rule.anchor_day ?? base.getDate();
+  return toLocalISO(dayOfMonth(base.getFullYear(), base.getMonth() + 1, anchor));
+}
+
+// Map a rule's cadence/amount to a monthly-budget target. Monthly bills become a
+// monthly refill of the same amount; weekly bills a weekly refill (the envelope
+// math scales by weeks/month); biweekly approximates two monthly occurrences.
+function targetFromRule(amount: number, cadence: string): { cadence: 'monthly' | 'weekly'; amount: number } {
+  if (cadence === 'weekly') return { cadence: 'weekly', amount };
+  if (cadence === 'biweekly') return { cadence: 'monthly', amount: amount * 2 };
+  return { cadence: 'monthly', amount };
 }
 
 function RuleForm({
