@@ -44,19 +44,23 @@ export default function MasClient({ profile }: { profile: Profile }) {
     router.push('/auth');
   }
 
-  const menuItems = [
-    { href: '/cuentas', icon: '🏦', label: 'Cuentas' },
-    { href: '/categorias', icon: '🏷️', label: 'Categorías' },
-    { href: '/presupuestos', icon: '📊', label: 'Presupuestos' },
-    { href: '/ahorro', icon: '🐷', label: 'Ahorro' },
-    { href: '/metas', icon: '🎯', label: 'Metas y objetivos' },
-    { href: '/reglas', icon: '📅', label: 'Ingresos y gastos fijos' },
-    { href: '/deudas', icon: '🤝', label: 'Deudas' },
-    { href: '/pareja', icon: '👫', label: 'Vista de pareja' },
-    { href: '/ticket', icon: '🧾', label: 'Escanear ticket' },
-    { href: '/extractos', icon: '🧾', label: 'Extractos de tarjeta' },
-    { href: '/simulador', icon: '🔮', label: 'Simulador de compras' },
-    { href: '/mas/notificaciones', icon: '🔔', label: 'Notificaciones' },
+  const sections = [
+    { title: 'Cuentas', items: [{ href: '/cuentas', icon: '🏦', label: 'Cuentas' }] },
+    { title: 'Pareja & deudas', items: [
+      { href: '/pareja', icon: '👫', label: 'Vista de pareja' },
+      { href: '/deudas', icon: '🤝', label: 'Deudas' },
+    ] },
+    { title: 'Planificación', items: [
+      { href: '/reglas', icon: '📅', label: 'Ingresos y gastos fijos' },
+      { href: '/simulador', icon: '🔮', label: 'Simulador de compras' },
+    ] },
+    { title: 'Capturar', items: [
+      { href: '/ticket', icon: '🧾', label: 'Escanear ticket' },
+      { href: '/extractos', icon: '🧾', label: 'Extractos de tarjeta' },
+    ] },
+    { title: 'Ajustes', items: [
+      { href: '/mas/notificaciones', icon: '🔔', label: 'Notificaciones' },
+    ] },
   ];
 
   return (
@@ -65,21 +69,26 @@ export default function MasClient({ profile }: { profile: Profile }) {
         <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Más</h1>
       </header>
 
-      <div className="px-4 flex flex-col gap-3">
-        <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
-          {menuItems.map((item, i) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="flex items-center gap-3 px-5 py-4"
-              style={i > 0 ? { borderTop: '1px solid #ECE5DC' } : undefined}
-            >
-              <span className="text-2xl">{item.icon}</span>
-              <p className="flex-1 font-semibold" style={{ color: '#2D2D2D' }}>{item.label}</p>
-              <span style={{ color: '#6B6459' }}>→</span>
-            </Link>
-          ))}
-        </div>
+      <div className="px-4 flex flex-col gap-4">
+        {sections.map((section) => (
+          <div key={section.title}>
+            <p className="text-xs font-bold uppercase tracking-wide mb-2 px-1" style={{ color: '#6B6459' }}>{section.title}</p>
+            <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
+              {section.items.map((item, i) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="flex items-center gap-3 px-5 py-4"
+                  style={i > 0 ? { borderTop: '1px solid #ECE5DC' } : undefined}
+                >
+                  <span className="text-2xl">{item.icon}</span>
+                  <p className="flex-1 font-semibold" style={{ color: '#2D2D2D' }}>{item.label}</p>
+                  <span style={{ color: '#6B6459' }}>→</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        ))}
 
         {/* De-emphasised: rarely used. */}
         <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>

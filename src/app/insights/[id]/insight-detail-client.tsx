@@ -33,7 +33,7 @@ const KIND_META: Record<string, { label: string; explain: string; href: string; 
   saving: {
     label: 'Tasa de ahorro',
     explain: 'Compara cuánto entró contra cuánto se gastó este mes. Subir este porcentaje es la forma más directa de ahorrar más.',
-    href: '/ahorro',
+    href: '/analisis',
     cta: 'Ver mi ahorro',
   },
   spike: {
@@ -69,7 +69,7 @@ const KIND_META: Record<string, { label: string; explain: string; href: string; 
   goal: {
     label: 'Meta de ahorro',
     explain: 'Cuánto falta y cuánto apartar por mes para llegar a tu objetivo en fecha.',
-    href: '/metas',
+    href: '/presupuestos',
     cta: 'Ver metas',
   },
   debt: {
@@ -366,7 +366,7 @@ function CategoryInsightSection({
           </div>
         )}
 
-        <Link href={`/categorias/${matchedCat.id}`} className="block text-xs font-bold mt-3" style={{ color: '#5BA886' }}>
+        <Link href="/analisis/categorias" className="block text-xs font-bold mt-3" style={{ color: '#5BA886' }}>
           Ver todo el detalle de {matchedCat.name} →
         </Link>
       </div>

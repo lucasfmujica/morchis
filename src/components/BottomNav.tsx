@@ -13,12 +13,8 @@ interface BottomNavProps {
 // a slide-up menu so they're one tap away. Invite + PIN are de-emphasised at the
 // bottom (rarely used).
 const MENU = [
-  { href: '/home', icon: '🏠', label: 'Inicio' },
   { href: '/insights', icon: '✨', label: 'Insights' },
   { href: '/cuentas', icon: '🏦', label: 'Cuentas' },
-  { href: '/categorias', icon: '🏷️', label: 'Categorías' },
-  { href: '/ahorro', icon: '🐷', label: 'Ahorro' },
-  { href: '/metas', icon: '🎯', label: 'Metas' },
   { href: '/reglas', icon: '📅', label: 'Fijos' },
   { href: '/deudas', icon: '🤝', label: 'Deudas' },
   { href: '/pareja', icon: '👫', label: 'Pareja' },

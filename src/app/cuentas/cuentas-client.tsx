@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { BottomNav } from '@/components/BottomNav';
@@ -110,12 +111,14 @@ function fmtMovementDate(iso: string): string {
 function AccountMovementsSheet({
   title,
   icon,
+  accountId,
   rows,
   onSelect,
   onClose,
 }: {
   title: string;
   icon: string;
+  accountId: string;
   rows: AccountMovement[];
   onSelect: (tx: AccountTx) => void;
   onClose: () => void;
@@ -135,9 +138,16 @@ function AccountMovementsSheet({
           <span className="text-2xl">{icon}</span>
           <h2 className="text-lg font-black truncate" style={{ color: '#2D2D2D' }}>{title}</h2>
         </div>
-        <p className="text-xs mb-4 shrink-0" style={{ color: '#6B6459' }}>
+        <p className="text-xs mb-3 shrink-0" style={{ color: '#6B6459' }}>
           {rows.length} {rows.length === 1 ? 'movimiento' : 'movimientos'} · tocá para editar
         </p>
+        <Link
+          href={`/movimientos?account=${accountId}`}
+          className="shrink-0 mb-4 text-center text-xs font-bold py-2.5 rounded-xl"
+          style={{ background: '#E4F2EA', color: '#5BA886' }}
+        >
+          📋 Register completo: saldo corriente + conciliar →
+        </Link>
 
         {rows.length === 0 ? (
           <p className="text-sm py-8 text-center" style={{ color: '#6B6459' }}>
@@ -680,6 +690,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
           <AccountMovementsSheet
             title={acc.name}
             icon={acc.type === 'cash' ? '💵' : acc.type === 'credit' ? '💳' : '🏦'}
+            accountId={acc.id}
             rows={movementsForAccount(acc.id)}
             onSelect={(tx) => { setDetailAccountId(null); setEditTx(tx); setSheetOpen(true); }}
             onClose={() => setDetailAccountId(null)}

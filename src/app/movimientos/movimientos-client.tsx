@@ -94,7 +94,12 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   });
   const [showChart, setShowChart] = useState(false);
   // Advanced filters + bulk-select mode.
-  const [filterAccount, setFilterAccount] = useState<string>('all');
+  // Account filter: defaults from ?account= (e.g. /cuentas links here to open one
+  // account's register, with its running balance + reconcile).
+  const [filterAccount, setFilterAccount] = useState<string>(() => {
+    if (typeof window === 'undefined') return 'all';
+    return new URLSearchParams(window.location.search).get('account') || 'all';
+  });
   const [filterMinAmount, setFilterMinAmount] = useState<number>(0);
   const [filterFixed, setFilterFixed] = useState<boolean | null>(null);
   const [filterFlag, setFilterFlag] = useState<string | null>(null);

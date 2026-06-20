@@ -184,9 +184,8 @@ export default function CategoriasBreakdownClient({
                 const pct = total > 0 ? r.value / total : 0;
                 const color = r.cat!.color || DONUT_PALETTE[i % DONUT_PALETTE.length];
                 return (
-                  <Link
+                  <div
                     key={r.id}
-                    href={`/categorias/${r.id}?scope=${scope}`}
                     className="block px-4 py-3.5"
                     style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}
                   >
@@ -200,12 +199,11 @@ export default function CategoriasBreakdownClient({
                         <p className="text-sm font-black" style={{ color: '#2D2D2D' }}>{formatARS(r.value)}</p>
                         <p className="text-[11px]" style={{ color: '#6B6459' }}>{Math.round(pct * 100)}%</p>
                       </div>
-                      <span className="text-xs" style={{ color: '#C4B9AE' }}>›</span>
                     </div>
                     <div className="mt-2 ml-11 h-1.5 rounded-full overflow-hidden" style={{ background: '#ECE5DC' }}>
                       <div className="h-full rounded-full" style={{ width: `${pct * 100}%`, background: color }} />
                     </div>
-                  </Link>
+                  </div>
                 );
               })}
             </div>

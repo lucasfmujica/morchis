@@ -703,12 +703,12 @@ export default function AnalisisClient({
             </div>
             <div className="flex flex-col gap-2">
               {subRows.map((r) => (
-                <Link key={r.cat!.id} href={`/categorias/${r.cat!.id}`} className="flex items-center gap-2">
+                <button key={r.cat!.id} onClick={() => setDrillCat({ id: r.cat!.id, name: r.cat!.name, icon: r.cat!.icon })} className="flex items-center gap-2 text-left w-full">
                   <span className="text-lg">{r.cat!.icon}</span>
                   <span className="text-sm flex-1 truncate" style={{ color: '#2D2D2D' }}>{r.cat!.name}</span>
                   <span className="text-sm font-bold" style={{ color: '#2D2D2D' }}>{formatARS(r.value)}</span>
                   <span className="text-[10px]" style={{ color: '#C4B9AE' }}>›</span>
-                </Link>
+                </button>
               ))}
             </div>
           </div>
@@ -762,9 +762,6 @@ export default function AnalisisClient({
             </div>
             <p className="text-xs mb-4" style={{ color: '#6B6459' }}>Gasto de los últimos {trendMonths.length} meses (tu parte)</p>
             <SingleBars rows={categoryTrend(drillCat.id)} color="#FF7F6B" />
-            <Link href={`/categorias/${drillCat.id}`} className="block text-center text-xs font-bold mt-4 pt-3" style={{ color: '#5BA886', borderTop: '1px solid #ECE5DC' }}>
-              Ver historial completo →
-            </Link>
           </div>
         </div>
       )}

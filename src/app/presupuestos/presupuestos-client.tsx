@@ -104,6 +104,7 @@ function CategoryDetailSheet({
   onSetTarget,
   onToggleFeatured,
   onMove,
+  onRenameCategory,
 }: {
   category: EnvelopeCategory;
   row: RowData;
@@ -122,6 +123,7 @@ function CategoryDetailSheet({
   onSetTarget: (amount: number, cadence: 'monthly' | 'by_date' | 'weekly', date: string | null, targetType: 'refill' | 'set_aside') => void;
   onToggleFeatured: () => void;
   onMove: (toCategoryId: string, amount: number) => void;
+  onRenameCategory: (name: string, icon: string) => void;
 }) {
   const [moveTo, setMoveTo] = useState('');
   const [moveAmt, setMoveAmt] = useState(0);
@@ -129,6 +131,9 @@ function CategoryDetailSheet({
   const [tType, setTType] = useState<'refill' | 'set_aside'>(targetInfo?.targetType ?? 'refill');
   const [tAmt, setTAmt] = useState(targetInfo?.totalArs ?? 0);
   const [tDate, setTDate] = useState(targetInfo?.targetDate ?? '');
+  const [editingName, setEditingName] = useState(false);
+  const [cName, setCName] = useState(category.name);
+  const [cIcon, setCIcon] = useState(category.icon);
   const fg = availColor(row.available, target);
   const toTarget = target > 0 ? target - row.available : 0;
   // Balance breakdown (YNAB style): what carried over vs what moved this month.
@@ -146,8 +151,18 @@ function CategoryDetailSheet({
         <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
         <div className="flex items-center gap-2 mb-4">
           <span className="text-2xl">{category.icon}</span>
-          <h2 className="text-lg font-black" style={{ color: '#2D2D2D' }}>{category.name}</h2>
+          <h2 className="text-lg font-black flex-1 min-w-0 truncate" style={{ color: '#2D2D2D' }}>{category.name}</h2>
+          {editable && (
+            <button onClick={() => { setCName(category.name); setCIcon(category.icon); setEditingName((v) => !v); }} className="text-xs font-bold px-2 py-1 rounded-lg shrink-0" style={{ background: '#F9F5F0', color: '#6B6459' }}>✏️ Editar</button>
+          )}
         </div>
+        {editingName && editable && (
+          <div className="flex gap-2 mb-4">
+            <input value={cIcon} onChange={(e) => setCIcon(e.target.value)} maxLength={2} className="w-12 text-center rounded-xl border-2 outline-none py-2 text-lg" style={{ borderColor: '#ECE5DC', background: '#F9F5F0' }} />
+            <input value={cName} onChange={(e) => setCName(e.target.value)} placeholder="Nombre" className="flex-1 rounded-xl border-2 outline-none px-3 text-sm font-bold" style={{ borderColor: '#ECE5DC', background: '#F9F5F0', color: '#2D2D2D' }} />
+            <button onClick={() => { if (cName.trim()) { onRenameCategory(cName.trim(), cIcon || category.icon); setEditingName(false); } }} className="px-4 rounded-xl text-sm font-bold text-white" style={{ background: '#7EC8A4' }}>OK</button>
+          </div>
+        )}
 
         {/* Balance breakdown (YNAB style) */}
         <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: '#6B6459' }}>Balance</p>
@@ -514,6 +529,12 @@ function SpotlightView({
   const catById = new Map(env.categories.map((c) => [c.id, c]));
   const priorities = priorityIds.map((id) => catById.get(id)).filter((c): c is EnvelopeCategory => !!c);
 
+  // Savings-goal categories (is_goal) with a target, for the progress rings.
+  const savingsGoals = env.categories
+    .filter((c) => c.is_goal)
+    .map((c) => ({ cat: c, info: env.targetInfoByCategory.get(c.id), available: env.rowByCategory.get(c.id)?.available ?? 0 }))
+    .filter((g): g is { cat: EnvelopeCategory; info: TargetInfo; available: number } => !!g.info && g.info.totalArs > 0);
+
   const alerts: { cat: EnvelopeCategory; over: boolean; amount: number }[] = [];
   for (const r of env.rows) {
     const cat = catById.get(r.categoryId);
@@ -601,6 +622,33 @@ function SpotlightView({
                   ? 'Buen colchón: gastás plata que entró hace semanas.'
                   : 'Gran colchón: gastás plata de hace más de un mes. 🎉'}
             </p>
+          </div>
+        </section>
+      )}
+
+      {/* Savings goals (is_goal categories) with progress rings */}
+      {savingsGoals.length > 0 && (
+        <section>
+          <p className="text-xs font-bold uppercase tracking-wide mb-2 px-1" style={{ color: '#6B6459' }}>Metas de ahorro</p>
+          <div className="flex flex-col gap-2">
+            {savingsGoals.map((g) => {
+              const pct = g.info.pctComplete;
+              return (
+                <div key={g.cat.id} className="rounded-3xl p-4 flex items-center gap-4" style={{ background: '#FFFFFF' }}>
+                  <div className="relative w-14 h-14 shrink-0">
+                    <svg viewBox="0 0 36 36" className="w-14 h-14 -rotate-90">
+                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#ECE5DC" strokeWidth="4" />
+                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#7EC8A4" strokeWidth="4" strokeDasharray={`${pct * 100} 100`} strokeLinecap="round" />
+                    </svg>
+                    <span className="absolute inset-0 flex items-center justify-center text-[11px] font-black" style={{ color: '#2D2D2D' }}>{Math.round(pct * 100)}%</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-black truncate" style={{ color: '#2D2D2D' }}>{g.cat.icon} {g.cat.name}</p>
+                    <p className="text-xs tabular-nums" style={{ color: '#6B6459' }}>{format(g.available)} de {format(g.info.totalArs)}</p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
@@ -865,6 +913,14 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
       const { error } = await supabase
         .from('categories')
         .insert({ household_id: profile.household_id, name, icon, kind: 'expense', is_default: false });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['categories', profile.household_id] }),
+  });
+
+  const renameCategory = useMutation({
+    mutationFn: async ({ categoryId, name, icon }: { categoryId: string; name: string; icon: string }) => {
+      const { error } = await supabase.from('categories').update({ name, icon }).eq('id', categoryId);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['categories', profile.household_id] }),
@@ -1253,6 +1309,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
           onSetTarget={(amount, cadence, date, targetType) => saveTarget.mutate({ categoryId: detailCat.id, amount, cadence, date, targetType })}
           onToggleFeatured={() => updatePrefs.mutate({ featured_category_id: prefs.featured_category_id === detailCat.id ? undefined : detailCat.id })}
           onMove={(toCat, amount) => moveMoney(detailCat.id, toCat, amount)}
+          onRenameCategory={(name, icon) => renameCategory.mutate({ categoryId: detailCat.id, name, icon })}
         />
       )}
 
