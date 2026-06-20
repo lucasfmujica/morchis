@@ -24,8 +24,8 @@ export type Database = {
           household_id: string
           id: string
           initial_balance: number
-          name: string
           last_reconciled_at: string | null
+          name: string
           on_budget: boolean
           owner_profile_id: string | null
           payment_category_id: string | null
@@ -43,8 +43,8 @@ export type Database = {
           household_id: string
           id?: string
           initial_balance?: number
-          name: string
           last_reconciled_at?: string | null
+          name: string
           on_budget?: boolean
           owner_profile_id?: string | null
           payment_category_id?: string | null
@@ -62,8 +62,8 @@ export type Database = {
           household_id?: string
           id?: string
           initial_balance?: number
-          name?: string
           last_reconciled_at?: string | null
+          name?: string
           on_budget?: boolean
           owner_profile_id?: string | null
           payment_category_id?: string | null
@@ -92,35 +92,6 @@ export type Database = {
             columns: ["payment_category_id"]
             isOneToOne: false
             referencedRelation: "categories"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      budget_alerts: {
-        Row: {
-          budget_id: string
-          level: number
-          notified_at: string
-          period: string
-        }
-        Insert: {
-          budget_id: string
-          level: number
-          notified_at?: string
-          period: string
-        }
-        Update: {
-          budget_id?: string
-          level?: number
-          notified_at?: string
-          period?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "budget_alerts_budget_id_fkey"
-            columns: ["budget_id"]
-            isOneToOne: false
-            referencedRelation: "budgets"
             referencedColumns: ["id"]
           },
         ]
@@ -218,64 +189,6 @@ export type Database = {
           },
           {
             foreignKeyName: "budget_views_profile_id_fkey"
-            columns: ["profile_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      budgets: {
-        Row: {
-          active: boolean
-          amount: number
-          category_id: string | null
-          currency: string
-          household_id: string
-          id: string
-          period: string
-          profile_id: string | null
-          scope: string
-        }
-        Insert: {
-          active?: boolean
-          amount: number
-          category_id?: string | null
-          currency?: string
-          household_id: string
-          id?: string
-          period?: string
-          profile_id?: string | null
-          scope?: string
-        }
-        Update: {
-          active?: boolean
-          amount?: number
-          category_id?: string | null
-          currency?: string
-          household_id?: string
-          id?: string
-          period?: string
-          profile_id?: string | null
-          scope?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "budgets_category_id_fkey"
-            columns: ["category_id"]
-            isOneToOne: false
-            referencedRelation: "categories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "budgets_household_id_fkey"
-            columns: ["household_id"]
-            isOneToOne: false
-            referencedRelation: "households"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "budgets_profile_id_fkey"
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -497,6 +410,35 @@ export type Database = {
           },
         ]
       }
+      envelope_alerts: {
+        Row: {
+          alert_key: string
+          notified_at: string
+          period: string
+          profile_id: string
+        }
+        Insert: {
+          alert_key: string
+          notified_at?: string
+          period: string
+          profile_id: string
+        }
+        Update: {
+          alert_key?: string
+          notified_at?: string
+          period?: string
+          profile_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "envelope_alerts_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fx_rates: {
         Row: {
           ars_per_usd: number
@@ -517,111 +459,6 @@ export type Database = {
           source?: string
         }
         Relationships: []
-      }
-      goal_contributions: {
-        Row: {
-          amount: number
-          goal_id: string
-          id: string
-          note: string | null
-          occurred_on: string
-          profile_id: string
-        }
-        Insert: {
-          amount: number
-          goal_id: string
-          id?: string
-          note?: string | null
-          occurred_on?: string
-          profile_id: string
-        }
-        Update: {
-          amount?: number
-          goal_id?: string
-          id?: string
-          note?: string | null
-          occurred_on?: string
-          profile_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "goal_contributions_goal_id_fkey"
-            columns: ["goal_id"]
-            isOneToOne: false
-            referencedRelation: "goals"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "goal_contributions_profile_id_fkey"
-            columns: ["profile_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      goals: {
-        Row: {
-          archived: boolean
-          color: string | null
-          created_at: string
-          current_amount: number
-          deadline: string | null
-          household_id: string
-          icon: string | null
-          id: string
-          name: string
-          profile_id: string | null
-          scope: string
-          target_amount: number
-          target_currency: string
-        }
-        Insert: {
-          archived?: boolean
-          color?: string | null
-          created_at?: string
-          current_amount?: number
-          deadline?: string | null
-          household_id: string
-          icon?: string | null
-          id?: string
-          name: string
-          profile_id?: string | null
-          scope?: string
-          target_amount: number
-          target_currency?: string
-        }
-        Update: {
-          archived?: boolean
-          color?: string | null
-          created_at?: string
-          current_amount?: number
-          deadline?: string | null
-          household_id?: string
-          icon?: string | null
-          id?: string
-          name?: string
-          profile_id?: string | null
-          scope?: string
-          target_amount?: number
-          target_currency?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "goals_household_id_fkey"
-            columns: ["household_id"]
-            isOneToOne: false
-            referencedRelation: "households"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "goals_profile_id_fkey"
-            columns: ["profile_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       household_invites: {
         Row: {
@@ -891,7 +728,6 @@ export type Database = {
           category_id: string | null
           currency: string
           direction: string
-          goal_id: string | null
           household_id: string
           id: string
           is_variable: boolean
@@ -909,7 +745,6 @@ export type Database = {
           category_id?: string | null
           currency?: string
           direction: string
-          goal_id?: string | null
           household_id: string
           id?: string
           is_variable?: boolean
@@ -927,7 +762,6 @@ export type Database = {
           category_id?: string | null
           currency?: string
           direction?: string
-          goal_id?: string | null
           household_id?: string
           id?: string
           is_variable?: boolean
@@ -949,13 +783,6 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "categories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "recurring_rules_goal_id_fkey"
-            columns: ["goal_id"]
-            isOneToOne: false
-            referencedRelation: "goals"
             referencedColumns: ["id"]
           },
           {
@@ -1232,9 +1059,9 @@ export type Database = {
           category_id: string | null
           cleared: boolean
           created_at: string
-          flag: string | null
           currency: string
           description: string | null
+          flag: string | null
           household_id: string
           id: string
           installment_group_id: string | null
@@ -1258,9 +1085,9 @@ export type Database = {
           category_id?: string | null
           cleared?: boolean
           created_at?: string
-          flag?: string | null
           currency?: string
           description?: string | null
+          flag?: string | null
           household_id: string
           id?: string
           installment_group_id?: string | null
@@ -1284,9 +1111,9 @@ export type Database = {
           category_id?: string | null
           cleared?: boolean
           created_at?: string
-          flag?: string | null
           currency?: string
           description?: string | null
+          flag?: string | null
           household_id?: string
           id?: string
           installment_group_id?: string | null
