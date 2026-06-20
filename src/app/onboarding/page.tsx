@@ -50,7 +50,7 @@ export default function OnboardingPage() {
 
   function next() {
     if (isLast) {
-      router.push('/home');
+      router.push('/presupuestos');
     } else {
       setIdx(idx + 1);
     }
@@ -90,7 +90,7 @@ export default function OnboardingPage() {
 
         {!isLast && (
           <button
-            onClick={() => router.push('/home')}
+            onClick={() => router.push('/presupuestos')}
             className="w-full py-3 text-sm text-center"
             style={{ color: '#6B6459' }}
           >

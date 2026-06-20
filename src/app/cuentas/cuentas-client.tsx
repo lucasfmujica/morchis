@@ -8,6 +8,7 @@ import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/EmptyState';
 import { formatARS, formatUSD, parseMoney } from '@/lib/format';
+import { useFx } from '@/hooks/useFx';
 import { todayISO } from '@/lib/date';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
@@ -174,6 +175,7 @@ function AccountMovementsSheet({
 export default function CuentasClient({ profile }: { profile: Profile }) {
   const supabase = createClient();
   const qc = useQueryClient();
+  const { arsPerUsd } = useFx();
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -210,7 +212,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
     queryFn: async () => {
       const { data } = await supabase
         .from('accounts')
-        .select('id, name, type, currency, archived, owner_profile_id, initial_balance, statement_ars, statement_usd, closing_date, due_date')
+        .select('id, name, type, currency, archived, owner_profile_id, on_budget, initial_balance, statement_ars, statement_usd, closing_date, due_date')
         .eq('household_id', profile.household_id)
         .eq('owner_profile_id', profile.id)
         .order('name');
@@ -395,6 +397,28 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
     toast.success(!archived ? 'Cuenta archivada' : 'Cuenta restaurada');
   }
 
+  // On-budget = its balance feeds "Para asignar". Off-budget = a tracking
+  // account (e.g. savings/investments) whose money isn't being budgeted.
+  async function toggleBudget(id: string, onBudget: boolean) {
+    const { error } = await supabase.from('accounts').update({ on_budget: !onBudget }).eq('id', id);
+    if (error) { toast.error('Error al actualizar.'); return; }
+    await qc.invalidateQueries({ queryKey: ['accounts'] });
+    await qc.invalidateQueries({ queryKey: ['accounts-full'] });
+    await qc.invalidateQueries({ queryKey: ['envelope-accounts'] });
+    toast.success(!onBudget ? 'En el presupuesto' : 'Fuera del presupuesto (seguimiento)');
+  }
+
+  // Cash split: on-budget (feeds "Para asignar") vs tracking (off-budget).
+  // Credit cards are excluded — their balance is a liability, not assignable cash.
+  let onBudgetTotal = 0;
+  let trackingTotal = 0;
+  for (const a of accounts) {
+    if (a.archived || a.type === 'credit') continue;
+    const bal = assetBalance(a.id, a.initial_balance ?? 0);
+    const ars = a.currency === 'USD' && arsPerUsd > 0 ? bal * arsPerUsd : bal;
+    if (a.on_budget) onBudgetTotal += ars; else trackingTotal += ars;
+  }
+
   return (
     <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
       <header className="px-5 pt-14 pb-4 flex items-center justify-between">
@@ -407,6 +431,24 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
           + Nueva
         </button>
       </header>
+
+      {/* On-budget vs tracking split */}
+      <div className="mx-4 mb-4 grid grid-cols-2 gap-3">
+        <div className="rounded-3xl p-4" style={{ background: '#E4F2EA' }}>
+          <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#5BA886' }}>💵 En presupuesto</p>
+          <p className="text-xl font-black" style={{ color: '#2D2D2D', fontVariantNumeric: 'tabular-nums' }}>{formatARS(Math.round(onBudgetTotal))}</p>
+          <p className="text-[10px]" style={{ color: '#6B6459' }}>alimenta “Para asignar”</p>
+        </div>
+        <div className="rounded-3xl p-4" style={{ background: '#FFFFFF' }}>
+          <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>👁️ Seguimiento</p>
+          <p className="text-xl font-black" style={{ color: '#2D2D2D', fontVariantNumeric: 'tabular-nums' }}>{formatARS(Math.round(trackingTotal))}</p>
+          <p className="text-[10px]" style={{ color: '#6B6459' }}>fuera del presupuesto</p>
+        </div>
+      </div>
+      <p className="mx-4 -mt-1 mb-4 text-[11px] leading-snug" style={{ color: '#6B6459' }}>
+        <b>En presupuesto</b>: el saldo es plata que repartís en sobres y suma a “Para asignar” (banco, efectivo).{' '}
+        <b>Seguimiento</b>: ahorros o inversiones que no presupuestás (no suman a “Para asignar”). Cambialo con el chip de cada cuenta.
+      </p>
 
       {showForm && (
         <div className="mx-4 mb-4 rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
@@ -544,6 +586,15 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
                 {ACCOUNT_TYPES.find((t) => t.value === a.type)?.label} · {a.currency}
                 {a.archived && ' · Archivada'}
               </p>
+              {!a.archived && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); toggleBudget(a.id, a.on_budget); }}
+                  className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full"
+                  style={a.on_budget ? { background: '#E4F2EA', color: '#5BA886' } : { background: '#ECE5DC', color: '#6B6459' }}
+                >
+                  {a.on_budget ? '💵 En presupuesto' : '👁️ Seguimiento'}
+                </button>
+              )}
               {a.type === 'credit' ? (
                 (() => {
                   const cycleSpend = cardCycleSpend(a.id, a.closing_date);

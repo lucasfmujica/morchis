@@ -25,7 +25,9 @@ export type Database = {
           id: string
           initial_balance: number
           name: string
+          on_budget: boolean
           owner_profile_id: string | null
+          payment_category_id: string | null
           statement_ars: number | null
           statement_usd: number | null
           type: string
@@ -40,7 +42,9 @@ export type Database = {
           id?: string
           initial_balance?: number
           name: string
+          on_budget?: boolean
           owner_profile_id?: string | null
+          payment_category_id?: string | null
           statement_ars?: number | null
           statement_usd?: number | null
           type: string
@@ -55,7 +59,9 @@ export type Database = {
           id?: string
           initial_balance?: number
           name?: string
+          on_budget?: boolean
           owner_profile_id?: string | null
+          payment_category_id?: string | null
           statement_ars?: number | null
           statement_usd?: number | null
           type?: string
@@ -73,6 +79,13 @@ export type Database = {
             columns: ["owner_profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accounts_payment_category_id_fkey"
+            columns: ["payment_category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
             referencedColumns: ["id"]
           },
         ]
@@ -102,6 +115,106 @@ export type Database = {
             columns: ["budget_id"]
             isOneToOne: false
             referencedRelation: "budgets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      budget_months: {
+        Row: {
+          assigned: number
+          category_id: string
+          created_at: string
+          currency: string
+          household_id: string
+          id: string
+          month: string
+          profile_id: string
+          updated_at: string
+        }
+        Insert: {
+          assigned?: number
+          category_id: string
+          created_at?: string
+          currency?: string
+          household_id: string
+          id?: string
+          month: string
+          profile_id: string
+          updated_at?: string
+        }
+        Update: {
+          assigned?: number
+          category_id?: string
+          created_at?: string
+          currency?: string
+          household_id?: string
+          id?: string
+          month?: string
+          profile_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "budget_months_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "budget_months_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "budget_months_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      budget_views: {
+        Row: {
+          category_ids: string[]
+          created_at: string
+          household_id: string
+          id: string
+          name: string
+          profile_id: string
+        }
+        Insert: {
+          category_ids?: string[]
+          created_at?: string
+          household_id: string
+          id?: string
+          name: string
+          profile_id: string
+        }
+        Update: {
+          category_ids?: string[]
+          created_at?: string
+          household_id?: string
+          id?: string
+          name?: string
+          profile_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "budget_views_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "budget_views_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -171,6 +284,7 @@ export type Database = {
           icon: string
           id: string
           is_default: boolean
+          is_goal: boolean
           kind: string
           name: string
           parent_id: string | null
@@ -181,6 +295,7 @@ export type Database = {
           icon?: string
           id?: string
           is_default?: boolean
+          is_goal?: boolean
           kind?: string
           name: string
           parent_id?: string | null
@@ -191,6 +306,7 @@ export type Database = {
           icon?: string
           id?: string
           is_default?: boolean
+          is_goal?: boolean
           kind?: string
           name?: string
           parent_id?: string | null
@@ -208,6 +324,67 @@ export type Database = {
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      category_targets: {
+        Row: {
+          cadence: string
+          category_id: string
+          created_at: string
+          currency: string
+          household_id: string
+          id: string
+          profile_id: string
+          target_amount: number
+          target_date: string | null
+          updated_at: string
+        }
+        Insert: {
+          cadence?: string
+          category_id: string
+          created_at?: string
+          currency?: string
+          household_id: string
+          id?: string
+          profile_id: string
+          target_amount?: number
+          target_date?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cadence?: string
+          category_id?: string
+          created_at?: string
+          currency?: string
+          household_id?: string
+          id?: string
+          profile_id?: string
+          target_amount?: number
+          target_date?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "category_targets_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "category_targets_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "category_targets_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -268,6 +445,13 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "debts_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
             referencedColumns: ["id"]
           },
         ]
@@ -564,6 +748,13 @@ export type Database = {
             referencedRelation: "households"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "insights_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       merchant_aliases: {
@@ -749,6 +940,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recurring_rules_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
             referencedColumns: ["id"]
           },
           {
@@ -1131,7 +1329,30 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      category_activity_by_month: {
+        Row: {
+          ars: number | null
+          category_id: string | null
+          household_id: string | null
+          month: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transactions_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       advance_recurring_rules: { Args: never; Returns: number }

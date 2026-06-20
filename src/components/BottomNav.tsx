@@ -13,10 +13,10 @@ interface BottomNavProps {
 // a slide-up menu so they're one tap away. Invite + PIN are de-emphasised at the
 // bottom (rarely used).
 const MENU = [
+  { href: '/home', icon: '🏠', label: 'Inicio' },
   { href: '/insights', icon: '✨', label: 'Insights' },
   { href: '/cuentas', icon: '🏦', label: 'Cuentas' },
   { href: '/categorias', icon: '🏷️', label: 'Categorías' },
-  { href: '/presupuestos', icon: '📊', label: 'Presupuestos' },
   { href: '/ahorro', icon: '🐷', label: 'Ahorro' },
   { href: '/metas', icon: '🎯', label: 'Metas' },
   { href: '/reglas', icon: '📅', label: 'Fijos' },
@@ -181,7 +181,7 @@ export function BottomNav({ onFab }: BottomNavProps) {
           paddingBottom: 'env(safe-area-inset-bottom)',
         }}
       >
-        {tab('/home', 'Inicio', '🏠')}
+        {tab('/presupuestos', 'Presupuesto', '💵')}
         {tab('/movimientos', 'Movimientos', '📋')}
         <div className="flex-1 flex justify-center">
           <button

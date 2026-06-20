@@ -1158,7 +1158,7 @@ export function AddTransactionSheet({
           {/* Hint for the fixed-expense toggle. */}
           {!isTransfer && txType === 'expense' && isFixed && (
             <p className="px-4 mt-2 text-[11px]" style={{ color: '#6B6459' }}>
-              📌 No cuenta para el límite semanal (sí en presupuestos y totales del mes).
+              📌 Gasto fijo (recurrente, tipo alquiler o servicios).
             </p>
           )}
 
@@ -1263,9 +1263,14 @@ export function AddTransactionSheet({
 
           {/* Save button */}
           <div className="px-4 pb-6 mt-4" style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}>
+            {txType === 'expense' && !categoryId && nativeAmount > 0 && (
+              <p className="text-[11px] mb-2 text-center" style={{ color: '#C79A2B' }}>
+                Elegí una categoría para que el gasto entre en un sobre.
+              </p>
+            )}
             <PrimaryButton
               onClick={handleSave}
-              disabled={nativeAmount === 0 || transferInvalid}
+              disabled={nativeAmount === 0 || transferInvalid || (txType === 'expense' && !categoryId)}
               loading={saving}
               className="w-full py-4 text-lg"
             >

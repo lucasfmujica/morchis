@@ -266,6 +266,8 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   }
 
   const acctName = (id: string | null) => accounts.find((a) => a.id === id)?.name ?? '—';
+  // Category (envelope) colour per transaction, to dot the icon and tint the name.
+  const catColorById = new Map(categories.map((c) => [c.id, (c.color as string | null) ?? null]));
 
   return (
     <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
@@ -450,7 +452,12 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                     setSheetOpen(true);
                   }}
                 >
-                  <span className="text-2xl">{tx.type === 'transfer' ? '🔄' : (tx.categories?.icon ?? '🏷️')}</span>
+                  <span className="relative text-2xl shrink-0">
+                    {tx.type !== 'transfer' && tx.category_id && catColorById.get(tx.category_id) && (
+                      <span className="absolute -left-0.5 top-1 w-1.5 h-1.5 rounded-full" style={{ background: catColorById.get(tx.category_id)! }} />
+                    )}
+                    {tx.type === 'transfer' ? '🔄' : (tx.categories?.icon ?? '🏷️')}
+                  </span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>
                       {tx.type === 'transfer'
@@ -459,7 +466,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                     </p>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       {tx.categories?.name && tx.merchant && (
-                        <span className="text-xs" style={{ color: '#6B6459' }}>{tx.categories.name}</span>
+                        <span className="text-xs font-semibold" style={{ color: catColorById.get(tx.category_id ?? '') ?? '#6B6459' }}>{tx.categories.name}</span>
                       )}
                       {tx.is_shared && (
                         <span className="text-xs px-1.5 py-0.5 rounded-md font-semibold" style={{ background: '#FFE7E2', color: '#FF7F6B' }}>

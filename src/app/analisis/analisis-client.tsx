@@ -7,7 +7,6 @@ import { useFx } from '@/hooks/useFx';
 import { useInflation } from '@/hooks/useInflation';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
-import { DonutChart } from '@/components/DonutChart';
 import { MonthlyBars, SingleBars, lastSixMonths } from '@/components/MonthlyBars';
 import { netWorthAt, type AccountRow, type AccountTx } from '@/lib/accounts';
 import { myShareArs, type SplitRow } from '@/lib/budgets';
@@ -50,6 +49,8 @@ export default function AnalisisClient({
   // Trend chart controls: period (6M/12M) and nominal vs constant pesos.
   const [trendRange, setTrendRange] = useState<'6M' | '12M'>('6M');
   const [constantPesos, setConstantPesos] = useState(true);
+  // Month shown in the spending breakdown (null = the latest/current month).
+  const [breakdownMonth, setBreakdownMonth] = useState<string | null>(null);
   // scope: 'me' (Mío) | 'all' (Nuestro) | 'partner' — default to "Mío"
   const [scope, setScope] = useState<'me' | 'all' | 'partner'>('me');
   const scopeProfileId =
@@ -71,6 +72,16 @@ export default function AnalisisClient({
       todayStr: toLocalISO(t),
     };
   }, []);
+
+  // The month shown in the spending breakdown, and prev/next bounded to the
+  // loaded window. `months` is oldest→newest.
+  const bMonth = breakdownMonth ?? currentKey;
+  const bIdx = months.findIndex((m) => m.key === bMonth);
+  const bMonthLabel = (() => {
+    const [y, m] = bMonth.split('-').map(Number);
+    const s = new Date(y, m - 1, 1).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  })();
 
   // Months covered by the trend chart. For 12M we prepend the 6 months before
   // the standard window, reusing lastSixMonths anchored just before it.
@@ -219,27 +230,26 @@ export default function AnalisisClient({
   // Category breakdown (current month, attributed by share) + the subscriptions
   // radar that reuses the same per-category totals. Recomputed only when the
   // transactions, categories or active scope change.
-  const { monthExpense, topCats, segments, subRows, subsTotal } = useMemo(() => {
+  const { monthExpense, catRows, segments, subRows, subsTotal } = useMemo(() => {
     const catById = new Map(categories.map((c) => [c.id, c]));
     const spentByCat = new Map<string, number>();
     for (const t of allTxns) {
-      if (t.type !== 'expense' || !t.occurred_on.startsWith(currentKey) || t.occurred_on > todayStr || !t.category_id) continue;
+      if (t.type !== 'expense' || !t.occurred_on.startsWith(bMonth) || t.occurred_on > todayStr || !t.category_id) continue;
       const share = expenseShareArs(t, scopeProfileId);
       if (share > 0) spentByCat.set(t.category_id, (spentByCat.get(t.category_id) ?? 0) + share);
     }
     const catRows = [...spentByCat.entries()]
-      .map(([id, value]) => ({ id, cat: catById.get(id), value }))
+      .map(([id, value], i) => {
+        const cat = catById.get(id);
+        return { id, cat, value, color: cat?.color || DONUT_PALETTE[i % DONUT_PALETTE.length] };
+      })
       .filter((r) => r.cat && r.value > 0)
       .sort((a, b) => b.value - a.value);
     const monthExpense = catRows.reduce((s, r) => s + r.value, 0);
     const TOP = 6;
     const topCats = catRows.slice(0, TOP);
     const restTotal = catRows.slice(TOP).reduce((s, r) => s + r.value, 0);
-    const segments = topCats.map((r, i) => ({
-      label: r.cat!.name,
-      value: r.value,
-      color: r.cat!.color || DONUT_PALETTE[i % DONUT_PALETTE.length],
-    }));
+    const segments = topCats.map((r) => ({ label: r.cat!.name, value: r.value, color: r.color }));
     if (restTotal > 0) segments.push({ label: 'Otras', value: restTotal, color: '#C4B9AE' });
 
     // Subscriptions radar — current-month spend in subscription-type categories.
@@ -260,8 +270,8 @@ export default function AnalisisClient({
       .filter((r) => r.cat && r.value > 0)
       .sort((a, b) => b.value - a.value);
     const subsTotal = subRows.reduce((s, r) => s + r.value, 0);
-    return { monthExpense, topCats, segments, subRows, subsTotal };
-  }, [allTxns, categories, scopeProfileId, currentKey, todayStr, expenseShareArs]);
+    return { monthExpense, catRows, segments, subRows, subsTotal };
+  }, [allTxns, categories, scopeProfileId, bMonth, todayStr, expenseShareArs]);
 
   // Per-person comparison — each person's current-month *share* (so a shared
   // bill is split, not credited entirely to whoever fronted it). Always across
@@ -312,6 +322,15 @@ export default function AnalisisClient({
       }),
     [trendMonths, allTxns, scopeProfileId, toArs, expenseShareArs, inflationActive, inflateToToday],
   );
+
+  // Insight headline: on average, do you spend less than you make? (closed months)
+  const spendingInsight = useMemo(() => {
+    const closed = trendRows.filter((r) => r.key !== currentKey && (r.income > 0 || r.expense > 0));
+    if (closed.length === 0) return null;
+    const avgInc = closed.reduce((s, r) => s + r.income, 0) / closed.length;
+    const avgExp = closed.reduce((s, r) => s + r.expense, 0) / closed.length;
+    return avgInc >= avgExp;
+  }, [trendRows, currentKey]);
 
   // "Total del año" — sum of the 12 trend months (already constant-pesos
   // adjusted when the toggle is on). Only shown in the 12M view.
@@ -418,42 +437,82 @@ export default function AnalisisClient({
           <SingleBars rows={nwRows} color="#7EC8A4" />
         </div>
 
-        {/* Spending by category */}
+        {/* Spending breakdown — total + segmented bar + per-category % bars */}
         <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-          <div className="flex items-center justify-between mb-3">
-            <Link href="/analisis/categorias" className="text-xs font-bold uppercase tracking-wide flex items-center gap-1" style={{ color: '#6B6459' }}>
-              Gastos por categoría <span style={{ color: '#5BA886' }}>›</span>
-            </Link>
-            <span className="text-xs font-black" style={{ color: '#FF7F6B' }}>{formatARS(monthExpense)}</span>
+          {/* Month selector */}
+          <div className="flex items-center justify-center gap-2 mb-3">
+            <button
+              onClick={() => bIdx > 0 && setBreakdownMonth(months[bIdx - 1].key)}
+              disabled={bIdx <= 0}
+              className="w-8 h-8 rounded-full text-lg flex items-center justify-center"
+              style={{ background: '#F9F5F0', color: bIdx <= 0 ? '#D9CFC2' : '#6B6459' }}
+              aria-label="Mes anterior"
+            >
+              ‹
+            </button>
+            <span className="text-sm font-bold min-w-[8rem] text-center" style={{ color: '#2D2D2D' }}>{bMonthLabel}</span>
+            <button
+              onClick={() => bIdx >= 0 && bIdx < months.length - 1 && setBreakdownMonth(months[bIdx + 1].key)}
+              disabled={bIdx >= months.length - 1}
+              className="w-8 h-8 rounded-full text-lg flex items-center justify-center"
+              style={{ background: '#F9F5F0', color: bIdx >= months.length - 1 ? '#D9CFC2' : '#6B6459' }}
+              aria-label="Mes siguiente"
+            >
+              ›
+            </button>
           </div>
-          {segments.length === 0 ? (
-            <p className="text-sm text-center py-6" style={{ color: '#6B6459' }}>Sin gastos este mes todavía.</p>
+
+          {/* Total */}
+          <p className="text-xs font-bold uppercase tracking-wide text-center" style={{ color: '#6B6459' }}>Gasto total</p>
+          <p className="text-3xl font-black text-center mb-3" style={{ color: '#2D2D2D', fontVariantNumeric: 'tabular-nums' }}>
+            {formatARS(monthExpense)}
+          </p>
+
+          {catRows.length === 0 ? (
+            <p className="text-sm text-center py-6" style={{ color: '#6B6459' }}>Sin gastos este mes.</p>
           ) : (
-            <div className="flex items-center gap-4">
-              <div className="shrink-0">
-                <DonutChart segments={segments} centerTop="Mes" centerBottom={formatARS(monthExpense)} />
-              </div>
-              <div className="flex-1 min-w-0 flex flex-col gap-1.5">
-                {topCats.map((r, i) => (
-                  <Link key={r.id} href={`/categorias/${r.id}`} className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r.cat!.color || DONUT_PALETTE[i % DONUT_PALETTE.length] }} />
-                    <span className="text-xs flex-1 truncate" style={{ color: '#2D2D2D' }}>{r.cat!.icon} {r.cat!.name}</span>
-                    <span className="text-xs font-semibold" style={{ color: '#6B6459' }}>{Math.round((r.value / monthExpense) * 100)}%</span>
-                    <span className="text-[10px]" style={{ color: '#C4B9AE' }}>›</span>
-                  </Link>
+            <>
+              {/* Segmented bar */}
+              <div className="flex h-3 rounded-full overflow-hidden mb-4" style={{ background: '#F1ECE4' }}>
+                {segments.map((s, i) => (
+                  <div key={i} style={{ width: `${(s.value / monthExpense) * 100}%`, background: s.color }} />
                 ))}
               </div>
-            </div>
-          )}
-          {segments.length > 0 && (
-            <Link href="/analisis/categorias" className="block text-xs font-bold text-center pt-3" style={{ color: '#5BA886' }}>
-              Ver todas las categorías →
-            </Link>
+
+              {/* Category list with per-row % bars */}
+              <div className="flex flex-col">
+                {catRows.map((r) => {
+                  const pct = Math.round((r.value / monthExpense) * 100);
+                  return (
+                    <Link key={r.id} href={`/categorias/${r.id}`} className="flex items-center gap-3 py-2.5">
+                      <span className="text-xl shrink-0">{r.cat!.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{r.cat!.name}</span>
+                          <span className="text-sm font-black tabular-nums shrink-0" style={{ color: '#2D2D2D' }}>{formatARS(r.value)}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: '#F1ECE4' }}>
+                            <div className="h-full rounded-full" style={{ width: `${Math.max(pct, 2)}%`, background: r.color }} />
+                          </div>
+                          <span className="text-[11px] font-semibold tabular-nums w-8 text-right" style={{ color: '#6B6459' }}>{pct}%</span>
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </>
           )}
         </div>
 
         {/* Income vs expense trend (6M/12M, nominal or constant pesos) */}
         <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+          {spendingInsight != null && (
+            <p className="text-base font-black mb-3 leading-snug" style={{ color: '#2D2D2D' }}>
+              {spendingInsight ? 'En promedio, gastás menos de lo que ganás. 🎉' : 'En promedio, estás gastando más de lo que ganás. ⚠️'}
+            </p>
+          )}
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>
               Ingresos vs gastos · {trendRange === '12M' ? '12 meses' : '6 meses'}

@@ -10,6 +10,9 @@ import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { DonutChart } from '@/components/DonutChart';
 import { MonthlyBars, lastSixMonths } from '@/components/MonthlyBars';
+import { useEnvelope } from '@/hooks/useEnvelope';
+import { monthKey, todayISO } from '@/lib/date';
+import { assetBalance, type AccountRow, type AccountTx } from '@/lib/accounts';
 import { formatARS } from '@/lib/format';
 import { toast } from 'sonner';
 import Link from 'next/link';
@@ -87,6 +90,42 @@ export default function AhorroClient({
       return data ?? [];
     },
   });
+
+  // Savings goals (is_goal categories) + tracking accounts for the dashboard.
+  const env = useEnvelope(profile.household_id, profile.id, monthKey());
+  const savingsGoals = env.categories
+    .filter((c) => c.is_goal)
+    .map((c) => ({ cat: c, available: env.rowByCategory.get(c.id)?.available ?? 0, info: env.targetInfoByCategory.get(c.id) }))
+    .filter((g) => g.info && g.info.totalArs > 0);
+
+  const { data: dashAccounts = [] } = useQuery<(AccountRow & { name: string; on_budget: boolean })[]>({
+    queryKey: ['accounts-full', profile.household_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('accounts')
+        .select('id, name, type, currency, archived, initial_balance, owner_profile_id, on_budget')
+        .eq('household_id', profile.household_id);
+      return (data ?? []) as (AccountRow & { name: string; on_budget: boolean })[];
+    },
+  });
+  const { data: dashAccountTx = [] } = useQuery<AccountTx[]>({
+    queryKey: ['account-tx', profile.household_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('transactions')
+        .select('account_id, transfer_account_id, type, amount, occurred_on')
+        .eq('household_id', profile.household_id);
+      return (data ?? []) as AccountTx[];
+    },
+  });
+  const trackingAccounts = dashAccounts
+    .filter((a) => !a.archived && !a.on_budget && a.type !== 'credit')
+    .map((a) => {
+      const bal = assetBalance(dashAccountTx, a.id, a.initial_balance ?? 0, todayISO());
+      return { ...a, ars: a.currency === 'USD' && arsPerUsd > 0 ? Math.round(bal * arsPerUsd) : bal, bal };
+    })
+    .sort((x, y) => y.ars - x.ars);
+  const trackingTotal = trackingAccounts.reduce((s, a) => s + a.ars, 0);
 
   const goalMap = new Map(goalRows.map((g) => [g.month, g.target_pct]));
 
@@ -332,6 +371,53 @@ export default function AhorroClient({
               </span>{' '}
               · {formatARS(closedSavedDisplay)} ahorrados
             </p>
+          )}
+        </div>
+
+        {/* Savings goals (is_goal categories) */}
+        {savingsGoals.length > 0 && (
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide mb-2 px-1" style={{ color: '#6B6459' }}>Metas de ahorro</p>
+            <div className="flex flex-col gap-2">
+              {savingsGoals.map((g) => {
+                const pct = g.info!.pctComplete;
+                return (
+                  <Link key={g.cat.id} href="/presupuestos" className="rounded-3xl p-4 flex items-center gap-4" style={{ background: '#FFFFFF' }}>
+                    <div className="relative w-14 h-14 shrink-0">
+                      <svg viewBox="0 0 36 36" className="w-14 h-14 -rotate-90">
+                        <circle cx="18" cy="18" r="15.9" fill="none" stroke="#ECE5DC" strokeWidth="4" />
+                        <circle cx="18" cy="18" r="15.9" fill="none" stroke="#7EC8A4" strokeWidth="4" strokeDasharray={`${pct * 100} 100`} strokeLinecap="round" />
+                      </svg>
+                      <span className="absolute inset-0 flex items-center justify-center text-[11px] font-black" style={{ color: '#2D2D2D' }}>{Math.round(pct * 100)}%</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-black truncate" style={{ color: '#2D2D2D' }}>{g.cat.icon} {g.cat.name}</p>
+                      <p className="text-xs tabular-nums" style={{ color: '#6B6459' }}>{formatARS(g.available)} de {formatARS(g.info!.totalArs)}</p>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Tracking accounts (off-budget savings / investments) */}
+        <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Cuentas de seguimiento</p>
+            <span className="text-sm font-black tabular-nums" style={{ color: '#5BA886' }}>{formatARS(trackingTotal)}</span>
+          </div>
+          {trackingAccounts.length === 0 ? (
+            <p className="text-sm py-3 text-center" style={{ color: '#6B6459' }}>Marcá una cuenta como “Seguimiento” en Cuentas para verla acá.</p>
+          ) : (
+            <div className="flex flex-col">
+              {trackingAccounts.map((a, i) => (
+                <div key={a.id} className="flex items-center justify-between py-2.5" style={{ borderTop: i > 0 ? '1px solid #F1ECE4' : 'none' }}>
+                  <span className="text-sm font-semibold" style={{ color: '#2D2D2D' }}>{a.type === 'savings' ? '🐷' : '🏦'} {a.name}</span>
+                  <span className="text-sm font-black tabular-nums" style={{ color: '#2D2D2D' }}>{a.currency === 'USD' ? `US$ ${Math.round(a.bal).toLocaleString('es-AR')}` : formatARS(a.bal)}</span>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>

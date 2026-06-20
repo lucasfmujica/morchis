@@ -19,5 +19,5 @@ export default async function RootPage() {
     redirect('/household');
   }
 
-  redirect('/home');
+  redirect('/presupuestos');
 }

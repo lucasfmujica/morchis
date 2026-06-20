@@ -1,24 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
+import { useEnvelope, type EnvelopeCategory, type EnvelopeDetailTx, type UseEnvelopeResult, type TargetInfo } from '@/hooks/useEnvelope';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
-import { formatARS, formatUSD, parseMoney } from '@/lib/format';
 import { MoneyInput } from '@/components/MoneyInput';
-import { PrimaryButton } from '@/components/PrimaryButton';
-import { EmptyState } from '@/components/EmptyState';
-import {
-  spentForBudget as computeSpentForBudget,
-  budgetContribution,
-  weekContribution,
-  isFixedExpense,
-  BUDGET_EXPENSE_SELECT,
-  type BudgetExpenseRow,
-} from '@/lib/budgets';
-import { weekRange, shortDM } from '@/lib/date';
+import { monthKey } from '@/lib/date';
 
 interface Profile {
   id: string;
@@ -27,313 +17,316 @@ interface Profile {
   display_name: string | null;
 }
 
-interface Budget {
-  id: string;
-  // null = total limit for the period (all categories combined)
-  category_id: string | null;
-  scope: string;
-  profile_id: string | null;
-  amount: number;
-  currency: string;
-  active: boolean;
-  period: string;
+function shiftMonth(month: string, delta: number): string {
+  const [y, m] = month.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-interface Category {
-  id: string;
-  name: string;
-  icon: string;
-  kind: string;
+function monthLabel(month: string): string {
+  const [y, m] = month.split('-').map(Number);
+  const s = new Date(y, m - 1, 1).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// One line in the drill-down sheet: a transaction and the ARS amount it
-// contributes to the total being explained (its own share, for shared expenses).
-interface DetailRow {
-  id: string;
-  label: string;
-  occurred_on: string;
-  shared: boolean;
-  fixed: boolean;
-  amountArs: number;
+// es-AR number for the table cells — no symbol, so the columns read clean.
+function fmtCell(n: number): string {
+  return Math.round(n).toLocaleString('es-AR');
 }
 
-interface DetailView {
-  title: string;
-  subtitle: string;
-  icon: string;
-  total: number;
-  rows: DetailRow[];
-}
-
-// Sentinel for the "Total" chip in the budget sheet — saved as category_id null.
-const TOTAL_ID = '__total__';
-
-function budgetIcon(b: Budget, cat?: Category): string {
-  return b.category_id == null ? '🎯' : cat?.icon ?? '📦';
-}
-
-function budgetName(b: Budget, cat?: Category): string {
-  return b.category_id == null ? 'Límite total' : cat?.name ?? '—';
-}
-
-function fmtDetailDate(iso: string): string {
+function fmtDate(iso: string): string {
   return new Date(iso + 'T00:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
 }
 
-function barColor(pct: number): string {
-  if (pct >= 1) return '#FF7F6B';
-  if (pct >= 0.8) return '#F5A623';
-  return '#7EC8A4';
+function fmtGoalDate(iso: string): string {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('es-AR', { month: 'short', year: 'numeric' });
 }
 
-// `spent` and `limitArs` are both in ARS for the math; we render them in the
-// budget's own currency (so a USD budget shows US$).
-function BudgetBar({ spent, limitArs, currency, arsPerUsd }: { spent: number; limitArs: number; currency: string; arsPerUsd: number }) {
-  const pct = limitArs > 0 ? Math.min(spent / limitArs, 1) : 0;
-  const over = limitArs > 0 && spent > limitArs;
-  const color = barColor(limitArs > 0 ? spent / limitArs : 0);
-  const fmt = (ars: number) =>
-    currency === 'USD' && arsPerUsd > 0 ? formatUSD(Math.round(ars / arsPerUsd)) : formatARS(ars);
-
-  return (
-    <div>
-      <div className="h-2.5 rounded-full overflow-hidden" style={{ background: '#ECE5DC' }}>
-        <div
-          className="h-full rounded-full transition-all duration-500"
-          style={{ width: `${Math.min(pct * 100, 100)}%`, background: color }}
-        />
-      </div>
-      <div className="flex justify-between mt-1">
-        <span className="text-xs font-semibold" style={{ color }}>
-          {fmt(spent)} gastado
-        </span>
-        <span className="text-xs" style={{ color: over ? '#FF7F6B' : '#6B6459' }}>
-          {over ? `+${fmt(spent - limitArs)} excedido` : `de ${fmt(limitArs)}`}
-        </span>
-      </div>
-    </div>
-  );
+// Available colour with YNAB target awareness:
+//   red    = overspent (negative)
+//   yellow = funded but below the monthly target
+//   green  = funded (and at/above target if there is one)
+//   grey   = zero with no target
+function availColor(available: number, target: number): string {
+  if (available < 0) return '#E5604C';
+  if (target > 0 && available < target) return '#C79A2B';
+  if (available > 0) return '#5BA886';
+  return '#A89B8C';
 }
 
-function BudgetSheet({
-  open,
-  onClose,
-  householdId,
-  profileId,
-  categories,
-  editing,
+// The YNAB-style available "pill": colour + a matching soft background tint.
+function availPill(available: number, target: number): { bg: string; fg: string } {
+  const fg = availColor(available, target);
+  const bg = fg === '#E5604C' ? '#FFE7E2' : fg === '#C79A2B' ? '#FBF0D6' : fg === '#5BA886' ? '#E4F2EA' : '#ECE5DC';
+  return { bg, fg };
+}
+
+// A plain right-aligned money field (no boxy "tag") that commits on blur. The
+// parent remounts it via `key` when the stored value changes externally.
+function MoneyField({
+  value,
+  onCommit,
+  className,
+  style,
+  placeholder,
 }: {
-  open: boolean;
-  onClose: () => void;
-  householdId: string;
-  profileId: string;
-  categories: Category[];
-  editing: Budget | null;
+  value: number;
+  onCommit: (n: number) => void;
+  className?: string;
+  style?: React.CSSProperties;
+  placeholder?: string;
 }) {
-  const supabase = createClient();
-  const qc = useQueryClient();
-
-  const [categoryId, setCategoryId] = useState(editing ? editing.category_id ?? TOTAL_ID : '');
-  const [amount, setAmount] = useState(editing ? String(editing.amount) : '');
-  const [scope, setScope] = useState<'personal' | 'household'>(
-    (editing?.scope as 'personal' | 'household') ?? 'personal',
+  const [draft, setDraft] = useState(value);
+  return (
+    <span onBlur={() => { if (draft !== value) onCommit(draft); }}>
+      <MoneyInput value={draft} onChange={setDraft} placeholder={placeholder} className={className} style={style} />
+    </span>
   );
-  const [currency, setCurrency] = useState<'ARS' | 'USD'>((editing?.currency as 'ARS' | 'USD') ?? 'ARS');
-  const [period, setPeriod] = useState<'monthly' | 'weekly'>((editing?.period as 'monthly' | 'weekly') ?? 'monthly');
-  const [saving, setSaving] = useState(false);
+}
 
-  async function save() {
-    if (!categoryId || !amount) return;
-    setSaving(true);
-    const payload = {
-      household_id: householdId,
-      category_id: categoryId === TOTAL_ID ? null : categoryId,
-      scope,
-      profile_id: scope === 'personal' ? profileId : null,
-      amount: parseMoney(amount),
-      currency,
-      period,
-      active: true,
-    };
-    if (editing) {
-      await supabase.from('budgets').update(payload).eq('id', editing.id);
-    } else {
-      await supabase.from('budgets').insert(payload);
-    }
-    await qc.invalidateQueries({ queryKey: ['budgets'] });
-    setSaving(false);
-    onClose();
-  }
+interface RowData { assigned: number; activity: number; available: number }
 
-  const expenseCategories = categories.filter((c) => c.kind === 'expense');
+function CategoryDetailSheet({
+  category,
+  row,
+  target,
+  targetInfo,
+  suggested,
+  month,
+  lastMonth,
+  transactions,
+  otherCategories,
+  editable,
+  isFeatured,
+  format,
+  onClose,
+  onAssign,
+  onSetTarget,
+  onToggleFeatured,
+  onMove,
+}: {
+  category: EnvelopeCategory;
+  row: RowData;
+  target: number;
+  targetInfo: TargetInfo | undefined;
+  suggested: number;
+  month: string;
+  lastMonth: { assigned: number; activity: number };
+  transactions: EnvelopeDetailTx[];
+  otherCategories: EnvelopeCategory[];
+  editable: boolean;
+  isFeatured: boolean;
+  format: (ars: number) => string;
+  onClose: () => void;
+  onAssign: (n: number) => void;
+  onSetTarget: (amount: number, cadence: 'monthly' | 'by_date', date: string | null) => void;
+  onToggleFeatured: () => void;
+  onMove: (toCategoryId: string, amount: number) => void;
+}) {
+  const [moveTo, setMoveTo] = useState('');
+  const [moveAmt, setMoveAmt] = useState(0);
+  const [tMode, setTMode] = useState<'monthly' | 'by_date'>(targetInfo?.cadence ?? 'monthly');
+  const [tAmt, setTAmt] = useState(targetInfo?.totalArs ?? 0);
+  const [tDate, setTDate] = useState(targetInfo?.targetDate ?? '');
+  const fg = availColor(row.available, target);
+  const toTarget = target > 0 ? target - row.available : 0;
+  // Balance breakdown (YNAB style): what carried over vs what moved this month.
+  const carryover = row.available - row.assigned + row.activity;
+  const prevLabel = monthLabel(shiftMonth(month, -1));
+  const curLabel = monthLabel(month);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
       <div
-        className="w-full rounded-t-3xl p-6 pb-safe"
+        className="w-full rounded-t-3xl p-6 max-h-[88vh] overflow-y-auto"
         style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
-        <h2 className="text-lg font-black mb-5" style={{ color: '#2D2D2D' }}>
-          {editing ? 'Editar presupuesto' : 'Nuevo presupuesto'}
-        </h2>
-
-        {/* Scope */}
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Alcance</p>
-        <div className="flex rounded-2xl overflow-hidden mb-4 p-1 gap-1" style={{ background: '#ECE5DC' }}>
-          {(['personal', 'household'] as const).map((s) => (
-            <button
-              key={s}
-              onClick={() => setScope(s)}
-              className="flex-1 py-1.5 text-xs font-bold rounded-xl transition-colors"
-              style={{
-                background: scope === s ? '#FFFFFF' : 'transparent',
-                color: scope === s ? '#2D2D2D' : '#6B6459',
-              }}
-            >
-              {s === 'personal' ? 'Personal' : 'Nuestro'}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-2xl">{category.icon}</span>
+          <h2 className="text-lg font-black" style={{ color: '#2D2D2D' }}>{category.name}</h2>
         </div>
 
-        {/* Period */}
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Período</p>
-        <div className="flex rounded-2xl overflow-hidden mb-4 p-1 gap-1" style={{ background: '#ECE5DC' }}>
-          {(['monthly', 'weekly'] as const).map((p) => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className="flex-1 py-1.5 text-xs font-bold rounded-xl transition-colors"
-              style={{
-                background: period === p ? '#FFFFFF' : 'transparent',
-                color: period === p ? '#2D2D2D' : '#6B6459',
-              }}
-            >
-              {p === 'monthly' ? 'Mensual' : 'Semanal (Lun–Dom)'}
-            </button>
+        {/* Balance breakdown (YNAB style) */}
+        <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: '#6B6459' }}>Balance</p>
+        <div className="rounded-2xl overflow-hidden mb-4" style={{ background: '#F9F5F0' }}>
+          {[
+            { l: `Desde ${prevLabel}`, v: format(carryover) },
+            { l: `Asignado en ${curLabel}`, v: format(row.assigned) },
+            { l: `Actividad en ${curLabel}`, v: format(-row.activity) },
+          ].map((r, i) => (
+            <div key={i} className="flex items-center justify-between px-4 py-3" style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}>
+              <span className="text-sm" style={{ color: '#6B6459' }}>{r.l}</span>
+              <span className="text-sm font-bold tabular-nums" style={{ color: '#2D2D2D' }}>{r.v}</span>
+            </div>
           ))}
-        </div>
-
-        {/* Category */}
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Categoría</p>
-        <div className="flex flex-wrap gap-2 mb-4 max-h-40 overflow-y-auto">
-          {/* Total = a cap on ALL spending of the period, not one category */}
-          <button
-            onClick={() => setCategoryId(TOTAL_ID)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-sm font-semibold transition-colors"
-            style={{
-              background: categoryId === TOTAL_ID ? '#7EC8A4' : '#F9F5F0',
-              color: categoryId === TOTAL_ID ? '#FFFFFF' : '#2D2D2D',
-            }}
-          >
-            <span>🎯</span>
-            <span>Total (todas las categorías)</span>
-          </button>
-          {expenseCategories.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => setCategoryId(c.id)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-sm font-semibold transition-colors"
-              style={{
-                background: categoryId === c.id ? '#7EC8A4' : '#F9F5F0',
-                color: categoryId === c.id ? '#FFFFFF' : '#2D2D2D',
-              }}
-            >
-              <span>{c.icon}</span>
-              <span>{c.name}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Currency */}
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Moneda</p>
-        <div className="flex rounded-2xl overflow-hidden mb-4 p-1 gap-1" style={{ background: '#ECE5DC' }}>
-          {(['ARS', 'USD'] as const).map((c) => (
-            <button
-              key={c}
-              onClick={() => setCurrency(c)}
-              className="flex-1 py-1.5 text-xs font-bold rounded-xl transition-colors"
-              style={{
-                background: currency === c ? '#FFFFFF' : 'transparent',
-                color: currency === c ? '#2D2D2D' : '#6B6459',
-              }}
-            >
-              {c === 'ARS' ? 'ARS (Pesos)' : 'USD (Dólares)'}
-            </button>
-          ))}
-        </div>
-
-        {/* Amount */}
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>
-          Límite {period === 'weekly' ? 'semanal' : 'mensual'} ({currency})
-        </p>
-        <MoneyInput
-          value={parseMoney(amount)}
-          onChange={(n) => setAmount(n ? String(n) : '')}
-          placeholder={currency === 'USD' ? 'Ej: 440' : 'Ej: 50.000'}
-          className="w-full rounded-2xl px-4 py-3 text-lg font-bold mb-5 outline-none border-2 transition-colors"
-          style={{
-            background: '#F9F5F0',
-            color: '#2D2D2D',
-            borderColor: amount ? '#7EC8A4' : '#ECE5DC',
-          }}
-        />
-
-        <PrimaryButton
-          onClick={save}
-          disabled={!categoryId || !amount}
-          loading={saving}
-          className="w-full py-4"
-        >
-          {saving ? 'Guardando…' : 'Guardar'}
-        </PrimaryButton>
-      </div>
-    </div>
-  );
-}
-
-function TransactionsSheet({ view, onClose }: { view: DetailView; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
-      <div
-        className="w-full rounded-t-3xl p-6 flex flex-col"
-        style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))', maxHeight: '80vh' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="w-10 h-1 rounded-full mx-auto mb-5 shrink-0" style={{ background: '#ECE5DC' }} />
-        <div className="flex items-start justify-between mb-1 shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-2xl">{view.icon}</span>
-            <h2 className="text-lg font-black truncate" style={{ color: '#2D2D2D' }}>{view.title}</h2>
+          <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: '1px solid #ECE5DC' }}>
+            <span className="text-sm font-bold" style={{ color: '#2D2D2D' }}>Disponible</span>
+            <span className="text-sm font-black px-2.5 py-1 rounded-full tabular-nums" style={{ background: availPill(row.available, target).bg, color: fg }}>{format(row.available)}</span>
           </div>
-          <p className="text-lg font-black shrink-0 ml-3" style={{ color: '#FF7F6B', fontVariantNumeric: 'tabular-nums' }}>
-            {formatARS(view.total)}
-          </p>
         </div>
-        <p className="text-xs mb-4 shrink-0" style={{ color: '#6B6459' }}>{view.subtitle}</p>
 
-        {view.rows.length === 0 ? (
-          <p className="text-sm py-8 text-center" style={{ color: '#6B6459' }}>
-            No hay gastos que sumen a este total.
-          </p>
-        ) : (
-          <div className="rounded-2xl overflow-y-auto" style={{ background: '#F9F5F0' }}>
-            {view.rows.map((r, i) => (
-              <div
-                key={r.id}
-                className="flex items-center gap-3 px-4 py-3.5"
-                style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}
+        {/* Goal/target status */}
+        {targetInfo && (
+          <div className="rounded-2xl p-4 mb-4 text-center" style={{ background: row.available >= targetInfo.totalArs && targetInfo.totalArs > 0 ? '#E4F2EA' : '#F9F5F0' }}>
+            {row.available >= targetInfo.totalArs && targetInfo.totalArs > 0 ? (
+              <p className="text-sm font-bold" style={{ color: '#5BA886' }}>✓ ¡Meta cumplida!</p>
+            ) : targetInfo.cadence === 'by_date' ? (
+              <p className="text-sm" style={{ color: '#6B6459' }}>
+                Faltan <b>{format(targetInfo.totalArs - row.available)}</b>{targetInfo.targetDate ? ` para ${fmtGoalDate(targetInfo.targetDate)}` : ''} · necesitás <b style={{ color: '#C79A2B' }}>{format(targetInfo.neededThisMonth)}</b> este mes
+              </p>
+            ) : (
+              <p className="text-sm" style={{ color: '#6B6459' }}>
+                Meta mensual {format(targetInfo.totalArs)} · faltan <b style={{ color: '#C79A2B' }}>{format(Math.max(0, targetInfo.totalArs - row.available))}</b>
+              </p>
+            )}
+          </div>
+        )}
+
+        {editable && (
+          <>
+            {/* Assigned editor */}
+            <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: '#6B6459' }}>Asignado este mes</p>
+            <MoneyField
+              key={`a-${row.assigned}`}
+              value={row.assigned}
+              onCommit={onAssign}
+              placeholder="0"
+              className="w-full rounded-2xl px-4 py-3 text-lg font-bold mb-3 outline-none border-2"
+              style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: '#ECE5DC' }}
+            />
+
+            {/* Quick actions */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              {row.available < 0 && (
+                <button
+                  onClick={() => onAssign(row.assigned - row.available)}
+                  className="text-xs font-bold px-3 py-2 rounded-xl"
+                  style={{ background: '#FFE7E2', color: '#E5604C' }}
+                >
+                  Cubrir sobregiro (+{format(-row.available)})
+                </button>
+              )}
+              {target > 0 && toTarget > 0 && (
+                <button
+                  onClick={() => onAssign(row.assigned + toTarget)}
+                  className="text-xs font-bold px-3 py-2 rounded-xl"
+                  style={{ background: '#FDF1D8', color: '#B8860B' }}
+                >
+                  Asignar para la meta (+{format(toTarget)})
+                </button>
+              )}
+              {lastMonth.assigned > 0 && (
+                <button
+                  onClick={() => onAssign(lastMonth.assigned)}
+                  className="text-xs font-bold px-3 py-2 rounded-xl"
+                  style={{ background: '#F1F7F4', color: '#5BA886' }}
+                >
+                  Asignaste el mes pasado {format(lastMonth.assigned)}
+                </button>
+              )}
+              {lastMonth.activity > 0 && (
+                <button
+                  onClick={() => onAssign(lastMonth.activity)}
+                  className="text-xs font-bold px-3 py-2 rounded-xl"
+                  style={{ background: '#F9F5F0', color: '#6B6459' }}
+                >
+                  Gastaste el mes pasado {format(lastMonth.activity)}
+                </button>
+              )}
+            </div>
+
+            {/* Target — monthly amount or a by-date savings goal */}
+            <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: '#6B6459' }}>Meta</p>
+            <div className="flex rounded-xl overflow-hidden mb-2 p-1 gap-1" style={{ background: '#ECE5DC' }}>
+              {([{ k: 'monthly', l: 'Mensual' }, { k: 'by_date', l: 'Por fecha' }] as const).map((o) => (
+                <button key={o.k} onClick={() => setTMode(o.k)} className="flex-1 py-1.5 text-xs font-bold rounded-lg" style={{ background: tMode === o.k ? '#FFFFFF' : 'transparent', color: tMode === o.k ? '#2D2D2D' : '#6B6459' }}>{o.l}</button>
+              ))}
+            </div>
+            <p className="text-[11px] mb-1.5" style={{ color: '#6B6459' }}>
+              {tMode === 'monthly' ? 'Lo que querés tener disponible cada mes (0 = sin meta).' : 'Total a juntar para una fecha (meta de ahorro).'}
+            </p>
+            {suggested > 0 && tMode === 'monthly' && (
+              <button onClick={() => setTAmt(suggested)} className="text-xs font-bold px-3 py-2 rounded-xl mb-2" style={{ background: '#E7EFFB', color: '#5B8DEF' }}>
+                ✨ Sugerido {format(suggested)} (según tu gasto)
+              </button>
+            )}
+            <MoneyInput
+              value={tAmt}
+              onChange={setTAmt}
+              placeholder="0"
+              className="w-full rounded-2xl px-4 py-3 text-base font-bold mb-2 outline-none border-2"
+              style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: '#ECE5DC' }}
+            />
+            {tMode === 'by_date' && (
+              <input
+                type="date"
+                value={tDate}
+                onChange={(e) => setTDate(e.target.value)}
+                className="w-full rounded-2xl px-4 py-3 text-base font-bold mb-2 outline-none border-2"
+                style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: '#ECE5DC' }}
+              />
+            )}
+            <button onClick={() => onSetTarget(tAmt, tMode, tMode === 'by_date' ? (tDate || null) : null)} className="w-full py-2.5 rounded-xl text-sm font-bold text-white mb-4" style={{ background: '#7EC8A4' }}>
+              Guardar meta
+            </button>
+
+            {/* Feature this category as the Home goal */}
+            <button onClick={onToggleFeatured} className="w-full py-2.5 rounded-xl text-sm font-bold mb-4" style={{ background: isFeatured ? '#E4F2EA' : '#F9F5F0', color: isFeatured ? '#5BA886' : '#6B6459' }}>
+              {isFeatured ? '📌 Destacada en Home' : '📌 Destacar en Home'}
+            </button>
+
+            {/* Move money to another envelope */}
+            <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: '#6B6459' }}>Mover plata a otro sobre</p>
+            <div className="flex gap-2 mb-5">
+              <select
+                value={moveTo}
+                onChange={(e) => setMoveTo(e.target.value)}
+                className="flex-1 rounded-xl px-3 py-2 text-sm outline-none border"
+                style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: '#ECE5DC' }}
               >
+                <option value="">Elegí un sobre…</option>
+                {otherCategories.map((c) => (
+                  <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
+                ))}
+              </select>
+              <MoneyInput
+                value={moveAmt}
+                onChange={setMoveAmt}
+                placeholder="Monto"
+                className="w-24 rounded-xl px-3 py-2 text-sm font-bold outline-none border text-right"
+                style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: '#ECE5DC' }}
+              />
+              <button
+                onClick={() => { if (moveTo && moveAmt > 0) { onMove(moveTo, moveAmt); setMoveTo(''); setMoveAmt(0); } }}
+                disabled={!moveTo || moveAmt <= 0}
+                className="px-3 py-2 rounded-xl text-sm font-bold text-white"
+                style={{ background: !moveTo || moveAmt <= 0 ? '#C4B9AE' : '#7EC8A4' }}
+              >
+                Mover
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* This month's transactions */}
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>
+          Movimientos del mes · {transactions.length}
+        </p>
+        {transactions.length === 0 ? (
+          <p className="text-sm py-4 text-center" style={{ color: '#6B6459' }}>Sin gastos este mes.</p>
+        ) : (
+          <div className="rounded-2xl overflow-hidden" style={{ background: '#F9F5F0' }}>
+            {transactions.map((t, i) => (
+              <div key={t.id} className="flex items-center gap-3 px-4 py-3" style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{r.label}</p>
+                  <p className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{t.merchant || category.name}</p>
                   <p className="text-xs" style={{ color: '#6B6459' }}>
-                    {fmtDetailDate(r.occurred_on)}{r.shared ? ' · compartido' : ''}{r.fixed ? ' · 📌 fijo' : ''}
+                    {fmtDate(t.occurred_on)}{t.shared ? ' · compartido' : ''}{t.fixed ? ' · 📌 fijo' : ''}
                   </p>
                 </div>
-                <p className="text-base font-black" style={{ color: '#FF7F6B', fontVariantNumeric: 'tabular-nums' }}>
-                  -{formatARS(r.amountArs)}
-                </p>
+                <p className="text-base font-black" style={{ color: '#FF7F6B', fontVariantNumeric: 'tabular-nums' }}>-{format(t.amountArs)}</p>
               </div>
             ))}
           </div>
@@ -343,511 +336,896 @@ function TransactionsSheet({ view, onClose }: { view: DetailView; onClose: () =>
   );
 }
 
-interface BudgetSuggestion { category_id: string; name: string; suggested: number; rationale: string }
+const CATEGORY_ICONS = [
+  '🛒', '🍕', '☕', '🍷', '🚇', '🚗', '💊', '🏥', '🎭', '📚', '✈️', '🏠',
+  '💼', '💵', '📱', '💻', '👗', '💅', '🎮', '🎁', '🐾', '🌿', '⚽', '💡',
+];
 
-// AI-suggested budgets sheet. The edge function computes the amounts from real
-// history (all math in TS); here we just list them and create the chosen ones.
-function SuggestBudgetsSheet({
-  scope, householdId, profileId, categories, onClose,
-}: {
-  scope: 'personal' | 'household';
-  householdId: string;
-  profileId: string;
-  categories: Category[];
-  onClose: () => void;
-}) {
-  const supabase = createClient();
-  const qc = useQueryClient();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const [items, setItems] = useState<BudgetSuggestion[]>([]);
-  const [creating, setCreating] = useState<string | null>(null);
-  const catMap = Object.fromEntries(categories.map((c) => [c.id, c]));
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) { if (alive) setError(true); return; }
-        const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/suggest-budgets`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scope }),
-        });
-        const data = await res.json().catch(() => null);
-        if (!alive) return;
-        if (!res.ok || !data?.ok) { setError(true); return; }
-        setItems((data.suggestions ?? []) as BudgetSuggestion[]);
-      } catch {
-        if (alive) setError(true);
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => { alive = false; };
-  }, [scope]);
-
-  async function create(s: BudgetSuggestion) {
-    setCreating(s.category_id);
-    await supabase.from('budgets').insert({
-      household_id: householdId,
-      category_id: s.category_id,
-      scope,
-      profile_id: scope === 'personal' ? profileId : null,
-      amount: s.suggested,
-      currency: 'ARS',
-      period: 'monthly',
-      active: true,
-    });
-    await qc.invalidateQueries({ queryKey: ['budgets'] });
-    setItems((prev) => prev.filter((x) => x.category_id !== s.category_id));
-    setCreating(null);
-  }
-
+function NewCategorySheet({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string, icon: string) => void }) {
+  const [name, setName] = useState('');
+  const [icon, setIcon] = useState('🏷️');
   return (
     <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
       <div
-        className="w-full rounded-t-3xl p-6 max-h-[85vh] overflow-y-auto"
+        className="w-full rounded-t-3xl p-6"
         style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
-        <h2 className="text-lg font-black mb-1" style={{ color: '#2D2D2D' }}>Presupuestos sugeridos ✨</h2>
-        <p className="text-sm mb-5" style={{ color: '#6B6459' }}>
-          Basados en tu gasto real en {scope === 'personal' ? 'tus categorías personales' : 'el hogar'}. Tocá “Crear” para activar uno.
-        </p>
+        <h2 className="text-lg font-black mb-4" style={{ color: '#2D2D2D' }}>Nueva categoría</h2>
 
-        {loading && (
-          <div className="rounded-2xl p-5 text-center text-sm" style={{ background: '#F9F5F0', color: '#6B6459' }}>
-            Analizando tus gastos…
-          </div>
-        )}
-        {!loading && error && (
-          <div className="rounded-2xl p-5 text-center text-sm" style={{ background: '#FFE7E2', color: '#E5604C' }}>
-            No pude calcular sugerencias ahora. Probá de nuevo.
-          </div>
-        )}
-        {!loading && !error && items.length === 0 && (
-          <div className="rounded-2xl p-5 text-center text-sm" style={{ background: '#F9F5F0', color: '#6B6459' }}>
-            Ya tenés presupuesto en tus categorías con más gasto. ¡Buen trabajo! 🎉
-          </div>
-        )}
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Nombre</p>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Ej: Gimnasio"
+          autoFocus
+          className="w-full rounded-2xl px-4 py-3 text-base font-bold mb-4 outline-none border-2"
+          style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: name ? '#7EC8A4' : '#ECE5DC' }}
+        />
 
-        <div className="flex flex-col gap-3">
-          {items.map((s) => {
-            const cat = catMap[s.category_id];
-            return (
-              <div key={s.category_id} className="rounded-2xl p-4" style={{ background: '#F9F5F0' }}>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-xl">{cat?.icon ?? '📦'}</span>
-                    <div className="min-w-0">
-                      <p className="font-black text-sm truncate" style={{ color: '#2D2D2D' }}>{s.name}</p>
-                      <p className="text-base font-black" style={{ color: '#5BA886' }}>{formatARS(s.suggested)}<span className="text-xs font-semibold" style={{ color: '#6B6459' }}> /mes</span></p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => create(s)}
-                    disabled={creating === s.category_id}
-                    className="text-sm font-bold px-4 py-2 rounded-full text-white shrink-0"
-                    style={{ background: creating === s.category_id ? '#C4B9AE' : '#7EC8A4' }}
-                  >
-                    {creating === s.category_id ? '…' : 'Crear'}
-                  </button>
-                </div>
-                {s.rationale && (
-                  <p className="text-xs mt-2 leading-snug" style={{ color: '#6B6459' }}>{s.rationale}</p>
-                )}
-              </div>
-            );
-          })}
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Ícono</p>
+        <div className="flex flex-wrap gap-2 mb-5">
+          {CATEGORY_ICONS.map((ic) => (
+            <button
+              key={ic}
+              onClick={() => setIcon(ic)}
+              className="w-10 h-10 rounded-xl text-xl flex items-center justify-center"
+              style={{ background: icon === ic ? '#7EC8A4' : '#F9F5F0', outline: icon === ic ? '2px solid #5BA886' : 'none' }}
+            >
+              {ic}
+            </button>
+          ))}
         </div>
+
+        <button
+          onClick={() => { if (name.trim()) { onCreate(name.trim(), icon); onClose(); } }}
+          disabled={!name.trim()}
+          className="w-full py-4 rounded-2xl font-bold text-white"
+          style={{ background: name.trim() ? '#7EC8A4' : '#C4B9AE' }}
+        >
+          Crear categoría
+        </button>
       </div>
     </div>
   );
 }
 
+function NewViewSheet({
+  categories, savedViews, onClose, onCreate, onDelete,
+}: {
+  categories: EnvelopeCategory[];
+  savedViews: { id: string; name: string; category_ids: string[] }[];
+  onClose: () => void;
+  onCreate: (name: string, categoryIds: string[]) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [name, setName] = useState('');
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const toggle = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  return (
+    <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
+      <div className="w-full rounded-t-3xl p-6 max-h-[88vh] overflow-y-auto" style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
+        <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
+        <h2 className="text-lg font-black mb-4" style={{ color: '#2D2D2D' }}>Vistas guardadas</h2>
+
+        {savedViews.length > 0 && (
+          <div className="rounded-2xl overflow-hidden mb-5" style={{ background: '#F9F5F0' }}>
+            {savedViews.map((v, i) => (
+              <div key={v.id} className="flex items-center gap-3 px-4 py-3" style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}>
+                <span className="flex-1 text-sm font-semibold" style={{ color: '#2D2D2D' }}>⭐ {v.name}</span>
+                <span className="text-[11px]" style={{ color: '#6B6459' }}>{v.category_ids.length} cat.</span>
+                <button onClick={() => onDelete(v.id)} className="text-xs font-bold px-2 py-1 rounded-lg" style={{ background: '#FFE7E2', color: '#E5604C' }}>Borrar</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Nueva vista</p>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Ej: Comida, Compartido con pareja…"
+          className="w-full rounded-2xl px-4 py-3 text-base font-bold mb-4 outline-none border-2"
+          style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: name ? '#7EC8A4' : '#ECE5DC' }}
+        />
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Categorías ({picked.size})</p>
+        <div className="flex flex-col gap-1 mb-5 max-h-64 overflow-y-auto">
+          {categories.map((c) => (
+            <button key={c.id} onClick={() => toggle(c.id)} className="flex items-center gap-3 px-3 py-2 rounded-xl" style={{ background: picked.has(c.id) ? '#E4F2EA' : '#F9F5F0' }}>
+              <span className="w-4 h-4 rounded-full shrink-0 flex items-center justify-center text-[10px] text-white" style={{ background: picked.has(c.id) ? '#5BA886' : '#C4B9AE' }}>{picked.has(c.id) ? '✓' : ''}</span>
+              <span className="text-lg">{c.icon}</span>
+              <span className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{c.name}</span>
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => { if (name.trim() && picked.size) { onCreate(name.trim(), [...picked]); onClose(); } }}
+          disabled={!name.trim() || picked.size === 0}
+          className="w-full py-4 rounded-2xl font-bold text-white"
+          style={{ background: name.trim() && picked.size ? '#7EC8A4' : '#C4B9AE' }}
+        >
+          Crear vista
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PrioritiesSheet({
+  categories, selected, onClose, onSave,
+}: {
+  categories: EnvelopeCategory[];
+  selected: string[];
+  onClose: () => void;
+  onSave: (ids: string[]) => void;
+}) {
+  const [picked, setPicked] = useState<Set<string>>(new Set(selected));
+  const toggle = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  return (
+    <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
+      <div className="w-full rounded-t-3xl p-6 max-h-[88vh] overflow-y-auto" style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
+        <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
+        <h2 className="text-lg font-black mb-1" style={{ color: '#2D2D2D' }}>Prioridades del mes</h2>
+        <p className="text-sm mb-4" style={{ color: '#6B6459' }}>¿Qué es lo importante este mes? Fijalo arriba para tenerlo a mano.</p>
+        <div className="flex flex-col gap-1 mb-5">
+          {categories.map((c) => (
+            <button key={c.id} onClick={() => toggle(c.id)} className="flex items-center gap-3 px-3 py-2.5 rounded-xl" style={{ background: picked.has(c.id) ? '#E4F2EA' : '#F9F5F0' }}>
+              <span className="w-5 h-5 rounded-full shrink-0 flex items-center justify-center text-[11px] text-white" style={{ background: picked.has(c.id) ? '#5BA886' : '#C4B9AE' }}>{picked.has(c.id) ? '✓' : ''}</span>
+              <span className="text-lg">{c.icon}</span>
+              <span className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{c.name}</span>
+            </button>
+          ))}
+        </div>
+        <button onClick={() => { onSave([...picked]); onClose(); }} className="w-full py-4 rounded-2xl font-bold text-white" style={{ background: '#7EC8A4' }}>Listo</button>
+      </div>
+    </div>
+  );
+}
+
+function SpotlightView({
+  env, priorityIds, expectedIncome, format, editable,
+  onAdjustPriorities, onSetExpectedIncome, onGotoMonth,
+}: {
+  env: UseEnvelopeResult;
+  priorityIds: string[];
+  expectedIncome: number;
+  format: (ars: number) => string;
+  editable: boolean;
+  onAdjustPriorities: () => void;
+  onSetExpectedIncome: (n: number) => void;
+  onGotoMonth: (month: string) => void;
+}) {
+  const catById = new Map(env.categories.map((c) => [c.id, c]));
+  const priorities = priorityIds.map((id) => catById.get(id)).filter((c): c is EnvelopeCategory => !!c);
+
+  const alerts: { cat: EnvelopeCategory; over: boolean; amount: number }[] = [];
+  for (const r of env.rows) {
+    const cat = catById.get(r.categoryId);
+    if (!cat || cat.kind !== 'expense') continue;
+    const target = env.targetByCategory.get(r.categoryId) ?? 0;
+    if (r.available < 0) alerts.push({ cat, over: true, amount: -r.available });
+    else if (target > 0 && r.available < target) alerts.push({ cat, over: false, amount: target - r.available });
+  }
+  alerts.sort((a, b) => (a.over ? 0 : 1) - (b.over ? 0 : 1) || b.amount - a.amount);
+
+  const s = env.summary;
+  const costToBeMe = s.totalTargets;
+  const incomePct = expectedIncome > 0 ? Math.min(1, costToBeMe / expectedIncome) : 0;
+  const nextMonth = monthKeyShift(1);
+  const assignedNext = env.assignedFutureByMonth.find((m) => m.month === nextMonth)?.assigned ?? 0;
+  const nextFundedPct = costToBeMe > 0 ? Math.min(1, assignedNext / costToBeMe) : 0;
+
+  const PriorityRow = ({ cat }: { cat: EnvelopeCategory }) => {
+    const r = env.rowByCategory.get(cat.id);
+    const available = r?.available ?? 0;
+    const target = env.targetByCategory.get(cat.id) ?? 0;
+    const pill = availPill(available, target);
+    return (
+      <div className="flex items-center gap-3 rounded-2xl px-4 py-3" style={{ background: '#FFFFFF' }}>
+        <span className="text-lg">{cat.icon}</span>
+        <span className="flex-1 min-w-0 text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{cat.name}</span>
+        <span className="text-xs font-black px-2.5 py-1 rounded-full tabular-nums" style={{ background: pill.bg, color: pill.fg }}>{format(available)}</span>
+      </div>
+    );
+  };
+
+  return (
+    <div className="px-4 flex flex-col gap-5">
+      {/* Top Priorities */}
+      <section>
+        <div className="flex items-center justify-between mb-2 px-1">
+          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Prioridades</p>
+          {editable && <button onClick={onAdjustPriorities} className="text-xs font-bold" style={{ color: '#5B8DEF' }}>Ajustar</button>}
+        </div>
+        {priorities.length > 0 ? (
+          <div className="flex flex-col gap-2">{priorities.map((c) => <PriorityRow key={c.id} cat={c} />)}</div>
+        ) : (
+          <button onClick={editable ? onAdjustPriorities : undefined} className="w-full rounded-2xl p-4 text-center text-sm" style={{ background: '#FFFFFF', color: '#6B6459' }}>
+            Fijá tus categorías importantes para tenerlas a mano.
+          </button>
+        )}
+      </section>
+
+      {/* Cost to Be Me */}
+      <section className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Lo que cuesta un mes de vos</p>
+        <p className="text-3xl font-black mt-0.5" style={{ color: '#2D2D2D', fontVariantNumeric: 'tabular-nums' }}>{format(costToBeMe)}</p>
+        <p className="text-[11px] mb-3" style={{ color: '#6B6459' }}>Suma de todas tus metas del mes.</p>
+        <div className="h-2.5 rounded-full overflow-hidden mb-1" style={{ background: '#ECE5DC' }}>
+          <div className="h-full rounded-full" style={{ width: `${incomePct * 100}%`, background: incomePct >= 1 ? '#E5604C' : '#7EC8A4' }} />
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-[11px]" style={{ color: '#6B6459' }}>Ingreso esperado</span>
+          {editable ? (
+            <MoneyField
+              key={`inc-${expectedIncome}`}
+              value={expectedIncome}
+              onCommit={onSetExpectedIncome}
+              placeholder="0"
+              className="w-28 bg-transparent text-right text-sm font-bold tabular-nums outline-none rounded px-1 border-b border-dashed border-[#D9CFC2] focus:border-[#7EC8A4]"
+              style={{ color: '#2D2D2D' }}
+            />
+          ) : (
+            <span className="text-sm font-bold tabular-nums" style={{ color: '#2D2D2D' }}>{format(expectedIncome)}</span>
+          )}
+        </div>
+      </section>
+
+      {/* Monthly Summary */}
+      <section>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2 px-1" style={{ color: '#6B6459' }}>Resumen del mes</p>
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            { label: 'Metas totales', value: s.totalTargets, color: '#2D2D2D' },
+            { label: 'Sin financiar', value: s.underfunded, color: s.underfunded > 0 ? '#C79A2B' : '#5BA886' },
+            { label: 'Asignado', value: s.assigned, color: '#2D2D2D' },
+            { label: 'Gastado', value: s.spent, color: '#FF7F6B' },
+          ].map((c) => (
+            <div key={c.label} className="rounded-2xl p-4" style={{ background: '#FFFFFF' }}>
+              <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>{c.label}</p>
+              <p className="text-lg font-black tabular-nums" style={{ color: c.color }}>{format(c.value)}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Assigned in Future Months */}
+      <section>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2 px-1" style={{ color: '#6B6459' }}>Asignado en meses futuros</p>
+        <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="relative w-14 h-14 shrink-0">
+              <svg viewBox="0 0 36 36" className="w-14 h-14 -rotate-90">
+                <circle cx="18" cy="18" r="15.9" fill="none" stroke="#ECE5DC" strokeWidth="4" />
+                <circle cx="18" cy="18" r="15.9" fill="none" stroke="#7EC8A4" strokeWidth="4" strokeDasharray={`${nextFundedPct * 100} 100`} strokeLinecap="round" />
+              </svg>
+              <span className="absolute inset-0 flex items-center justify-center text-[11px] font-black" style={{ color: '#2D2D2D' }}>{Math.round(nextFundedPct * 100)}%</span>
+            </div>
+            <p className="text-xs" style={{ color: '#6B6459' }}>El mes que viene está financiado al <b>{Math.round(nextFundedPct * 100)}%</b> de tus metas. Asigná hacia adelante para adelantarte un mes.</p>
+          </div>
+          {env.assignedFutureByMonth.length === 0 ? (
+            <p className="text-sm text-center py-2" style={{ color: '#6B6459' }}>Todavía no asignaste a meses futuros.</p>
+          ) : (
+            <div className="flex flex-col">
+              {env.assignedFutureByMonth.map((m, i) => (
+                <button key={m.month} onClick={() => onGotoMonth(m.month)} className="flex items-center justify-between py-2.5" style={{ borderTop: i > 0 ? '1px solid #F1ECE4' : 'none' }}>
+                  <span className="text-sm font-semibold" style={{ color: '#2D2D2D' }}>{monthLabel(m.month)}</span>
+                  <span className="text-sm font-black tabular-nums" style={{ color: '#5BA886' }}>{format(m.assigned)} ›</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Prioritized alerts */}
+      {alerts.length > 0 && (
+        <section>
+          <p className="text-xs font-bold uppercase tracking-wide mb-2 px-1" style={{ color: '#6B6459' }}>Qué atacar primero</p>
+          <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
+            {alerts.map((a, i) => (
+              <div key={a.cat.id} className="flex items-center gap-3 px-4 py-3" style={{ borderTop: i > 0 ? '1px solid #F1ECE4' : 'none' }}>
+                <span className="text-lg">{a.cat.icon}</span>
+                <span className="flex-1 min-w-0 text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{a.cat.name}</span>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={a.over ? { background: '#FFE7E2', color: '#E5604C' } : { background: '#FBF0D6', color: '#C79A2B' }}>
+                  {a.over ? `Sobregiraste ${format(a.amount)}` : `Faltan ${format(a.amount)}`}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+// monthKey() shifted by delta months — small local helper for Spotlight.
+function monthKeyShift(delta: number): string {
+  const d = new Date();
+  const shifted = new Date(d.getFullYear(), d.getMonth() + delta, 1);
+  return `${shifted.getFullYear()}-${String(shifted.getMonth() + 1).padStart(2, '0')}`;
+}
+
 export default function PresupuestosClient({ profile }: { profile: Profile }) {
   const supabase = createClient();
   const qc = useQueryClient();
-  const { arsPerUsd } = useFx();
-  const [tab, setTab] = useState<'personal' | 'household'>('personal');
+  const { format } = useFx();
+
+  const [month, setMonth] = useState<string>(monthKey());
+  const [tab, setTab] = useState<'categories' | 'spotlight'>('categories');
+  const [view, setView] = useState<'mine' | 'partner'>('mine');
+  const [filter, setFilter] = useState<string>('all'); // 'all'|'overspent'|'underfunded'|'overfunded'|'available'|`view:<id>`
+  const [newViewOpen, setNewViewOpen] = useState(false);
+  const [prioritiesOpen, setPrioritiesOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [detailCat, setDetailCat] = useState<EnvelopeCategory | null>(null);
+  const [newCatOpen, setNewCatOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
-  const [editing, setEditing] = useState<Budget | null>(null);
-  const [budgetSheetOpen, setBudgetSheetOpen] = useState(false);
-  const [suggestOpen, setSuggestOpen] = useState(false);
-  // Drill-down sheet: the transactions behind a budget's or the week's total.
-  const [detail, setDetail] = useState<DetailView | null>(null);
 
-  const now = new Date();
-  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-  // End of the current month, so a future-dated row (e.g. an installment booked
-  // for a later month) doesn't inflate this month's budget spend / alerts.
-  const monthEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, '0')}`;
-  const week = weekRange(now);
-  // Load enough rows to cover both windows (the week can straddle a month edge).
-  const rowsStart = week.start < monthStart ? week.start : monthStart;
-  const rowsEnd = week.end > monthEnd ? week.end : monthEnd;
-
-  const { data: categories = [] } = useQuery<Category[]>({
-    queryKey: ['categories', profile.household_id],
+  const partnerQ = useQuery({
+    queryKey: ['partner', profile.household_id, profile.id],
     queryFn: async () => {
       const { data } = await supabase
-        .from('categories')
-        .select('id, name, icon, kind, color')
+        .from('profiles')
+        .select('id, nickname, display_name')
         .eq('household_id', profile.household_id)
-        .order('name');
-      return data ?? [];
+        .neq('id', profile.id)
+        .maybeSingle();
+      return data ?? null;
     },
   });
+  const partner = partnerQ.data;
 
-  const { data: accounts = [] } = useQuery({
+  const accountsQ = useQuery({
     queryKey: ['accounts', profile.household_id],
     queryFn: async () => {
       const { data } = await supabase
         .from('accounts')
-        .select('id, name, type, owner_profile_id')
+        .select('id, name, type, owner_profile_id, payment_category_id, archived')
         .eq('household_id', profile.household_id)
-        .eq('archived', false)
         .order('name');
       return data ?? [];
     },
   });
+  const accounts = useMemo(() => accountsQ.data ?? [], [accountsQ.data]);
+  const activeAccounts = accounts.filter((a) => !a.archived);
 
-  const { data: budgets = [] } = useQuery<Budget[]>({
-    queryKey: ['budgets', profile.household_id],
+  const targetProfileId = view === 'partner' && partner ? partner.id : profile.id;
+  const editable = view === 'mine';
+
+  const env = useEnvelope(profile.household_id, targetProfileId, month);
+
+  const paymentCatOwner = useMemo(() => {
+    const m = new Map<string, string | null>();
+    for (const a of accounts) {
+      if (a.type === 'credit' && a.payment_category_id) m.set(a.payment_category_id, a.owner_profile_id);
+    }
+    return m;
+  }, [accounts]);
+
+  const groups = useMemo(() => {
+    const general: EnvelopeCategory[] = [];
+    const cards: EnvelopeCategory[] = [];
+    for (const c of env.categories) {
+      if (c.kind !== 'expense') continue;
+      if (paymentCatOwner.has(c.id)) {
+        if (paymentCatOwner.get(c.id) === targetProfileId) cards.push(c);
+        continue;
+      }
+      general.push(c);
+    }
+    const byName = (a: EnvelopeCategory, b: EnvelopeCategory) => a.name.localeCompare(b.name);
+    general.sort(byName);
+    cards.sort(byName);
+    return [
+      { key: 'general', title: 'Categorías', cats: general },
+      ...(cards.length ? [{ key: 'cards', title: '💳 Tarjetas', cats: cards }] : []),
+    ];
+  }, [env.categories, paymentCatOwner, targetProfileId]);
+
+  // All expense categories (for the "move to another envelope" picker).
+  const expenseCats = useMemo(() => env.categories.filter((c) => c.kind === 'expense'), [env.categories]);
+
+  // Spotlight prefs (Top Priorities + expected income) live in notification_prefs.
+  type Prefs = { priority_category_ids?: string[]; expected_income?: number; featured_category_id?: string };
+  const prefsQ = useQuery({
+    queryKey: ['profile-prefs', profile.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('profiles').select('notification_prefs').eq('id', profile.id).maybeSingle();
+      return (data?.notification_prefs ?? {}) as Prefs;
+    },
+  });
+  const prefs = prefsQ.data ?? {};
+  const priorityIds = useMemo(() => prefs.priority_category_ids ?? [], [prefs.priority_category_ids]);
+  const expectedIncome = prefs.expected_income ?? 0;
+  const updatePrefs = useMutation({
+    mutationFn: async (patch: Partial<Prefs>) => {
+      const next = { ...prefs, ...patch };
+      const { error } = await supabase.from('profiles').update({ notification_prefs: next }).eq('id', profile.id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['profile-prefs', profile.id] }),
+  });
+
+  // Saved "focused views" (named subsets of categories).
+  const viewsQ = useQuery({
+    queryKey: ['budget-views', profile.id],
     queryFn: async () => {
       const { data } = await supabase
-        .from('budgets')
-        .select('*')
-        .eq('household_id', profile.household_id)
-        .eq('active', true);
+        .from('budget_views')
+        .select('id, name, category_ids')
+        .eq('profile_id', profile.id)
+        .order('created_at');
       return data ?? [];
     },
   });
-
-  // Load this month's expense rows (with scope, owner and splits) so each budget
-  // counts the right spend: household budgets count the combined household spend,
-  // personal budgets count only the owner's *share* of each expense — including
-  // their part of shared expenses, no matter who actually paid.
-  const { data: expenseRows = [] } = useQuery<BudgetExpenseRow[]>({
-    queryKey: ['budget-expense-rows', profile.household_id, rowsStart, rowsEnd],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('transactions')
-        .select(`${BUDGET_EXPENSE_SELECT}, id, merchant`)
-        .eq('household_id', profile.household_id)
-        .eq('type', 'expense')
-        .gte('occurred_on', rowsStart)
-        .lte('occurred_on', rowsEnd);
-      return (data ?? []) as BudgetExpenseRow[];
+  const savedViews = viewsQ.data ?? [];
+  const createView = useMutation({
+    mutationFn: async ({ name, categoryIds }: { name: string; categoryIds: string[] }) => {
+      const { error } = await supabase.from('budget_views').insert({
+        household_id: profile.household_id, profile_id: profile.id, name, category_ids: categoryIds,
+      });
+      if (error) throw error;
     },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['budget-views', profile.id] }),
   });
-
-  // Budgets are in ARS, so USD expenses are converted at the blue rate.
-  const toArs = (amount: number, currency: string) =>
-    currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount;
-
-  // Rows inside a budget's period window. A weekly budget only counts Mon–Sun
-  // of the current week; a monthly one counts the whole month.
-  function rowsForPeriod(p: string): BudgetExpenseRow[] {
-    const [from, to] = p === 'weekly' ? [week.start, week.end] : [monthStart, monthEnd];
-    return expenseRows.filter((r) => r.occurred_on != null && r.occurred_on >= from && r.occurred_on <= to);
-  }
-
-  function spentForBudget(b: Budget): number {
-    return computeSpentForBudget(b, rowsForPeriod(b.period), profile.id, arsPerUsd);
-  }
-
-  // "Esta semana" total for the active scope: my own share when on the Personal
-  // tab, the combined household spend on the Nuestro tab.
-  const weekRows = expenseRows.filter(
-    (r) => r.occurred_on != null && r.occurred_on >= week.start && r.occurred_on <= week.end,
-  );
-  const weekSpend = weekRows.reduce(
-    (sum, r) => sum + weekContribution(r, tab, profile.id, arsPerUsd),
-    0,
-  );
-  // Split this week into fixed vs discretionary so the variable spend (what the
-  // total limit actually measures) is visible on its own.
-  const weekFixed = weekRows.reduce(
-    (sum, r) => sum + (isFixedExpense(r) ? weekContribution(r, tab, profile.id, arsPerUsd) : 0),
-    0,
-  );
-  const weekVariable = weekSpend - weekFixed;
-
-  const deleteMutation = useMutation({
+  const deleteView = useMutation({
     mutationFn: async (id: string) => {
-      await supabase.from('budgets').update({ active: false }).eq('id', id);
+      const { error } = await supabase.from('budget_views').delete().eq('id', id);
+      if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['budgets'] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['budget-views', profile.id] }); setFilter('all'); },
   });
 
-  // Personal budgets are per-user: only show my own. Household budgets are shared.
-  // The total limit (no category) leads the list — it frames the rest.
-  const filteredBudgets = budgets
-    .filter((b) => b.scope === tab && (tab === 'household' || b.profile_id === profile.id))
-    .sort((a, b) => Number(b.category_id == null) - Number(a.category_id == null));
+  // Suggested target amounts from spending history (only fetched when a detail
+  // is open). The edge function returns suggestions per category.
+  const suggestionsQ = useQuery({
+    queryKey: ['suggest-targets', profile.id],
+    enabled: !!detailCat,
+    staleTime: 1000 * 60 * 30,
+    queryFn: async () => {
+      const { data } = await supabase.functions.invoke('suggest-budgets', { body: { scope: 'personal' } });
+      return ((data as { suggestions?: { category_id: string; suggested: number }[] } | null)?.suggestions ?? []);
+    },
+  });
+  const suggestedByCategory = new Map((suggestionsQ.data ?? []).map((s) => [s.category_id, s.suggested]));
 
-  const catMap = Object.fromEntries(categories.map((c) => [c.id, c]));
-
-  function openNew() {
-    setEditing(null);
-    setBudgetSheetOpen(true);
+  // Focused-view predicate: does a category pass the active filter/chip?
+  const activeViewIds = filter.startsWith('view:')
+    ? new Set(savedViews.find((v) => `view:${v.id}` === filter)?.category_ids ?? [])
+    : null;
+  function matchesFilter(catId: string): boolean {
+    if (filter === 'all') return true;
+    if (activeViewIds) return activeViewIds.has(catId);
+    const r = env.rowByCategory.get(catId);
+    const available = r?.available ?? 0;
+    const target = env.targetByCategory.get(catId) ?? 0;
+    if (filter === 'overspent') return available < 0;
+    if (filter === 'underfunded') return target > 0 && available >= 0 && available < target;
+    if (filter === 'overfunded') return target > 0 && available > target;
+    if (filter === 'available') return available > 0;
+    return true;
   }
 
-  function openEdit(b: Budget) {
-    setEditing(b);
-    setBudgetSheetOpen(true);
+  const bulkAssign = useMutation({
+    mutationFn: async (updates: { categoryId: string; assigned: number }[]) => {
+      if (!updates.length) return;
+      const rows = updates.map((u) => ({
+        household_id: profile.household_id,
+        profile_id: profile.id,
+        category_id: u.categoryId,
+        month,
+        assigned: u.assigned,
+        currency: 'ARS',
+      }));
+      const { error } = await supabase.from('budget_months').upsert(rows, { onConflict: 'profile_id,category_id,month' });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['envelope', profile.id] }),
+  });
+
+  const createCategory = useMutation({
+    mutationFn: async ({ name, icon }: { name: string; icon: string }) => {
+      const { error } = await supabase
+        .from('categories')
+        .insert({ household_id: profile.household_id, name, icon, kind: 'expense', is_default: false });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['categories', profile.household_id] }),
+  });
+
+  const saveTarget = useMutation({
+    mutationFn: async ({ categoryId, amount, cadence, date }: { categoryId: string; amount: number; cadence: 'monthly' | 'by_date'; date: string | null }) => {
+      const { error } = await supabase.from('category_targets').upsert(
+        { household_id: profile.household_id, profile_id: profile.id, category_id: categoryId, target_amount: amount, cadence, target_date: cadence === 'by_date' ? date : null, currency: 'ARS' },
+        { onConflict: 'profile_id,category_id' },
+      );
+      if (error) throw error;
+      // A by-date target makes the category a savings goal.
+      if (cadence === 'by_date') await supabase.from('categories').update({ is_goal: true }).eq('id', categoryId);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['envelope-targets', profile.id] });
+      qc.invalidateQueries({ queryKey: ['categories', profile.household_id] });
+    },
+  });
+
+  function assignOne(categoryId: string, assigned: number) {
+    bulkAssign.mutate([{ categoryId, assigned }]);
+  }
+  function moveMoney(fromCat: string, toCat: string, amount: number) {
+    const fromR = env.rowByCategory.get(fromCat);
+    const toR = env.rowByCategory.get(toCat);
+    bulkAssign.mutate([
+      { categoryId: fromCat, assigned: (fromR?.assigned ?? 0) - amount },
+      { categoryId: toCat, assigned: (toR?.assigned ?? 0) + amount },
+    ]);
+  }
+  function coverOverspent() {
+    const updates = env.rows.filter((r) => r.available < 0).map((r) => ({ categoryId: r.categoryId, assigned: r.assigned - r.available }));
+    if (updates.length) bulkAssign.mutate(updates);
+  }
+  function autoAssignTargets() {
+    const updates: { categoryId: string; assigned: number }[] = [];
+    for (const [catId, target] of env.targetByCategory) {
+      if (target <= 0) continue;
+      const r = env.rowByCategory.get(catId);
+      const assigned = r?.assigned ?? 0;
+      const available = r?.available ?? 0;
+      if (available < target) updates.push({ categoryId: catId, assigned: assigned + (target - available) });
+    }
+    if (updates.length) bulkAssign.mutate(updates);
   }
 
-  // Build the list of transactions behind a budget's spent total. Each row shows
-  // the amount that actually counts toward the budget (a person's share for
-  // shared expenses), so the rows add up to the total on the card.
-  function openBudgetDetail(b: Budget) {
-    const cat = b.category_id ? catMap[b.category_id] : undefined;
-    const rows: DetailRow[] = rowsForPeriod(b.period)
-      .map((t) => ({ t, amountArs: budgetContribution(b, t, profile.id, arsPerUsd) }))
-      .filter(({ amountArs }) => amountArs > 0)
-      .map(({ t, amountArs }) => ({
-        id: t.id ?? `${t.occurred_on}-${amountArs}`,
-        // For a total budget there's no single category: name each row by its own.
-        label: t.merchant || (cat ?? catMap[t.category_id ?? ''])?.name || 'Gasto',
-        occurred_on: t.occurred_on ?? '',
-        shared: t.is_shared,
-        fixed: isFixedExpense(t),
-        amountArs,
-      }))
-      .sort((a, b2) => b2.occurred_on.localeCompare(a.occurred_on));
-    setDetail({
-      title: budgetName(b, cat),
-      subtitle: `${b.period === 'weekly' ? 'Esta semana' : 'Este mes'} · ${rows.length} ${rows.length === 1 ? 'gasto' : 'gastos'}`,
-      icon: budgetIcon(b, cat),
-      total: spentForBudget(b),
-      rows,
+  const overspentCount = env.rows.filter((r) => r.available < 0).length;
+  const underfundedCount = useMemo(() => {
+    let n = 0;
+    for (const [catId, target] of env.targetByCategory) {
+      if (target <= 0) continue;
+      if ((env.rowByCategory.get(catId)?.available ?? 0) < target) n++;
+    }
+    return n;
+  }, [env.targetByCategory, env.rowByCategory]);
+
+  // Counts for the focused-view chips.
+  const chipCounts = useMemo(() => {
+    let overspent = 0, underfunded = 0, overfunded = 0, available = 0;
+    for (const c of expenseCats) {
+      const a = env.rowByCategory.get(c.id)?.available ?? 0;
+      const t = env.targetByCategory.get(c.id) ?? 0;
+      if (a < 0) overspent++;
+      else if (t > 0 && a < t) underfunded++;
+      if (t > 0 && a > t) overfunded++;
+      if (a > 0) available++;
+    }
+    return { overspent, underfunded, overfunded, available };
+  }, [expenseCats, env.rowByCategory, env.targetByCategory]);
+
+  const rta = env.readyToAssign;
+  const rtaColor = rta > 0 ? '#5BA886' : rta < 0 ? '#E5604C' : '#6B6459';
+  const rtaBg = rta > 0 ? '#E4F2EA' : rta < 0 ? '#FFE7E2' : '#FFFFFF';
+
+  function toggleGroup(key: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
     });
   }
 
-  function openWeekDetail() {
-    const rows: DetailRow[] = weekRows
-      .map((t) => ({ t, amountArs: weekContribution(t, tab, profile.id, arsPerUsd) }))
-      .filter(({ amountArs }) => amountArs > 0)
-      .map(({ t, amountArs }) => ({
-        id: t.id ?? `${t.occurred_on}-${amountArs}`,
-        label: t.merchant || catMap[t.category_id ?? '']?.name || 'Gasto',
-        occurred_on: t.occurred_on ?? '',
-        shared: t.is_shared,
-        fixed: isFixedExpense(t),
-        amountArs,
-      }))
-      .sort((a, b2) => b2.occurred_on.localeCompare(a.occurred_on));
-    setDetail({
-      title: tab === 'household' ? 'Gastos de la semana' : 'Gastaste esta semana',
-      subtitle: `Lun ${shortDM(week.start)} – Dom ${shortDM(week.end)} · ${rows.length} ${rows.length === 1 ? 'gasto' : 'gastos'}`,
-      icon: '🗓️',
-      total: weekSpend,
-      rows,
-    });
+  function closeSheet() {
+    setSheetOpen(false);
+    qc.invalidateQueries({ queryKey: ['envelope-tx'] });
+    qc.invalidateQueries({ queryKey: ['envelope', profile.id] });
   }
+
+  const detailRow = detailCat ? env.rowByCategory.get(detailCat.id) : undefined;
 
   return (
     <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
-      <header className="flex items-center justify-between px-5 pt-14 pb-4">
-        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Presupuestos</h1>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setSuggestOpen(true)}
-            className="text-sm font-bold px-3 h-9 rounded-full flex items-center gap-1"
-            style={{ background: '#E4F2EA', color: '#5BA886' }}
-          >
-            ✨ Sugerir
-          </button>
-          <button
-            onClick={openNew}
-            className="w-9 h-9 rounded-full text-xl text-white flex items-center justify-center"
-            style={{ background: '#7EC8A4' }}
-          >
-            +
-          </button>
+      <header className="px-5 pt-14 pb-3">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Presupuesto</h1>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setMonth((m) => shiftMonth(m, -1))} className="w-8 h-8 rounded-full text-lg flex items-center justify-center" style={{ background: '#FFFFFF', color: '#6B6459' }} aria-label="Mes anterior">‹</button>
+            <span className="text-sm font-bold min-w-[7.5rem] text-center" style={{ color: '#2D2D2D' }}>{monthLabel(month)}</span>
+            <button onClick={() => setMonth((m) => shiftMonth(m, 1))} className="w-8 h-8 rounded-full text-lg flex items-center justify-center" style={{ background: '#FFFFFF', color: '#6B6459' }} aria-label="Mes siguiente">›</button>
+          </div>
         </div>
       </header>
 
-      {/* Tabs */}
-      <div className="mx-4 mb-4 flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#ECE5DC' }}>
-        {(['personal', 'household'] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className="flex-1 py-1.5 text-xs font-bold rounded-xl transition-colors"
-            style={{
-              background: tab === t ? '#FFFFFF' : 'transparent',
-              color: tab === t ? '#2D2D2D' : '#6B6459',
-            }}
-          >
-            {t === 'personal' ? 'Personal' : 'Nuestro'}
-          </button>
+      {partner && (
+        <div className="mx-4 mb-3 flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#ECE5DC' }}>
+          {([{ k: 'mine', label: 'Mío' }, { k: 'partner', label: partner.nickname || 'Pareja' }] as const).map((t) => (
+            <button key={t.k} onClick={() => setView(t.k)} className="flex-1 py-1.5 text-xs font-bold rounded-xl transition-colors" style={{ background: view === t.k ? '#FFFFFF' : 'transparent', color: view === t.k ? '#2D2D2D' : '#6B6459' }}>{t.label}</button>
+          ))}
+        </div>
+      )}
+
+      {/* "Para asignar" banner + quick actions (sticky so it stays in view) */}
+      <div className="mx-4 mb-4 rounded-3xl p-5 sticky top-1 z-20" style={{ background: rtaBg, boxShadow: '0 6px 20px -12px rgba(45,45,45,0.5)' }}>
+        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>
+          {editable ? 'Para asignar' : `Para asignar · ${partner?.nickname || 'Pareja'}`}
+        </p>
+        <p className="text-3xl font-black mt-0.5" style={{ color: rtaColor, fontVariantNumeric: 'tabular-nums' }}>{format(rta)}</p>
+        <p className="text-[11px] mt-1" style={{ color: '#6B6459' }}>
+          {rta > 0 ? 'Plata en cuentas todavía sin un trabajo. Asignala a un sobre.' : rta < 0 ? 'Asignaste (o fronteaste) más de lo que tenés. Sacá de algún sobre.' : 'Cada peso tiene un trabajo. 🎉'}
+        </p>
+        <p className="text-[11px] mt-1.5" style={{ color: '#A89B8C' }}>Efectivo on-budget {format(env.cash)} · Asignado este mes {format(env.assignedTotal)}</p>
+        {editable && overspentCount >= 4 && (
+          <p className="text-[11px] mt-2 leading-snug" style={{ color: '#6B6459' }}>
+            Empezaste a presupuestar a mitad de mes. Tocá <b>Cubrir lo ya gastado</b> para asignar
+            retroactivamente lo que ya saliste gastando y partir en cero (no te baja “Para asignar”).
+          </p>
+        )}
+        {editable && (overspentCount > 0 || underfundedCount > 0) && (
+          <div className="flex flex-wrap gap-2 mt-3">
+            {overspentCount > 0 && (
+              <button onClick={coverOverspent} className="text-xs font-bold px-3 py-2 rounded-xl" style={{ background: '#FFE7E2', color: '#E5604C' }}>
+                Cubrir lo ya gastado ({overspentCount})
+              </button>
+            )}
+            {underfundedCount > 0 && (
+              <button onClick={autoAssignTargets} className="text-xs font-bold px-3 py-2 rounded-xl" style={{ background: '#FDF1D8', color: '#B8860B' }}>
+                Asignar a metas ({underfundedCount})
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Categorías | Spotlight toggle */}
+      <div className="mx-4 mb-3 flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#ECE5DC' }}>
+        {([{ k: 'categories', label: 'Categorías' }, { k: 'spotlight', label: '✨ Spotlight' }] as const).map((t) => (
+          <button key={t.k} onClick={() => setTab(t.k)} className="flex-1 py-1.5 text-xs font-bold rounded-xl transition-colors" style={{ background: tab === t.k ? '#FFFFFF' : 'transparent', color: tab === t.k ? '#2D2D2D' : '#6B6459' }}>{t.label}</button>
         ))}
       </div>
 
-      {/* This week's spend (Mon–Sun) — tap to see the expenses behind it */}
-      <button
-        onClick={openWeekDetail}
-        className="mx-4 mb-4 rounded-3xl p-5 w-[calc(100%-2rem)] text-left"
-        style={{ background: '#FFFFFF' }}
-      >
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>
-              {tab === 'household' ? 'Gastos de la semana' : 'Gastaste esta semana'}
-            </p>
-            <p className="text-[11px]" style={{ color: '#6B6459' }}>
-              Lun {shortDM(week.start)} – Dom {shortDM(week.end)} · ver detalle ›
-            </p>
-          </div>
-          <p className="text-2xl font-black" style={{ color: '#FF7F6B', fontVariantNumeric: 'tabular-nums' }}>
-            {formatARS(weekSpend)}
-          </p>
-        </div>
-        {/* Variable vs fixed breakdown — the variable spend is what the total
-            limit measures, so it gets its own line. */}
-        {weekFixed > 0 && (
-          <div className="flex gap-2 mt-3">
-            <div className="flex-1 rounded-2xl px-3 py-2" style={{ background: '#F1F7F4' }}>
-              <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Variable</p>
-              <p className="text-base font-black" style={{ color: '#5BA886', fontVariantNumeric: 'tabular-nums' }}>
-                {formatARS(weekVariable)}
-              </p>
-            </div>
-            <div className="flex-1 rounded-2xl px-3 py-2" style={{ background: '#F9F5F0' }}>
-              <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>📌 Fijos</p>
-              <p className="text-base font-black" style={{ color: '#6B6459', fontVariantNumeric: 'tabular-nums' }}>
-                {formatARS(weekFixed)}
-              </p>
-            </div>
-          </div>
+      {tab === 'spotlight' ? (
+        <SpotlightView
+          env={env}
+          priorityIds={priorityIds}
+          expectedIncome={expectedIncome}
+          format={format}
+          editable={editable}
+          onAdjustPriorities={() => setPrioritiesOpen(true)}
+          onSetExpectedIncome={(n) => updatePrefs.mutate({ expected_income: n })}
+          onGotoMonth={(m) => { setMonth(m); setTab('categories'); }}
+        />
+      ) : (
+        <>
+      {/* Focused views — filter chips */}
+      <div className="flex gap-2 overflow-x-auto px-4 mb-3 pb-1" style={{ scrollbarWidth: 'none' }}>
+        {([
+          { k: 'all', label: 'Todos', n: null as number | null },
+          { k: 'overspent', label: 'Sobregirados', n: chipCounts.overspent },
+          { k: 'underfunded', label: 'Bajo la meta', n: chipCounts.underfunded },
+          { k: 'overfunded', label: 'Sobre-financiados', n: chipCounts.overfunded },
+          { k: 'available', label: 'Con disponible', n: chipCounts.available },
+        ] as const).map((chip) => (
+          <button
+            key={chip.k}
+            onClick={() => setFilter(chip.k)}
+            className="shrink-0 text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap"
+            style={{ background: filter === chip.k ? '#7EC8A4' : '#FFFFFF', color: filter === chip.k ? '#FFFFFF' : '#6B6459' }}
+          >
+            {chip.label}{chip.n != null && chip.n > 0 ? ` ${chip.n}` : ''}
+          </button>
+        ))}
+        {savedViews.map((v) => (
+          <button
+            key={v.id}
+            onClick={() => setFilter(`view:${v.id}`)}
+            className="shrink-0 text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap"
+            style={{ background: filter === `view:${v.id}` ? '#5B8DEF' : '#FFFFFF', color: filter === `view:${v.id}` ? '#FFFFFF' : '#6B6459' }}
+          >
+            ⭐ {v.name}
+          </button>
+        ))}
+        {editable && (
+          <button
+            onClick={() => setNewViewOpen(true)}
+            className="shrink-0 text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap border-2 border-dashed"
+            style={{ borderColor: '#D9CFC2', color: '#6B6459', background: 'transparent' }}
+          >
+            + Vista
+          </button>
         )}
-      </button>
+      </div>
 
-      {/* Budget cards */}
-      <div className="px-4 flex flex-col gap-3">
-        {filteredBudgets.length === 0 ? (
-          <EmptyState
-            icon="📊"
-            title="Sin presupuestos"
-            subtitle="Creá un presupuesto para controlar tus gastos."
-            action={{ label: 'Crear presupuesto', onClick: openNew }}
-          />
+      {/* Column legend */}
+      <div className="flex items-center gap-2 px-7 mb-1">
+        <span className="flex-1" />
+        <span className="w-[4.25rem] text-right text-[9px] font-bold uppercase tracking-wide" style={{ color: '#A89B8C' }}>Asignado</span>
+        <span className="w-[4.25rem] text-right text-[9px] font-bold uppercase tracking-wide" style={{ color: '#A89B8C' }}>Gastado</span>
+        <span className="w-[4.25rem] text-right text-[9px] font-bold uppercase tracking-wide" style={{ color: '#A89B8C' }}>Disp.</span>
+      </div>
+
+      <div className="px-4 flex flex-col gap-4">
+        {env.isLoading ? (
+          <div className="rounded-3xl p-8 text-center text-sm" style={{ background: '#FFFFFF', color: '#6B6459' }}>Cargando…</div>
         ) : (
-          filteredBudgets.map((b) => {
-            const cat = b.category_id ? catMap[b.category_id] : undefined;
-            const spent = spentForBudget(b);
-            const limitArs = toArs(b.amount, b.currency);
-            const over = spent > limitArs;
-            const near = !over && limitArs > 0 && spent / limitArs >= 0.8;
+          groups.map((g) => {
+            const cats = g.cats.filter((c) => matchesFilter(c.id));
+            if (cats.length === 0) return null;
+            const sub = cats.reduce(
+              (acc, c) => {
+                const r = env.rowByCategory.get(c.id);
+                acc.assigned += r?.assigned ?? 0;
+                acc.activity += r?.activity ?? 0;
+                acc.available += r?.available ?? 0;
+                return acc;
+              },
+              { assigned: 0, activity: 0, available: 0 },
+            );
+            const isCollapsed = collapsed.has(g.key);
             return (
-              <div
-                key={b.id}
-                onClick={() => openBudgetDetail(b)}
-                role="button"
-                tabIndex={0}
-                className="rounded-3xl p-5 cursor-pointer"
-                style={{ background: '#FFFFFF' }}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">{budgetIcon(b, cat)}</span>
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <p className="font-bold text-sm" style={{ color: '#2D2D2D' }}>{budgetName(b, cat)}</p>
-                        <span
-                          className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                          style={{ background: '#ECE5DC', color: '#6B6459' }}
+              <div key={g.key}>
+                {/* Group header = collapsible + subtotals */}
+                <button onClick={() => toggleGroup(g.key)} className="w-full flex items-center gap-2 px-3 mb-1.5">
+                  <span className="text-[10px]" style={{ color: '#6B6459' }}>{isCollapsed ? '▸' : '▾'}</span>
+                  <p className="flex-1 text-left text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>{g.title}</p>
+                  <span className="w-[4.25rem] text-right text-[11px] font-bold tabular-nums" style={{ color: '#6B6459' }}>{fmtCell(sub.assigned)}</span>
+                  <span className="w-[4.25rem] text-right text-[11px] font-bold tabular-nums" style={{ color: '#6B6459' }}>{fmtCell(sub.activity)}</span>
+                  <span className="w-[4.25rem] text-right text-[11px] font-black tabular-nums" style={{ color: availColor(sub.available, 0) }}>{fmtCell(sub.available)}</span>
+                </button>
+
+                {!isCollapsed && (
+                  <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
+                    {cats.map((c, i) => {
+                      const row = env.rowByCategory.get(c.id);
+                      const assigned = row?.assigned ?? 0;
+                      const activity = row?.activity ?? 0;
+                      const available = row?.available ?? 0;
+                      const target = env.targetByCategory.get(c.id) ?? 0;
+                      const fg = availColor(available, target);
+                      // YNAB-style per-category bar: how "full" the envelope is
+                      // toward its target (or its assignment when there's no
+                      // target). Overspent shows a full red bar.
+                      const denom = target > 0 ? target : assigned;
+                      const barPct = available < 0 ? 100 : denom > 0 ? Math.max(0, Math.min(1, available / denom)) * 100 : 0;
+                      // YNAB-style status text under the name.
+                      let statusText = '';
+                      let statusColor = '#6B6459';
+                      if (available < 0) { statusText = `Sobregiraste ${fmtCell(-available)}`; statusColor = '#E5604C'; }
+                      else if (target > 0 && available < target) { statusText = `Faltan ${fmtCell(target - available)}`; statusColor = '#C79A2B'; }
+                      else if (target > 0) { statusText = '✓ Meta cumplida'; statusColor = '#5BA886'; }
+                      else if (assigned <= 0 && activity <= 0) { statusText = ''; }
+                      else if (activity <= 0) { statusText = 'Financiado'; statusColor = '#5BA886'; }
+                      else if (available <= 0) { statusText = 'Gastado todo'; statusColor = '#6B6459'; }
+                      else { statusText = `Gastaste ${fmtCell(activity)} de ${fmtCell(assigned)}`; statusColor = '#6B6459'; }
+                      return (
+                        <div
+                          key={c.id}
+                          onClick={() => setDetailCat(c)}
+                          role="button"
+                          tabIndex={0}
+                          className="px-3 py-2.5 cursor-pointer"
+                          style={{ borderTop: i > 0 ? '1px solid #F1ECE4' : 'none' }}
                         >
-                          {b.period === 'weekly' ? 'Semanal' : 'Mensual'}
-                        </span>
-                      </div>
-                      {over && (
-                        <span
-                          className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                          style={{ background: '#FFE7E2', color: '#FF7F6B' }}
-                        >
-                          Excedido
-                        </span>
-                      )}
-                      {near && (
-                        <span
-                          className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                          style={{ background: '#FDF1D8', color: '#B8860B' }}
-                        >
-                          Cerca del límite · {Math.round((spent / limitArs) * 100)}%
-                        </span>
-                      )}
-                    </div>
+                          <div className="flex items-center gap-2">
+                          <span className="relative shrink-0 text-lg">
+                            {c.color && (
+                              <span className="absolute -left-1 top-1 w-1.5 h-1.5 rounded-full" style={{ background: c.color }} />
+                            )}
+                            {c.icon}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{c.name}</p>
+                            {statusText && (
+                              <p className="text-[10px] font-semibold" style={{ color: statusColor }}>{statusText}</p>
+                            )}
+                            {/* Per-category bar: how full the envelope is (toward its
+                                target, or its assignment). Shown on every row for a
+                                consistent look; empty track when nothing's in it. */}
+                            <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: '#F1ECE4' }}>
+                              <div className="h-full rounded-full transition-all" style={{ width: `${barPct}%`, background: fg }} />
+                            </div>
+                          </div>
+                          {/* Asignado (editable, doesn't open the detail) */}
+                          <div className="w-[4.25rem] text-right" onClick={(e) => e.stopPropagation()}>
+                            {editable ? (
+                              <MoneyField
+                                key={`${c.id}-${month}-${assigned}`}
+                                value={assigned}
+                                onCommit={(n) => assignOne(c.id, n)}
+                                placeholder="0"
+                                className="w-full bg-transparent text-right text-[13px] font-semibold tabular-nums outline-none rounded px-1 -mx-1 border-b border-dashed border-[#D9CFC2] focus:bg-[#EEF6F1] focus:border-[#7EC8A4] transition-colors"
+                                style={{ color: assigned > 0 ? '#2D2D2D' : '#A89B8C' }}
+                              />
+                            ) : (
+                              <span className="text-[13px] font-semibold tabular-nums" style={{ color: assigned > 0 ? '#2D2D2D' : '#A89B8C' }}>{fmtCell(assigned)}</span>
+                            )}
+                          </div>
+                          <span className="w-[4.25rem] text-right text-[13px] tabular-nums" style={{ color: '#6B6459' }}>{activity < 0 ? `+${fmtCell(-activity)}` : fmtCell(activity)}</span>
+                          <span className="w-[4.25rem] flex justify-end">
+                            <span className="inline-block px-1.5 py-0.5 rounded-full text-[11px] font-black tabular-nums" style={{ background: availPill(available, target).bg, color: fg }}>
+                              {fmtCell(available)}
+                            </span>
+                          </span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openEdit(b); }}
-                      className="text-xs px-3 py-1.5 rounded-xl font-semibold"
-                      style={{ background: '#F9F5F0', color: '#6B6459' }}
-                    >
-                      Editar
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(b.id); }}
-                      className="text-xs px-3 py-1.5 rounded-xl font-semibold"
-                      style={{ background: '#FFE7E2', color: '#FF7F6B' }}
-                    >
-                      Borrar
-                    </button>
-                  </div>
-                </div>
-                <BudgetBar spent={spent} limitArs={limitArs} currency={b.currency} arsPerUsd={arsPerUsd} />
-                {b.category_id == null && (
-                  <p className="text-[11px] mt-2" style={{ color: '#6B6459' }}>
-                    📌 No incluye gastos fijos
-                  </p>
                 )}
               </div>
             );
           })
         )}
+        {editable && !env.isLoading && (
+          <button
+            onClick={() => setNewCatOpen(true)}
+            className="rounded-2xl py-3 text-sm font-bold border-2 border-dashed"
+            style={{ borderColor: '#D9CFC2', color: '#6B6459', background: 'transparent' }}
+          >
+            ➕ Nueva categoría
+          </button>
+        )}
       </div>
+        </>
+      )}
 
       <BottomNav onFab={(type) => { setFabType(type); setSheetOpen(true); }} />
 
       <AddTransactionSheet
         open={sheetOpen}
         initialType={fabType}
-        onClose={() => setSheetOpen(false)}
+        onClose={closeSheet}
         householdId={profile.household_id}
         profileId={profile.id}
-        categories={categories}
-        accounts={accounts}
+        categories={env.categories}
+        accounts={activeAccounts}
       />
 
-      {detail && <TransactionsSheet view={detail} onClose={() => setDetail(null)} />}
-
-      {suggestOpen && (
-        <SuggestBudgetsSheet
-          scope={tab}
-          householdId={profile.household_id}
-          profileId={profile.id}
-          categories={categories}
-          onClose={() => setSuggestOpen(false)}
+      {detailCat && (
+        <CategoryDetailSheet
+          key={detailCat.id}
+          category={detailCat}
+          row={detailRow ?? { assigned: 0, activity: 0, available: 0 }}
+          target={env.targetByCategory.get(detailCat.id) ?? 0}
+          targetInfo={env.targetInfoByCategory.get(detailCat.id)}
+          suggested={suggestedByCategory.get(detailCat.id) ?? 0}
+          month={month}
+          lastMonth={env.lastMonthStats(detailCat.id)}
+          transactions={env.transactionsForCategory(detailCat.id)}
+          otherCategories={expenseCats.filter((c) => c.id !== detailCat.id)}
+          editable={editable}
+          isFeatured={prefs.featured_category_id === detailCat.id}
+          format={format}
+          onClose={() => setDetailCat(null)}
+          onAssign={(n) => assignOne(detailCat.id, n)}
+          onSetTarget={(amount, cadence, date) => saveTarget.mutate({ categoryId: detailCat.id, amount, cadence, date })}
+          onToggleFeatured={() => updatePrefs.mutate({ featured_category_id: prefs.featured_category_id === detailCat.id ? undefined : detailCat.id })}
+          onMove={(toCat, amount) => moveMoney(detailCat.id, toCat, amount)}
         />
       )}
 
-      {budgetSheetOpen && (
-        <BudgetSheet
-          key={editing?.id ?? 'new'}
-          open={budgetSheetOpen}
-          onClose={() => setBudgetSheetOpen(false)}
-          householdId={profile.household_id}
-          profileId={profile.id}
-          categories={categories}
-          editing={editing}
+      {newCatOpen && (
+        <NewCategorySheet
+          onClose={() => setNewCatOpen(false)}
+          onCreate={(name, icon) => createCategory.mutate({ name, icon })}
+        />
+      )}
+
+      {newViewOpen && (
+        <NewViewSheet
+          categories={expenseCats}
+          savedViews={savedViews}
+          onClose={() => setNewViewOpen(false)}
+          onCreate={(name, categoryIds) => createView.mutate({ name, categoryIds })}
+          onDelete={(id) => deleteView.mutate(id)}
+        />
+      )}
+
+      {prioritiesOpen && (
+        <PrioritiesSheet
+          categories={expenseCats}
+          selected={priorityIds}
+          onClose={() => setPrioritiesOpen(false)}
+          onSave={(ids) => updatePrefs.mutate({ priority_category_ids: ids })}
         />
       )}
     </div>

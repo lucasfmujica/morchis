@@ -36,6 +36,7 @@ Deno.serve(async (req: Request) => {
   const auth = req.headers.get('Authorization') ?? '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   let hid: string | null = null;
+  let uid: string | null = null;
   if (jwtPayload(token)?.role === 'service_role') {
     const { data: hh } = await admin.from('households').select('id').limit(1).single();
     hid = hh?.id ?? null;
@@ -43,6 +44,7 @@ Deno.serve(async (req: Request) => {
     const userClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: auth } } });
     const { data: { user } } = await userClient.auth.getUser();
     if (!user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: cors });
+    uid = user.id;
     const { data: prof } = await admin.from('profiles').select('household_id').eq('id', user.id).single();
     hid = prof?.household_id ?? null;
   }
@@ -63,7 +65,7 @@ Deno.serve(async (req: Request) => {
     admin.from('transactions').select('category_id,amount,currency,usd_rate_snapshot').eq('household_id', hid).eq('type', 'expense').eq('scope', scope).gte('occurred_on', pm0).lt('occurred_on', m0),
     admin.from('transactions').select('category_id,amount,currency,usd_rate_snapshot').eq('household_id', hid).eq('type', 'expense').eq('scope', scope).gte('occurred_on', m0).lt('occurred_on', m1),
     admin.from('categories').select('id,name,kind').eq('household_id', hid).eq('kind', 'expense'),
-    admin.from('budgets').select('category_id').eq('household_id', hid).eq('active', true).eq('scope', scope),
+    admin.from('category_targets').select('category_id').eq('profile_id', uid ?? '00000000-0000-0000-0000-000000000000'),
     admin.from('fx_rates').select('ars_per_usd').eq('source', 'blue').order('date', { ascending: false }).limit(1).maybeSingle(),
   ]);
 

@@ -40,7 +40,7 @@ export default function AuthPage() {
           toast.error('Email o contraseña incorrectos.');
           return;
         }
-        router.push('/home');
+        router.push('/presupuestos');
         router.refresh();
       } else {
         const { error } = await supabase.auth.signUp({ email, password });
@@ -48,7 +48,7 @@ export default function AuthPage() {
         // Auto-login (works when email confirmation is disabled in Supabase)
         const { error: loginErr } = await supabase.auth.signInWithPassword({ email, password });
         if (!loginErr) {
-          router.push('/home');
+          router.push('/presupuestos');
           router.refresh();
         } else {
           toast.success('¡Cuenta creada! Ahora ingresá con tu email y contraseña.');

@@ -1,9 +1,10 @@
-// Sends a web push when a budget first crosses 80% / 100% for the month.
-// Called (fire-and-forget) by the client right after a transaction is saved.
-// The caller is always online at save time, so this also reaches the *other*
-// partner whose budget moved because of a shared expense — even with their app
-// closed. Dedupe state lives in `budget_alerts` so each threshold fires once
-// per budget per month.
+// Sends a web push when an envelope (category) first goes OVERSPENT this month,
+// or when a person's "Para asignar" (Ready to Assign) goes negative. Called
+// (fire-and-forget) by the client right after a transaction is saved. The caller
+// is always online, so this also reaches the *other* partner whose budget moved
+// because of a shared expense. Dedupe lives in `envelope_alerts` (one row per
+// person/alert/month); a row is removed when the condition clears so it can
+// re-alert later. Mirrors the in-app math in src/lib/envelope.ts.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
@@ -24,31 +25,37 @@ const CORS = {
 const FALLBACK_RATE = 1200;
 
 interface Split { payer_profile_id: string; ower_profile_id: string; amount: number }
-interface ExpenseRow {
+interface Tx {
+  id: string;
+  type: string;
   category_id: string | null;
   amount: number;
   currency: string;
   scope: string;
   profile_id: string;
   is_shared: boolean;
+  occurred_on: string;
+  account_id: string | null;
+  transfer_account_id: string | null;
   splits?: Split[] | null;
 }
-interface Budget {
+interface Account {
   id: string;
-  // null = total limit for the period (all categories)
-  category_id: string | null;
-  scope: string;
-  amount: number;
-  currency: string | null;
-  profile_id: string | null;
-  period?: string;
+  type: string;
+  currency: string;
+  archived: boolean;
+  initial_balance: number;
+  owner_profile_id: string | null;
+  on_budget: boolean;
+  payment_category_id: string | null;
 }
+interface Assignment { profile_id: string; category_id: string; month: string; assigned: number; currency: string }
 
 function toArs(amount: number, currency: string | null | undefined, rate: number): number {
   return currency === "USD" && rate > 0 ? Math.round(amount * rate) : amount;
 }
 
-function myShareArs(t: ExpenseRow, profileId: string, rate: number): number {
+function myShareArs(t: Tx, profileId: string, rate: number): number {
   const total = toArs(t.amount, t.currency, rate);
   if (!t.is_shared) return total;
   const splits = t.splits ?? [];
@@ -59,45 +66,98 @@ function myShareArs(t: ExpenseRow, profileId: string, rate: number): number {
   return t.profile_id === profileId ? total : 0;
 }
 
-function spentForBudget(b: Budget, rows: ExpenseRow[], rate: number): number {
-  const owner = b.profile_id ?? "";
-  return rows
-    // A total budget (no category) counts every expense; a category budget only its own.
-    .filter((t) => b.category_id == null || t.category_id === b.category_id)
-    .reduce((sum, t) => {
-      if (b.scope === "household") {
-        return t.scope === "household" ? sum + toArs(t.amount, t.currency, rate) : sum;
-      }
-      if (t.is_shared) return sum + myShareArs(t, owner, rate);
-      // Non-shared: the owner's spend when they fronted it — a solo expense or a
-      // household one they paid without dividing (mirrors the in-app helper).
-      return t.profile_id === owner ? sum + toArs(t.amount, t.currency, rate) : sum;
-    }, 0);
+function expenseShareArs(t: Tx, profileId: string, rate: number, receivable: number): number {
+  const gross = t.is_shared
+    ? myShareArs(t, profileId, rate)
+    : t.profile_id === profileId ? toArs(t.amount, t.currency, rate) : 0;
+  return Math.max(0, gross - receivable);
 }
 
-function levelFor(pct: number): 0 | 80 | 100 {
-  if (pct >= 1) return 100;
-  if (pct >= 0.8) return 80;
-  return 0;
+function assetBalance(tx: Tx[], accountId: string, initial: number, asOf: string): number {
+  return tx.reduce((s, t) => {
+    if (t.occurred_on > asOf) return s;
+    if (t.account_id === accountId) {
+      if (t.type === "income") return s + t.amount;
+      if (t.type === "expense") return s - t.amount;
+      if (t.type === "transfer") return s - t.amount;
+      return s;
+    }
+    if (t.type === "transfer" && t.transfer_account_id === accountId) return s + t.amount;
+    return s;
+  }, initial);
 }
 
-// "now" in Argentina (UTC-3, no DST) — the server clock is UTC and would
-// roll to tomorrow / next month after 21:00 local.
+function onBudgetCashArs(accounts: Account[], tx: Tx[], profileId: string, asOf: string, rate: number): number {
+  let total = 0;
+  for (const a of accounts) {
+    if (a.archived || !a.on_budget || a.type === "credit") continue;
+    if (a.owner_profile_id !== profileId) continue;
+    const bal = assetBalance(tx, a.id, a.initial_balance ?? 0, asOf);
+    total += a.currency === "USD" && rate > 0 ? bal * rate : bal;
+  }
+  return Math.round(total);
+}
+
+function activityByCategoryMonth(
+  rows: Tx[], profileId: string, rate: number,
+  payMap: Map<string, string>, receivableMap: Map<string, number>,
+): Map<string, number> {
+  const map = new Map<string, number>();
+  const add = (cat: string, month: string, val: number) => {
+    if (!val) return;
+    const k = `${cat}__${month}`;
+    map.set(k, (map.get(k) ?? 0) + val);
+  };
+  for (const t of rows) {
+    const month = t.occurred_on.slice(0, 7);
+    if (t.type === "expense") {
+      const share = expenseShareArs(t, profileId, rate, receivableMap.get(t.id) ?? 0);
+      if (share <= 0) continue;
+      if (t.category_id) add(t.category_id, month, share);
+      const payCat = t.account_id ? payMap.get(t.account_id) : undefined;
+      if (payCat) add(payCat, month, -share);
+    } else if (t.type === "transfer" && t.profile_id === profileId && t.transfer_account_id) {
+      const payCat = payMap.get(t.transfer_account_id);
+      if (payCat) add(payCat, month, toArs(t.amount, t.currency, rate));
+    }
+  }
+  return map;
+}
+
+function availableByCategory(assignments: Assignment[], activity: Map<string, number>, uptoMonth: string, rate: number): Map<string, number> {
+  const out = new Map<string, number>();
+  const bump = (cat: string, delta: number) => out.set(cat, (out.get(cat) ?? 0) + delta);
+  for (const a of assignments) {
+    if (a.month > uptoMonth) continue;
+    bump(a.category_id, toArs(a.assigned, a.currency, rate));
+  }
+  for (const [k, act] of activity) {
+    const sep = k.indexOf("__");
+    if (k.slice(sep + 2) > uptoMonth) continue;
+    bump(k.slice(0, sep), -act);
+  }
+  return out;
+}
+
+function readyToAssign(cash: number, available: Map<string, number>): number {
+  let funded = 0;
+  for (const v of available.values()) if (v > 0) funded += v;
+  return Math.round(cash - funded);
+}
+
+// "now" in Argentina (UTC-3, no DST) — the server clock is UTC.
 const artNow = () => new Date(Date.now() - 3 * 60 * 60 * 1000);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
-    // Identify the caller.
     const authHeader = req.headers.get("Authorization") ?? "";
     const userClient = createClient(SUPABASE_URL, ANON, { global: { headers: { Authorization: authHeader } } });
     const { data: { user } } = await userClient.auth.getUser();
     if (!user) return json({ error: "unauthorized" }, 401);
 
-    if (!VAPID_PRIVATE || !VAPID_PUBLIC) {
-      return json({ error: "VAPID keys not configured" }, 200);
-    }
+    if (!VAPID_PRIVATE || !VAPID_PUBLIC) return json({ error: "VAPID keys not configured" }, 200);
     webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
@@ -108,69 +168,109 @@ Deno.serve(async (req) => {
 
     const now = artNow();
     const period = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-    const monthStart = `${period}-01`;
-    // Cap at month end so a future-month installment cuota doesn't inflate spend
-    // and fire a false over-budget alert.
     const lastDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
     const monthEnd = `${period}-${String(lastDay).padStart(2, "0")}`;
 
-    const [{ data: budgets }, { data: rows }, { data: fx }] = await Promise.all([
-      admin.from("budgets").select("id, category_id, scope, amount, currency, profile_id, period")
-        .eq("household_id", householdId).eq("active", true),
+    const [
+      { data: bmonths }, { data: txs }, { data: accs }, { data: debts },
+      { data: targets }, { data: cats }, { data: fx }, { data: members },
+    ] = await Promise.all([
+      admin.from("budget_months").select("profile_id, category_id, month, assigned, currency")
+        .eq("household_id", householdId).lte("month", period),
       admin.from("transactions")
-        .select("category_id, amount, currency, scope, profile_id, is_shared, splits(payer_profile_id, ower_profile_id, amount)")
-        .eq("household_id", householdId).eq("type", "expense").gte("occurred_on", monthStart).lte("occurred_on", monthEnd),
+        .select("id, type, category_id, amount, currency, scope, profile_id, is_shared, occurred_on, account_id, transfer_account_id, splits(payer_profile_id, ower_profile_id, amount)")
+        .eq("household_id", householdId).lte("occurred_on", monthEnd),
+      admin.from("accounts").select("id, type, currency, archived, initial_balance, owner_profile_id, on_budget, payment_category_id")
+        .eq("household_id", householdId),
+      admin.from("debts").select("transaction_id, amount, currency")
+        .eq("household_id", householdId).eq("direction", "owed").not("transaction_id", "is", null),
+      admin.from("category_targets").select("profile_id, category_id, target_amount, currency")
+        .eq("household_id", householdId),
+      admin.from("categories").select("id, name").eq("household_id", householdId),
       admin.from("fx_rates").select("ars_per_usd").eq("source", "blue").order("date", { ascending: false }).limit(1).maybeSingle(),
+      admin.from("profiles").select("id, notification_prefs").eq("household_id", householdId),
     ]);
 
     const rate = (fx?.ars_per_usd as number) ?? FALLBACK_RATE;
-    const expenseRows = (rows ?? []) as ExpenseRow[];
-    const activeBudgets = (budgets ?? []) as Budget[];
+    const tx = (txs ?? []) as Tx[];
+    const accounts = (accs ?? []) as Account[];
+    const assignments = (bmonths ?? []) as Assignment[];
 
-    // Existing dedupe state for this month.
-    const { data: prior } = await admin.from("budget_alerts")
-      .select("budget_id, level").eq("period", period)
-      .in("budget_id", activeBudgets.map((b) => b.id).length ? activeBudgets.map((b) => b.id) : ["00000000-0000-0000-0000-000000000000"]);
-    const priorLevel = new Map<string, number>((prior ?? []).map((p) => [p.budget_id as string, p.level as number]));
+    const payMap = new Map<string, string>();
+    for (const a of accounts) if (a.type === "credit" && a.payment_category_id) payMap.set(a.id, a.payment_category_id);
 
-    // Members who haven't turned budget alerts off (absent pref = enabled).
-    const { data: members } = await admin.from("profiles").select("id, notification_prefs").eq("household_id", householdId);
+    const receivableMap = new Map<string, number>();
+    for (const d of (debts ?? []) as { transaction_id: string; amount: number; currency: string }[]) {
+      receivableMap.set(d.transaction_id, (receivableMap.get(d.transaction_id) ?? 0) + toArs(d.amount, d.currency, rate));
+    }
+
+    // Per (person, category): monthly target + assignment, to gate overspend
+    // alerts to envelopes the person is actually budgeting (avoids spamming on
+    // never-funded categories where spend just makes "available" negative).
+    const targetKey = (p: string, c: string) => `${p}|${c}`;
+    const targetByPC = new Map<string, number>();
+    for (const t of (targets ?? []) as { profile_id: string; category_id: string; target_amount: number; currency: string }[]) {
+      targetByPC.set(targetKey(t.profile_id, t.category_id), toArs(t.target_amount, t.currency, rate));
+    }
+    const assignedThisMonthByPC = new Map<string, number>();
+    for (const a of assignments) {
+      if (a.month !== period) continue;
+      const k = targetKey(a.profile_id, a.category_id);
+      assignedThisMonthByPC.set(k, (assignedThisMonthByPC.get(k) ?? 0) + toArs(a.assigned, a.currency, rate));
+    }
+
+    const catName = new Map<string, string>((cats ?? []).map((c) => [c.id as string, c.name as string]));
+
     const memberIds = (members ?? [])
       .filter((m) => ((m.notification_prefs as Record<string, boolean> | null)?.budget_alerts) !== false)
       .map((m) => m.id as string);
 
-    const { data: cats } = await admin.from("categories").select("id, name").eq("household_id", householdId);
-    const catName = new Map<string, string>((cats ?? []).map((c) => [c.id as string, c.name as string]));
+    // Existing dedupe state for this month.
+    const { data: prior } = await admin.from("envelope_alerts").select("profile_id, alert_key").eq("period", period);
+    const priorKeys = new Set<string>((prior ?? []).map((p) => `${p.profile_id}|${p.alert_key}`));
 
     let sent = 0;
-    for (const b of activeBudgets) {
-      // Weekly budgets are tracked in-app; their push alerts (with a weekly
-      // window + weekly dedupe) are a separate follow-up, so skip them here to
-      // avoid firing a false alert computed over the whole month.
-      if (b.period === "weekly") continue;
-      const limit = toArs(b.amount, b.currency, rate);
-      if (limit <= 0) continue;
-      const spent = spentForBudget(b, expenseRows, rate);
-      const level = levelFor(spent / limit);
-      const prev = priorLevel.get(b.id) ?? 0;
-      if (level <= prev) {
-        // Reset the stored level if spend fell back (e.g. new month / deletions).
-        if (level !== prev) await admin.from("budget_alerts").upsert({ budget_id: b.id, period, level });
-        continue;
+    for (const member of memberIds) {
+      const activity = activityByCategoryMonth(tx, member, rate, payMap, receivableMap);
+      const memberAssignments = assignments.filter((a) => a.profile_id === member);
+      const available = availableByCategory(memberAssignments, activity, period, rate);
+      const cash = onBudgetCashArs(accounts, tx, member, monthEnd, rate);
+      const rta = readyToAssign(cash, available);
+
+      // Overspent envelopes (only those the person budgets: target or assignment).
+      for (const [catId, av] of available) {
+        const budgeted = (targetByPC.get(targetKey(member, catId)) ?? 0) > 0 || (assignedThisMonthByPC.get(targetKey(member, catId)) ?? 0) > 0;
+        const overspent = av < 0 && budgeted;
+        const dedupeKey = `${member}|${catId}`;
+        if (overspent) {
+          if (!priorKeys.has(dedupeKey)) {
+            const name = catName.get(catId) ?? "un sobre";
+            sent += await pushToProfiles(admin, [member], JSON.stringify({
+              title: "🔴 Sobregiraste un sobre",
+              body: `Te pasaste en ${name} (${formatArs(-av)} de más).`,
+              url: "/presupuestos",
+            }));
+            await admin.from("envelope_alerts").upsert({ profile_id: member, alert_key: catId, period });
+          }
+        } else if (priorKeys.has(dedupeKey)) {
+          await admin.from("envelope_alerts").delete().eq("profile_id", member).eq("alert_key", catId).eq("period", period);
+        }
       }
 
-      // Personal-budget pushes also go through the pref filter (memberIds
-      // only contains people who keep budget alerts on).
-      const targets = b.scope === "household" ? memberIds : b.profile_id ? memberIds.filter((id) => id === b.profile_id) : [];
-      const name = b.category_id == null ? "tu límite total" : catName.get(b.category_id) ?? "tu presupuesto";
-      const over = level === 100;
-      const payload = JSON.stringify({
-        title: over ? "🚨 Presupuesto excedido" : "⚠️ Cerca del límite",
-        body: over ? `Te pasaste del presupuesto de ${name}.` : `Vas por el ${Math.round((spent / limit) * 100)}% del presupuesto de ${name}.`,
-        url: "/presupuestos",
-      });
-      sent += await pushToProfiles(admin, targets, payload);
-      await admin.from("budget_alerts").upsert({ budget_id: b.id, period, level });
+      // "Para asignar" went negative (assigned/fronted more than you have).
+      const rtaKey = `${member}|rta`;
+      if (rta < 0) {
+        if (!priorKeys.has(rtaKey)) {
+          sent += await pushToProfiles(admin, [member], JSON.stringify({
+            title: "⚠️ Para asignar en negativo",
+            body: `Asignaste más de lo que tenés (${formatArs(rta)}). Sacá de algún sobre.`,
+            url: "/presupuestos",
+          }));
+          await admin.from("envelope_alerts").upsert({ profile_id: member, alert_key: "rta", period });
+        }
+      } else if (priorKeys.has(rtaKey)) {
+        await admin.from("envelope_alerts").delete().eq("profile_id", member).eq("alert_key", "rta").eq("period", period);
+      }
     }
 
     return json({ ok: true, sent }, 200);
@@ -179,6 +279,10 @@ Deno.serve(async (req) => {
     return json({ error: String(err) }, 200);
   }
 });
+
+function formatArs(n: number): string {
+  return `$${Math.round(n).toLocaleString("es-AR")}`;
+}
 
 async function pushToProfiles(admin: ReturnType<typeof createClient>, profileIds: string[], payload: string): Promise<number> {
   if (profileIds.length === 0) return 0;
@@ -194,7 +298,6 @@ async function pushToProfiles(admin: ReturnType<typeof createClient>, profileIds
       ok++;
     } catch (err) {
       const status = (err as { statusCode?: number }).statusCode;
-      // Subscription is gone → prune it so we stop trying.
       if (status === 404 || status === 410) {
         await admin.from("push_subscriptions").delete().eq("endpoint", s.endpoint as string);
       } else {

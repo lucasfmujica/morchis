@@ -7,20 +7,17 @@ import { useFx } from '@/hooks/useFx';
 import { usePrivacyStore } from '@/store/privacy';
 import { usePushSubscription } from '@/hooks/usePushSubscription';
 import {
-  spentForBudget,
   myShareArs,
-  toArs as budgetToArs,
-  BUDGET_EXPENSE_SELECT,
   type BudgetExpenseRow,
 } from '@/lib/budgets';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { CoupleBalanceChip } from '@/components/CoupleBalanceChip';
 import { InsightTopCard } from '@/components/InsightTopCard';
-import { DonutChart } from '@/components/DonutChart';
 import { computeProjection } from '@/lib/projection';
 import { netWorthAt, type AccountRow, type AccountTx } from '@/lib/accounts';
-import { todayISO, weekRange, shortDM } from '@/lib/date';
+import { todayISO, weekRange, shortDM, monthKey } from '@/lib/date';
+import { useEnvelope } from '@/hooks/useEnvelope';
 import { formatARS } from '@/lib/format';
 import { triggerBudgetAlerts } from '@/lib/notifyBudgets';
 
@@ -52,61 +49,6 @@ function EyeOffIcon() {
     </svg>
   );
 }
-
-const BudgetSummaryCard = memo(function BudgetSummaryCard({
-  items,
-  hideAmounts,
-}: {
-  // Each entry is one relevant budget already reduced to ARS, with spend
-  // counted as the viewer's real share (see spentForBudget). Summing limits and
-  // spends here is correct because each budget contributes its own pair — no
-  // raw-amount mixing, no currency mixing, no per-category double counting.
-  items: { spent: number; limit: number }[];
-  hideAmounts: boolean;
-}) {
-  const m = (s: string) => (hideAmounts ? '••••••' : s);
-  if (items.length === 0) {
-    return (
-      <Link href="/presupuestos" className="mx-4 rounded-3xl p-5 mb-4 flex items-center justify-between" style={{ background: '#FFFFFF' }}>
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6B6459' }}>Tus presupuestos</p>
-          <p className="text-sm" style={{ color: '#6B6459' }}>Tocá para crear presupuestos →</p>
-        </div>
-      </Link>
-    );
-  }
-
-  const totalBudget = items.reduce((s, b) => s + b.limit, 0);
-  const totalSpent = items.reduce((s, b) => s + b.spent, 0);
-  const pct = totalBudget > 0 ? totalSpent / totalBudget : 0;
-  const over = totalSpent > totalBudget;
-  const barColor = pct >= 1 ? '#FF7F6B' : pct >= 0.8 ? '#F5A623' : '#7EC8A4';
-
-  return (
-    <Link href="/presupuestos" className="mx-4 rounded-3xl p-5 mb-4 block" style={{ background: '#FFFFFF' }}>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Tus presupuestos</p>
-        {over && (
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#FFE7E2', color: '#FF7F6B' }}>
-            Excedido
-          </span>
-        )}
-      </div>
-      <div className="h-3 rounded-full overflow-hidden" style={{ background: '#ECE5DC' }}>
-        <div
-          className="h-full rounded-full transition-all duration-500"
-          style={{ background: barColor, width: `${Math.min(pct * 100, 100)}%` }}
-        />
-      </div>
-      <div className="flex justify-between mt-2">
-        <p className="text-xs font-semibold" style={{ color: barColor }}>{m(formatARS(totalSpent))} gastado</p>
-        <p className="text-xs" style={{ color: over ? '#FF7F6B' : '#6B6459' }}>
-          {over ? `+${m(formatARS(totalSpent - totalBudget))} excedido` : `de ${m(formatARS(totalBudget))}`}
-        </p>
-      </div>
-    </Link>
-  );
-});
 
 // Inline SVG sparkline — no external dep needed
 const Sparkline = memo(function Sparkline({ values, positive }: { values: number[]; positive: boolean }) {
@@ -144,85 +86,6 @@ const Sparkline = memo(function Sparkline({ values, positive }: { values: number
         strokeLinejoin="round"
       />
     </svg>
-  );
-});
-
-const DONUT_PALETTE = ['#7EC8A4', '#FF7F6B', '#F5A623', '#6FA8DC', '#B084CC', '#E89AC7', '#5BA886', '#C4B9AE'];
-
-const CategoryDonutCard = memo(function CategoryDonutCard({
-  categories,
-  spentByCategory,
-  hideAmounts,
-}: {
-  categories: { id: string; name: string; icon: string; color: string | null }[];
-  spentByCategory: Record<string, number>;
-  hideAmounts: boolean;
-}) {
-  // Build the donut + legend once per data change instead of on every render.
-  const built = useMemo(() => {
-    const catById = new Map(categories.map((c) => [c.id, c]));
-    const rows = Object.entries(spentByCategory)
-      .map(([id, value]) => ({ cat: catById.get(id), value }))
-      .filter((r) => r.cat && r.value > 0)
-      .sort((a, b) => b.value - a.value);
-
-    if (rows.length === 0) return null;
-
-    const total = rows.reduce((s, r) => s + r.value, 0);
-    const TOP = 6;
-    const top = rows.slice(0, TOP).map((r, i) => ({
-      id: r.cat!.id,
-      label: r.cat!.name,
-      icon: r.cat!.icon,
-      value: r.value,
-      color: r.cat!.color || DONUT_PALETTE[i % DONUT_PALETTE.length],
-    }));
-    const restTotal = rows.slice(TOP).reduce((s, r) => s + r.value, 0);
-    // Donut overview: top + an "Otras" slice.
-    const segments = top.map((t) => ({ label: t.label, value: t.value, color: t.color }));
-    if (restTotal > 0) segments.push({ label: 'Otras', value: restTotal, color: '#C4B9AE' });
-    return { total, top, segments, hasMore: rows.length > TOP };
-  }, [categories, spentByCategory]);
-
-  if (!built) return null;
-  const { total, top, segments, hasMore } = built;
-
-  return (
-    <div className="mx-4 rounded-3xl p-5 mb-4" style={{ background: '#FFFFFF' }}>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>
-          Gastos por categoría
-        </p>
-        <Link href="/analisis/categorias" className="text-xs" style={{ color: '#6B6459' }}>Ver detalle →</Link>
-      </div>
-      <div className="flex items-center gap-4">
-        <Link href="/analisis/categorias" className="shrink-0">
-          <DonutChart segments={segments} centerTop="Total" centerBottom={hideAmounts ? '••••' : formatARS(total)} />
-        </Link>
-        {/* Each category links to its own detail (projection + history) */}
-        <div className="flex-1 min-w-0 flex flex-col gap-1.5">
-          {top.map((seg) => (
-            <Link key={seg.id} href={`/categorias/${seg.id}`} className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: seg.color }} />
-              <span className="text-xs flex-1 truncate" style={{ color: '#2D2D2D' }}>{seg.icon} {seg.label}</span>
-              <span className="text-xs font-semibold" style={{ color: '#6B6459' }}>
-                {Math.round((seg.value / total) * 100)}%
-              </span>
-              <span className="text-[10px]" style={{ color: '#C4B9AE' }}>›</span>
-            </Link>
-          ))}
-        </div>
-      </div>
-      {hasMore && (
-        <Link
-          href="/analisis/categorias"
-          className="block w-full text-center text-xs font-bold mt-3 pt-3"
-          style={{ color: '#5BA886', borderTop: '1px solid #ECE5DC' }}
-        >
-          Ver todas las categorías →
-        </Link>
-      )}
-    </div>
   );
 });
 
@@ -303,6 +166,44 @@ export default function HomeClient({
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
   usePushSubscription(profile.id);
+
+  // "Para asignar" (envelope budget) for a quick banner that links to the budget.
+  const envBudget = useEnvelope(profile.household_id, profile.id, monthKey());
+
+  // Envelopes that need attention: overspent (red) first, then those under their
+  // monthly target (yellow). Replaces the old budgets-table summary on Home.
+  const watchEnvelopes = useMemo(() => {
+    const catMap = new Map(envBudget.categories.map((c) => [c.id, c]));
+    const items: { categoryId: string; available: number; target: number; icon: string; name: string }[] = [];
+    for (const r of envBudget.rows) {
+      const cat = catMap.get(r.categoryId);
+      if (!cat || cat.kind !== 'expense') continue;
+      const target = envBudget.targetByCategory.get(r.categoryId) ?? 0;
+      if (r.available < 0 || (target > 0 && r.available < target)) {
+        items.push({ categoryId: r.categoryId, available: r.available, target, icon: cat.icon, name: cat.name });
+      }
+    }
+    return items
+      .sort((a, b) => (a.available < 0 ? 0 : 1) - (b.available < 0 ? 0 : 1) || a.available - b.available)
+      .slice(0, 6);
+  }, [envBudget.rows, envBudget.categories, envBudget.targetByCategory]);
+
+  // Featured goal ("give your dollars a mission") — chosen in the budget detail.
+  const featuredPrefsQ = useQuery({
+    queryKey: ['profile-prefs', profile.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('profiles').select('notification_prefs').eq('id', profile.id).maybeSingle();
+      return (data?.notification_prefs ?? {}) as { featured_category_id?: string };
+    },
+  });
+  const featuredId = featuredPrefsQ.data?.featured_category_id;
+  const featured = useMemo(() => {
+    if (!featuredId) return null;
+    const cat = envBudget.categories.find((c) => c.id === featuredId);
+    const info = envBudget.targetInfoByCategory.get(featuredId);
+    if (!cat || !info || info.totalArs <= 0) return null;
+    return { cat, available: envBudget.rowByCategory.get(featuredId)?.available ?? 0, info };
+  }, [featuredId, envBudget.categories, envBudget.targetInfoByCategory, envBudget.rowByCategory]);
   // Re-check budget thresholds once per app open: cron-posted recurring
   // expenses and statement imports move budgets without any client save, so
   // without this their 80%/100% alerts would only fire on the next manual
@@ -398,33 +299,6 @@ export default function HomeClient({
     },
   });
 
-  const { data: budgets = [] } = useQuery({
-    queryKey: ['budgets', profile.household_id],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('budgets')
-        .select('id, category_id, scope, amount, currency, profile_id, period')
-        .eq('household_id', profile.household_id)
-        .eq('active', true);
-      return data ?? [];
-    },
-  });
-
-  // Expense rows (with splits) for accurate per-budget spend — used by the
-  // budget alerts below so shared expenses count each person's real share.
-  const { data: budgetRows = [] } = useQuery<BudgetExpenseRow[]>({
-    queryKey: ['budget-expense-rows', profile.household_id, rowsStart, rowsEnd],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('transactions')
-        .select(BUDGET_EXPENSE_SELECT)
-        .eq('household_id', profile.household_id)
-        .eq('type', 'expense')
-        .gte('occurred_on', rowsStart)
-        .lte('occurred_on', rowsEnd);
-      return (data ?? []) as BudgetExpenseRow[];
-    },
-  });
 
   // Load active recurring rules
   const { data: rules = [] } = useQuery({
@@ -529,7 +403,7 @@ export default function HomeClient({
   // In Mío/Pareja a shared expense counts as that person's SHARE (via the
   // split), no matter who fronted the money — the same rule the budget cards
   // and the budgets page use. "Nuestro" counts every expense once, in full.
-  const { monthExpenseTotal, weekExpenseTotal, weekFixedTotal, scopedSpentByCategory } = useMemo(() => {
+  const { monthExpenseTotal, weekExpenseTotal, weekFixedTotal } = useMemo(() => {
     const shareOf = (t: (typeof transactions)[number]): number => {
       if (!scopeProfileId) return toArs(t.amount, t.currency as string | null);
       const row = t as unknown as BudgetExpenseRow;
@@ -543,21 +417,19 @@ export default function HomeClient({
     let monthTotal = 0;
     let weekTotal = 0;
     let weekFixed = 0;
-    const byCat: Record<string, number> = {};
     for (const t of transactions) {
       if (t.type !== 'expense') continue;
       const amt = shareOf(t);
       if (amt <= 0) continue;
       if (t.occurred_on >= monthStart && t.occurred_on <= monthEnd) {
         monthTotal += amt;
-        if (t.category_id) byCat[t.category_id] = (byCat[t.category_id] ?? 0) + amt;
       }
       if (t.occurred_on >= week.start && t.occurred_on <= week.end) {
         weekTotal += amt;
         if (isFixed(t)) weekFixed += amt;
       }
     }
-    return { monthExpenseTotal: monthTotal, weekExpenseTotal: weekTotal, weekFixedTotal: weekFixed, scopedSpentByCategory: byCat };
+    return { monthExpenseTotal: monthTotal, weekExpenseTotal: weekTotal, weekFixedTotal: weekFixed };
   }, [transactions, scopeProfileId, week, toArs, arsPerUsd, monthStart, monthEnd]);
   // Discretionary spend that counts against the weekly limit = total minus fixed.
   const weekVariableTotal = weekExpenseTotal - weekFixedTotal;
@@ -565,57 +437,10 @@ export default function HomeClient({
   // with the tiles above and the Ahorro page), not just what I fronted.
   const savingsRate = incomeSoFar > 0 ? Math.round(((incomeSoFar - monthExpenseTotal) / incomeSoFar) * 100) : null;
 
-  // Per-budget spend with shared expenses counted as each person's real share.
-  // Only my budgets matter on my home: household ones + my own personal ones
-  // (never the partner's personal budgets). Each reduced to ARS.
-  const relevantBudgets = useMemo(() => {
-    const catById = Object.fromEntries(categories.map((c) => [c.id, c]));
-    // A weekly budget only counts Mon–Sun of the current week; a monthly one
-    // the whole month — same windows as the budgets page, so the home alerts
-    // can't claim 350% on a weekly budget that page shows at 60%.
-    const monthRows = budgetRows.filter((r) => r.occurred_on != null && r.occurred_on >= monthStart && r.occurred_on <= monthEnd);
-    const weekRows = budgetRows.filter((r) => r.occurred_on != null && r.occurred_on >= week.start && r.occurred_on <= week.end);
-    return budgets
-      // Total limits (no category) get their own surface (the week card below);
-      // summing them here would double-count against the category budgets.
-      .filter((b) => b.category_id != null)
-      .filter((b) => b.scope === 'household' || b.profile_id === profile.id)
-      .map((b) => {
-        const spent = spentForBudget(b, b.period === 'weekly' ? weekRows : monthRows, profile.id, arsPerUsd);
-        const limit = budgetToArs(b.amount, b.currency, arsPerUsd);
-        // Safe: nulls were filtered out above, TS just can't see it across .map.
-        const cat = catById[b.category_id!];
-        return {
-          id: b.id,
-          name: cat?.name ?? 'Categoría',
-          icon: cat?.icon ?? '📦',
-          spent,
-          limit,
-          pct: limit > 0 ? spent / limit : 0,
-        };
-      });
-  }, [budgets, budgetRows, categories, profile.id, arsPerUsd, monthStart, monthEnd, week]);
-  // Only categories near or over their limit, worst first.
-  const budgetAlerts = useMemo(
-    () => relevantBudgets.filter((a) => a.pct >= 0.8).sort((a, b) => b.pct - a.pct),
-    [relevantBudgets],
-  );
 
-  // Weekly TOTAL spending limit ("esta semana quiero gastar X") for the active
-  // scope: my personal limit on Mío, the household one on Nuestro, the
-  // partner's on Pareja. Its spend is weekExpenseTotal — the same number the
-  // week card already shows, computed with the same share rules.
-  const weeklyLimitArs = useMemo(() => {
-    const b = budgets.find(
-      (bb) =>
-        bb.category_id == null &&
-        bb.period === 'weekly' &&
-        (scope === 'all'
-          ? bb.scope === 'household'
-          : bb.scope === 'personal' && bb.profile_id === (scope === 'me' ? profile.id : partnerProfileId)),
-    );
-    return b ? budgetToArs(b.amount, b.currency, arsPerUsd) : null;
-  }, [budgets, scope, profile.id, partnerProfileId, arsPerUsd]);
+  // Envelope mode has no weekly spending limit; the week card just shows the
+  // pace (variable vs fixed), not a limit bar.
+  const weeklyLimitArs: number | null = null;
   // The limit measures discretionary spend, so compare it against the variable
   // total (fixed expenses excluded), not the full week's spend.
   const weekPct = weeklyLimitArs && weeklyLimitArs > 0 ? weekVariableTotal / weeklyLimitArs : null;
@@ -875,45 +700,84 @@ export default function HomeClient({
       {/* AI insight card */}
       <InsightTopCard householdId={profile.household_id} profileId={profile.id} />
 
-      {/* Spent-vs-budget */}
-      <BudgetSummaryCard items={relevantBudgets} hideAmounts={hideAmounts} />
+      {/* "Para asignar" — quick link to the envelope budget (the heart of the app) */}
+      <Link
+        href="/presupuestos"
+        className="block mx-4 mb-4 rounded-3xl p-5"
+        style={{ background: envBudget.readyToAssign >= 0 ? '#E4F2EA' : '#FFE7E2' }}
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Para asignar</p>
+            <p className="text-2xl font-black" style={{ color: envBudget.readyToAssign > 0 ? '#5BA886' : envBudget.readyToAssign < 0 ? '#E5604C' : '#6B6459' }}>
+              {mask(format(envBudget.readyToAssign))}
+            </p>
+          </div>
+          <span className="text-sm font-bold" style={{ color: '#5BA886' }}>Ir al presupuesto ›</span>
+        </div>
+      </Link>
 
-      {/* Per-category budget alerts (only categories near or over the limit) */}
-      {budgetAlerts.length > 0 && (
+      {/* Featured goal — "give your dollars a mission" */}
+      {featured && (
+        <Link href="/presupuestos" className="block mx-4 mb-4 rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Meta destacada</p>
+            <span className="text-xs font-bold" style={{ color: '#5B8DEF' }}>Ajustar ›</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="relative w-20 h-20 shrink-0">
+              <svg viewBox="0 0 36 36" className="w-20 h-20 -rotate-90">
+                <circle cx="18" cy="18" r="15.9" fill="none" stroke="#ECE5DC" strokeWidth="3.5" />
+                <circle cx="18" cy="18" r="15.9" fill="none" stroke="#7EC8A4" strokeWidth="3.5" strokeDasharray={`${featured.info.pctComplete * 100} 100`} strokeLinecap="round" />
+              </svg>
+              <span className="absolute inset-0 flex items-center justify-center text-sm font-black" style={{ color: '#2D2D2D' }}>{Math.round(featured.info.pctComplete * 100)}%</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-base font-black truncate" style={{ color: '#2D2D2D' }}>{featured.cat.icon} {featured.cat.name}</p>
+              <div className="flex gap-5 mt-1.5">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Saldo actual</p>
+                  <p className="text-sm font-black tabular-nums" style={{ color: '#5BA886' }}>{mask(format(featured.available))}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Falta</p>
+                  <p className="text-sm font-black tabular-nums" style={{ color: '#2D2D2D' }}>{mask(format(Math.max(0, featured.info.totalArs - featured.available)))}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Link>
+      )}
+
+      {/* Sobres a vigilar — overspent / under-target envelopes from the budget */}
+      {watchEnvelopes.length > 0 ? (
         <div className="mx-4 rounded-3xl p-5 mb-4" style={{ background: '#FFFFFF' }}>
-          <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>
-            Atención al presupuesto
-          </p>
-          <div className="flex flex-col gap-3">
-            {budgetAlerts.map((a) => {
-              const over = a.pct >= 1;
-              const color = over ? '#FF7F6B' : '#B8860B';
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Sobres a vigilar</p>
+            <Link href="/presupuestos" className="text-xs font-bold" style={{ color: '#5BA886' }}>Ver todos ›</Link>
+          </div>
+          <div className="flex flex-col gap-2.5">
+            {watchEnvelopes.map((w) => {
+              const overspent = w.available < 0;
+              const fg = overspent ? '#E5604C' : '#C79A2B';
+              const bg = overspent ? '#FFE7E2' : '#FBF0D6';
               return (
-                <Link key={a.id} href="/presupuestos" className="block">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <span>{a.icon}</span>
-                      <span className="text-sm font-semibold" style={{ color: '#2D2D2D' }}>{a.name}</span>
-                    </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: over ? '#FFE7E2' : '#FDF1D8', color }}>
-                      {over ? 'Excedido' : `${Math.round(a.pct * 100)}%`}
-                    </span>
-                  </div>
-                  <div className="h-2 rounded-full overflow-hidden" style={{ background: '#ECE5DC' }}>
-                    <div className="h-full rounded-full" style={{ background: color, width: `${Math.min(a.pct * 100, 100)}%` }} />
-                  </div>
-                  <p className="text-[11px] mt-1" style={{ color: '#6B6459' }}>
-                    {mask(formatARS(a.spent))} de {mask(formatARS(a.limit))}
-                  </p>
+                <Link key={w.categoryId} href="/presupuestos" className="flex items-center gap-3">
+                  <span className="text-lg shrink-0">{w.icon}</span>
+                  <span className="flex-1 min-w-0 text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{w.name}</span>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0" style={{ background: bg, color: fg }}>
+                    {overspent ? `Sobregiraste ${mask(formatARS(-w.available))}` : `Faltan ${mask(formatARS(w.target - w.available))}`}
+                  </span>
                 </Link>
               );
             })}
           </div>
         </div>
+      ) : (
+        <Link href="/presupuestos" className="block mx-4 rounded-3xl p-5 mb-4 text-center" style={{ background: '#FFFFFF' }}>
+          <p className="text-sm font-semibold" style={{ color: '#5BA886' }}>Todos tus sobres en orden 🎉</p>
+        </Link>
       )}
-
-      {/* Spending by category donut (scope-aware) */}
-      <CategoryDonutCard categories={categories} spentByCategory={scopedSpentByCategory} hideAmounts={hideAmounts} />
 
       <BottomNav onFab={handleFab} />
 

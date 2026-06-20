@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
@@ -384,7 +385,7 @@ export default function MetasClient({ profile }: { profile: Profile }) {
   return (
     <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
       <header className="flex items-center justify-between px-5 pt-14 pb-4">
-        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Metas</h1>
+        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Metas de ahorro 🎯</h1>
         <button
           onClick={openNew}
           className="w-9 h-9 rounded-full text-xl text-white flex items-center justify-center"
@@ -393,6 +394,14 @@ export default function MetasClient({ profile }: { profile: Profile }) {
           +
         </button>
       </header>
+
+      {/* Disambiguate from the monthly per-category targets in the budget. */}
+      <Link href="/presupuestos" className="block mx-4 mb-4 rounded-2xl p-3" style={{ background: '#FFFFFF' }}>
+        <p className="text-[11px] leading-snug" style={{ color: '#6B6459' }}>
+          Estas son <b>metas de ahorro</b> (un objetivo con monto y fecha). Las <b>metas mensuales por
+          categoría</b> (cuánto querés tener disponible cada mes) viven en tu <span style={{ color: '#5BA886', fontWeight: 700 }}>Presupuesto ›</span>
+        </p>
+      </Link>
 
       {/* Tabs */}
       <div className="mx-4 mb-4 flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#ECE5DC' }}>
