@@ -315,7 +315,10 @@ export function AddTransactionSheet({
   // the save path can tell whether the split really needs rewriting.
   useEffect(() => {
     if (!open || !editTx) return;
-    if (!editTx.id) { console.error('DEBUG editTx missing id:', JSON.stringify(editTx)); }
+    // Corrupted edit state: a movement was opened without an id (we've seen this
+    // surface very rarely on mobile). Don't fire a "id=eq.undefined" query —
+    // mark the split loaded so the sheet is usable and let handleSave block.
+    if (!editTx.id) { setSplitLoaded(true); return; }
     let cancelled = false;
     (async () => {
       const { data: row } = await supabase
@@ -595,6 +598,13 @@ export function AddTransactionSheet({
 
   async function handleSave() {
     if (nativeAmount === 0 || transferInvalid) return;
+    // Guard against a corrupted edit reference (editTx present but no id): saving
+    // would PATCH `id=eq.undefined` and fail with a confusing generic error.
+    // Reopening the movement reloads it with a valid id.
+    if (editTx && !editTx.id) {
+      toast.error('No se pudo identificar el movimiento. Cerralo y abrilo de nuevo.');
+      return;
+    }
     setSaving(true);
     try {
       if (isTransfer) {

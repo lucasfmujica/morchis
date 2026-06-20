@@ -262,18 +262,49 @@ export function ReceiptItemsSheet({
                 <p className="text-sm" style={{ color: '#6B6459' }}>Cargando productos…</p>
               </div>
             ) : items.length === 0 && !editing ? (
-              <div className="rounded-3xl p-8 text-center" style={{ background: '#FFFFFF' }}>
-                <p className="text-3xl mb-2">📭</p>
-                <p className="font-bold mb-1" style={{ color: '#2D2D2D' }}>Sin detalle de productos</p>
-                <p className="text-sm mb-4" style={{ color: '#6B6459' }}>
-                  Este gasto no tiene ítems cargados (puede venir de un comprobante de un solo cargo).
+              <div className="rounded-3xl p-6" style={{ background: '#FFFFFF' }}>
+                <div className="text-center">
+                  <p className="text-3xl mb-2">📭</p>
+                  <p className="font-bold mb-1" style={{ color: '#2D2D2D' }}>Sin detalle de productos</p>
+                  <p className="text-sm" style={{ color: '#6B6459' }}>
+                    Este gasto no tiene ítems cargados. Asignalo entero a un rubro, o cargá los productos uno por uno.
+                  </p>
+                </div>
+
+                {/* Quick: whole purchase as one rubro */}
+                <p className="text-[11px] font-bold uppercase tracking-wide mt-5 mb-2" style={{ color: '#A89B8C' }}>
+                  Asignar toda la compra ({fmt(total)}) a un rubro
                 </p>
+                <div className="flex flex-wrap gap-2">
+                  {ITEM_GROUPS.map((g) => {
+                    const meta = groupMeta(g);
+                    return (
+                      <button
+                        key={g}
+                        disabled={saving || total <= 0}
+                        onClick={() => assignWholeToGroup(g)}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-semibold border disabled:opacity-50"
+                        style={{ borderColor: '#ECE5DC', color: '#2D2D2D', background: '#F9F5F0' }}
+                      >
+                        <span>{meta.icon}</span>
+                        <span className="capitalize">{g}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center gap-3 my-4">
+                  <div className="flex-1 h-px" style={{ background: '#ECE5DC' }} />
+                  <span className="text-[11px]" style={{ color: '#A89B8C' }}>o</span>
+                  <div className="flex-1 h-px" style={{ background: '#ECE5DC' }} />
+                </div>
+
                 <button
                   onClick={() => startEdit([{ key: tmpKey(), id: null, name: '', qty: 1, line_total: 0, group: 'otros' }])}
-                  className="px-4 py-2.5 rounded-2xl text-sm font-bold"
+                  className="w-full py-2.5 rounded-2xl text-sm font-bold"
                   style={{ background: '#E4F2EA', color: '#5BA886' }}
                 >
-                  ＋ Agregar productos
+                  ＋ Cargar productos uno por uno
                 </button>
               </div>
             ) : (
