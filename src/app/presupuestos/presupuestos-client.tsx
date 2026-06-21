@@ -423,10 +423,11 @@ const CATEGORY_ICONS = [
   '💼', '💵', '📱', '💻', '👗', '💅', '🎮', '🎁', '🐾', '🌿', '⚽', '💡',
 ];
 
-function NewCategorySheet({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string, icon: string, isGroup: boolean) => void }) {
+function NewCategorySheet({ groups, onClose, onCreate }: { groups: EnvelopeCategory[]; onClose: () => void; onCreate: (name: string, icon: string, isGroup: boolean, parentId: string | null) => void }) {
   const [name, setName] = useState('');
   const [icon, setIcon] = useState('🏷️');
   const [isGroup, setIsGroup] = useState(false);
+  const [parentId, setParentId] = useState('');
   return (
     <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
       <div
@@ -471,8 +472,25 @@ function NewCategorySheet({ onClose, onCreate }: { onClose: () => void; onCreate
         </button>
         <p className="text-[11px] mb-4 -mt-2" style={{ color: '#6B6459' }}>Un grupo agrupa categorías (no se le asigna plata).</p>
 
+        {!isGroup && groups.length > 0 && (
+          <>
+            <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Grupo</p>
+            <select
+              value={parentId}
+              onChange={(e) => setParentId(e.target.value)}
+              className="w-full rounded-2xl border-2 outline-none px-4 py-3 text-sm font-bold bg-white mb-5"
+              style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+            >
+              <option value="">Sin grupo</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>{g.icon} {g.name}</option>
+              ))}
+            </select>
+          </>
+        )}
+
         <button
-          onClick={() => { if (name.trim()) { onCreate(name.trim(), icon, isGroup); onClose(); } }}
+          onClick={() => { if (name.trim()) { onCreate(name.trim(), icon, isGroup, isGroup ? null : (parentId || null)); onClose(); } }}
           disabled={!name.trim()}
           className="w-full py-4 rounded-2xl font-bold text-white"
           style={{ background: name.trim() ? '#7EC8A4' : '#C4B9AE' }}
@@ -1005,10 +1023,10 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   });
 
   const createCategory = useMutation({
-    mutationFn: async ({ name, icon, isGroup }: { name: string; icon: string; isGroup?: boolean }) => {
+    mutationFn: async ({ name, icon, isGroup, parentId }: { name: string; icon: string; isGroup?: boolean; parentId?: string | null }) => {
       const { error } = await supabase
         .from('categories')
-        .insert({ household_id: profile.household_id, name, icon, kind: 'expense', is_default: false, is_group: !!isGroup });
+        .insert({ household_id: profile.household_id, name, icon, kind: 'expense', is_default: false, is_group: !!isGroup, parent_id: isGroup ? null : (parentId ?? null) });
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['categories', profile.household_id] }); qc.invalidateQueries({ queryKey: ['envelope-categories', profile.household_id] }); },
@@ -1449,8 +1467,9 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
 
       {newCatOpen && (
         <NewCategorySheet
+          groups={groupCats}
           onClose={() => setNewCatOpen(false)}
-          onCreate={(name, icon, isGroup) => createCategory.mutate({ name, icon, isGroup })}
+          onCreate={(name, icon, isGroup, parentId) => createCategory.mutate({ name, icon, isGroup, parentId })}
         />
       )}
 
