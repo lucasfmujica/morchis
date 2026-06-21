@@ -39,9 +39,24 @@ interface Rule {
   category_id: string | null;
   account_id: string | null;
   is_variable: boolean;
+  // Finite rules ("cuotas"): NULL = runs forever. installments_total is the
+  // original count (for "cuota N de M"); remaining_count is decremented by the
+  // cron each time it posts, and the rule auto-pauses when it hits 0.
+  installments_total: number | null;
+  remaining_count: number | null;
 }
 
 type RuleFormData = Omit<Rule, 'id' | 'profile_id'>;
+
+// A savings entry created from /reglas isn't a recurring_rule — it's a budget
+// target on a savings category (same as /presupuestos). Monthly/weekly = "sumá
+// $X cada mes y se acumula" (set_aside); a date turns it into a by-date goal.
+interface SavingsDraft {
+  categoryId: string;
+  amount: number;
+  cadence: 'monthly' | 'weekly' | 'by_date';
+  date: string | null;
+}
 
 interface AccountOption {
   id: string;
@@ -379,27 +394,44 @@ function targetFromRule(amount: number, cadence: string): { cadence: 'monthly' |
 
 function RuleForm({
   initial,
+  initialSavings,
   accounts,
   categories,
   existingTargetCats,
   onSave,
+  onSaveSavings,
   onCancel,
+  onSkip,
+  onDelete,
+  canSkip,
 }: {
   initial?: Partial<Rule>;
+  initialSavings?: SavingsDraft;
   accounts: AccountOption[];
   categories: CategoryOption[];
   existingTargetCats: Set<string>;
   onSave: (data: RuleFormData, reserveInBudget: boolean) => void;
+  onSaveSavings: (draft: SavingsDraft) => void;
   onCancel: () => void;
+  onSkip?: () => void;
+  onDelete?: () => void;
+  canSkip?: boolean;
 }) {
-  const [direction, setDirection] = useState<'income' | 'expense'>(
-    initial?.direction ?? 'expense',
+  // Editing an existing rule, or an existing savings target, locks the mode.
+  const isEditing = !!initial?.id || !!initialSavings;
+  const [mode, setMode] = useState<'income' | 'expense' | 'savings'>(
+    initialSavings ? 'savings' : initial?.direction ?? 'expense',
   );
+  // Savings categories are `kind: 'expense'` flagged is_goal, so for picking a
+  // category and reusing the rule machinery, savings behaves like an expense.
+  const direction: 'income' | 'expense' = mode === 'savings' ? 'expense' : mode;
   const [label, setLabel] = useState(initial?.label ?? '');
-  const [amountStr, setAmountStr] = useState(initial?.amount ? String(initial.amount) : '');
+  const [amountStr, setAmountStr] = useState(
+    initialSavings?.amount ? String(initialSavings.amount) : initial?.amount ? String(initial.amount) : '',
+  );
   const [currency, setCurrency] = useState<'ARS' | 'USD'>(initial?.currency ?? 'ARS');
   const [cadence, setCadence] = useState<'weekly' | 'biweekly' | 'monthly'>(
-    initial?.cadence ?? 'monthly',
+    initialSavings && initialSavings.cadence !== 'by_date' ? initialSavings.cadence : initial?.cadence ?? 'monthly',
   );
   const [anchorDay, setAnchorDay] = useState(
     initial?.anchor_day != null ? String(initial.anchor_day) : '1',
@@ -407,8 +439,14 @@ function RuleForm({
   const [scope, setScope] = useState(initial?.scope ?? 'personal');
   const [active, setActive] = useState(initial?.active ?? true);
   const [accountId, setAccountId] = useState<string>(initial?.account_id ?? '');
-  const [categoryId, setCategoryId] = useState<string>(initial?.category_id ?? '');
+  const [categoryId, setCategoryId] = useState<string>(initialSavings?.categoryId ?? initial?.category_id ?? '');
   const [isVariable, setIsVariable] = useState(initial?.is_variable ?? false);
+  // Savings: optional target date turns "sumá $X cada mes" into a by-date goal.
+  const [savingsDate, setSavingsDate] = useState<string>(initialSavings?.date ?? '');
+  // Cuotas: optional number of occurrences after which the rule auto-pauses.
+  const [installmentsStr, setInstallmentsStr] = useState(
+    initial?.installments_total != null ? String(initial.installments_total) : '',
+  );
   // For a new rule, default to reserving in the budget; when editing, only
   // default on if that category already has a target (don't silently re-create
   // one the user deleted).
@@ -422,6 +460,21 @@ function RuleForm({
 
   function handleSave() {
     const amount = parseMoney(amountStr);
+    // Savings doesn't need a label (the category names it) — just a category
+    // and an amount. A date makes it a by-date goal; otherwise it accumulates.
+    if (mode === 'savings') {
+      if (!categoryId || !amount || amount <= 0) {
+        toast.error('Elegí una categoría de ahorro y un monto.');
+        return;
+      }
+      onSaveSavings({
+        categoryId,
+        amount,
+        cadence: savingsDate ? 'by_date' : cadence === 'weekly' ? 'weekly' : 'monthly',
+        date: savingsDate || null,
+      });
+      return;
+    }
     if (!label.trim() || !amount || amount <= 0) {
       toast.error('Completá el nombre y el monto.');
       return;
@@ -445,40 +498,58 @@ function RuleForm({
     const category_id = categoryId || null;
     // Reserving only applies to categorized expenses.
     const reserve = direction === 'expense' && !!category_id && reserveInBudget;
-    onSave({ direction, label: label.trim(), amount, currency, cadence, anchor_day: anchor, next_run, scope, active, category_id, account_id: accountId || null, is_variable: isVariable }, reserve);
+    // Cuotas: empty = runs forever. When editing, only reset the remaining
+    // count if the total actually changed; otherwise keep the cron's progress.
+    const parsedInst = parseInt(installmentsStr, 10);
+    const installments_total = Number.isNaN(parsedInst) || parsedInst <= 0 ? null : parsedInst;
+    const remaining_count =
+      installments_total == null
+        ? null
+        : installments_total === initial?.installments_total
+          ? initial?.remaining_count ?? installments_total
+          : installments_total;
+    onSave({ direction, label: label.trim(), amount, currency, cadence, anchor_day: anchor, next_run, scope, active, category_id, account_id: accountId || null, is_variable: isVariable, installments_total, remaining_count }, reserve);
   }
 
   return (
     <div className="flex flex-col gap-4 p-5 rounded-3xl" style={{ background: '#FFFFFF' }}>
-      {/* Direction */}
+      {/* Type: income / expense / savings. Locked while editing — you can't turn
+          a rule into a savings target or vice versa (different underlying data). */}
       <div className="flex rounded-2xl overflow-hidden" style={{ background: '#ECE5DC' }}>
-        {(['income', 'expense'] as const).map((d) => (
-          <button
-            key={d}
-            onClick={() => setDirection(d)}
-            className="flex-1 py-2.5 text-sm font-bold transition-colors"
-            style={{
-              background: direction === d ? (d === 'income' ? '#7EC8A4' : '#FF7F6B') : 'transparent',
-              color: direction === d ? '#FFFFFF' : '#6B6459',
-              borderRadius: '14px',
-            }}
-          >
-            {d === 'income' ? 'Ingreso' : 'Gasto'}
-          </button>
-        ))}
+        {(['income', 'expense', 'savings'] as const).map((m) => {
+          const activeColor = m === 'income' ? '#7EC8A4' : m === 'expense' ? '#FF7F6B' : '#5B9BD5';
+          return (
+            <button
+              key={m}
+              onClick={() => !isEditing && setMode(m)}
+              disabled={isEditing && mode !== m}
+              className="flex-1 py-2.5 text-sm font-bold transition-colors disabled:opacity-40"
+              style={{
+                background: mode === m ? activeColor : 'transparent',
+                color: mode === m ? '#FFFFFF' : '#6B6459',
+                borderRadius: '14px',
+              }}
+            >
+              {m === 'income' ? 'Ingreso' : m === 'expense' ? 'Gasto' : 'Ahorro'}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Label */}
-      <input
-        type="text"
-        placeholder="Nombre (ej: Sueldo, Alquiler…)"
-        value={label}
-        onChange={(e) => setLabel(e.target.value)}
-        className="w-full px-4 py-3 rounded-2xl text-sm border outline-none"
-        style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
-      />
+      {/* Label — savings is named by its category, so no label needed there. */}
+      {mode !== 'savings' && (
+        <input
+          type="text"
+          placeholder="Nombre (ej: Sueldo, Alquiler…)"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          className="w-full px-4 py-3 rounded-2xl text-sm border outline-none"
+          style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+        />
+      )}
 
-      {/* Currency */}
+      {/* Currency — savings targets are kept in ARS (like /presupuestos). */}
+      {mode !== 'savings' && (
       <div>
         <p className="text-xs font-semibold mb-2" style={{ color: '#6B6459' }}>Moneda</p>
         <div className="flex rounded-2xl overflow-hidden" style={{ background: '#ECE5DC' }}>
@@ -499,21 +570,25 @@ function RuleForm({
           ))}
         </div>
       </div>
+      )}
 
       {/* Amount */}
       <MoneyInput
-        placeholder={`Monto en ${currency}`}
+        placeholder={mode === 'savings' ? 'Cuánto sumar' : `Monto en ${currency}`}
         value={parseMoney(amountStr)}
         onChange={(n) => setAmountStr(n ? String(n) : '')}
         className="w-full px-4 py-3 rounded-2xl text-sm border outline-none"
         style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
       />
 
-      {/* Cadence */}
+      {/* Cadence — savings has no biweekly, and a by-date goal ignores it. */}
+      {!(mode === 'savings' && savingsDate) && (
       <div>
-        <p className="text-xs font-semibold mb-2" style={{ color: '#6B6459' }}>Frecuencia</p>
+        <p className="text-xs font-semibold mb-2" style={{ color: '#6B6459' }}>
+          {mode === 'savings' ? 'Cada cuánto sumás' : 'Frecuencia'}
+        </p>
         <div className="flex gap-2">
-          {(['weekly', 'biweekly', 'monthly'] as const).map((c) => (
+          {(mode === 'savings' ? (['weekly', 'monthly'] as const) : (['weekly', 'biweekly', 'monthly'] as const)).map((c) => (
             <button
               key={c}
               onClick={() => {
@@ -536,8 +611,31 @@ function RuleForm({
           ))}
         </div>
       </div>
+      )}
 
-      {/* Anchor day */}
+      {/* Savings: optional target date. Set it to save toward a fixed amount by
+          a deadline (shows a progress ring in Spotlight); leave it blank to just
+          keep adding every month/week and let it accumulate. */}
+      {mode === 'savings' && (
+        <div>
+          <p className="text-xs font-semibold mb-1" style={{ color: '#6B6459' }}>Meta con fecha (opcional)</p>
+          <input
+            type="date"
+            value={savingsDate}
+            onChange={(e) => setSavingsDate(e.target.value)}
+            className="w-full px-4 py-2.5 rounded-xl text-sm border outline-none bg-white"
+            style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+          />
+          <p className="text-[11px] mt-1.5" style={{ color: '#6B6459' }}>
+            {savingsDate
+              ? 'Te calculamos cuánto poner por mes para llegar a esa fecha.'
+              : 'Sin fecha: sumás este monto cada período y se va acumulando.'}
+          </p>
+        </div>
+      )}
+
+      {/* Anchor day — only rules need a calendar day; savings targets don't. */}
+      {mode !== 'savings' && (
       <div>
         <p className="text-xs font-semibold mb-1" style={{ color: '#6B6459' }}>
           {cadence === 'weekly' ? 'Día de la semana' : 'Día del mes'}
@@ -579,17 +677,45 @@ function RuleForm({
           </div>
         )}
       </div>
+      )}
+
+      {/* Cuotas — finite rules. Blank = runs forever. When set, the cron posts
+          it that many times and then auto-pauses the rule. */}
+      {mode !== 'savings' && (
+        <div>
+          <p className="text-xs font-semibold mb-1" style={{ color: '#6B6459' }}>Cuotas / repeticiones (opcional)</p>
+          <input
+            type="number"
+            min={1}
+            inputMode="numeric"
+            placeholder="Siempre"
+            value={installmentsStr}
+            onChange={(e) => setInstallmentsStr(e.target.value)}
+            className="w-32 px-4 py-2 rounded-xl text-sm border outline-none"
+            style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+          />
+          <p className="text-[11px] mt-1.5" style={{ color: '#6B6459' }}>
+            {installmentsStr && parseInt(installmentsStr, 10) > 0
+              ? cadence === 'monthly'
+                ? `Se cobra por ${parseInt(installmentsStr, 10)} meses y se frena.`
+                : `Se repite ${parseInt(installmentsStr, 10)} veces y se frena.`
+              : 'Dejalo vacío para que se repita indefinidamente.'}
+          </p>
+        </div>
+      )}
 
       {/* Category — where the materialized transaction lands in the budget */}
       <div>
-        <p className="text-xs font-semibold mb-1" style={{ color: '#6B6459' }}>Categoría</p>
+        <p className="text-xs font-semibold mb-1" style={{ color: '#6B6459' }}>
+          {mode === 'savings' ? 'Categoría de ahorro' : 'Categoría'}
+        </p>
         <select
           value={categoryId}
           onChange={(e) => setCategoryId(e.target.value)}
           className="w-full px-4 py-2.5 rounded-xl text-sm border outline-none bg-white"
           style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
         >
-          <option value="">Sin categoría</option>
+          <option value="">{mode === 'savings' ? 'Elegí una categoría' : 'Sin categoría'}</option>
           {pickableCategories.map((c) => (
             <option key={c.id} value={c.id}>{c.icon ? `${c.icon} ` : ''}{c.name}</option>
           ))}
@@ -598,7 +724,7 @@ function RuleForm({
 
       {/* Reserve in budget — sync a monthly target so "Para asignar" sets aside
           money for this fixed expense (expenses with a category only). */}
-      {direction === 'expense' && categoryId && (
+      {mode === 'expense' && categoryId && (
         <button
           type="button"
           onClick={() => setReserveInBudget((v) => !v)}
@@ -615,7 +741,9 @@ function RuleForm({
       )}
 
       {/* Fixed vs variable — variable rules are NOT auto-posted by the cron;
-          they show as a reminder so you enter the real amount yourself. */}
+          they show as a reminder so you enter the real amount yourself.
+          (Savings has none of these — it's just a budget target.) */}
+      {mode !== 'savings' && (<>
       <div>
         <p className="text-xs font-semibold mb-2" style={{ color: '#6B6459' }}>Tipo de monto</p>
         <div className="flex rounded-2xl overflow-hidden" style={{ background: '#ECE5DC' }}>
@@ -685,6 +813,7 @@ function RuleForm({
       >
         {active ? '✓ Activa' : '✗ Inactiva'}
       </button>
+      </>)}
 
       <div className="flex gap-3">
         <SecondaryButton onClick={onCancel} className="flex-1 py-3 text-sm">
@@ -692,12 +821,34 @@ function RuleForm({
         </SecondaryButton>
         <PrimaryButton
           onClick={handleSave}
-          disabled={!label.trim() || !(parseMoney(amountStr) > 0)}
+          disabled={(mode !== 'savings' && !label.trim()) || !(parseMoney(amountStr) > 0)}
           className="flex-1 py-3 text-sm"
         >
           Guardar
         </PrimaryButton>
       </div>
+
+      {/* Edit-only actions: skip the next occurrence or delete the rule. Living
+          here keeps the upcoming list and the rule lists consistent — every rule
+          is tap-to-edit, and all actions are in one place. */}
+      {(onSkip || onDelete) && (
+        <div className="flex gap-3 pt-1">
+          {onSkip && canSkip && (
+            <SecondaryButton onClick={onSkip} className="flex-1 py-3 text-sm">
+              ⏭ Saltar próxima
+            </SecondaryButton>
+          )}
+          {onDelete && (
+            <button
+              onClick={onDelete}
+              className="flex-1 py-3 text-sm font-bold rounded-2xl border"
+              style={{ background: '#FFE7E2', borderColor: '#FFD4CC', color: '#E5604C' }}
+            >
+              🗑 Eliminar
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -710,6 +861,9 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
   const [showForm, setShowForm] = useState(false);
   const [editRule, setEditRule] = useState<Rule | null>(null);
   const [confirmDeleteRule, setConfirmDeleteRule] = useState<Rule | null>(null);
+  // Editing an existing savings target (category id + its current draft).
+  const [editSavings, setEditSavings] = useState<{ categoryId: string; name: string; draft: SavingsDraft } | null>(null);
+  const [confirmDeleteSavings, setConfirmDeleteSavings] = useState<{ categoryId: string; name: string } | null>(null);
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', profile.household_id],
@@ -735,7 +889,7 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('recurring_rules')
-        .select('id, direction, label, amount, currency, cadence, anchor_day, next_run, active, scope, profile_id, category_id, account_id, is_variable')
+        .select('id, direction, label, amount, currency, cadence, anchor_day, next_run, active, scope, profile_id, category_id, account_id, is_variable, installments_total, remaining_count')
         .eq('household_id', profile.household_id)
         .order('direction')
         .order('label');
@@ -878,6 +1032,11 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
   async function syncTargetFromRule(data: RuleFormData) {
     if (data.direction !== 'expense' || !data.category_id) return;
     const t = targetFromRule(data.amount, data.cadence);
+    // A fixed expense is a monthly SPENDING budget (set_aside): you fund it and
+    // spend it that day, you don't keep it sitting there ("saldo fijo"/refill).
+    // But never clobber a type the user already chose on /presupuestos — only
+    // default to set_aside when the category has no target yet.
+    const prevType = env.targetInfoByCategory.get(data.category_id)?.targetType;
     const { error } = await supabase.from('category_targets').upsert(
       {
         household_id: profile.household_id,
@@ -886,7 +1045,7 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
         target_amount: t.amount,
         cadence: t.cadence,
         target_date: null,
-        target_type: 'refill',
+        target_type: prevType ?? 'set_aside',
         currency: data.currency,
       },
       { onConflict: 'profile_id,category_id' },
@@ -983,6 +1142,55 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
     onError: () => toast.error('No se pudo eliminar la regla.'),
   });
 
+  // Savings = a budget target on a savings category (no recurring_rule, no
+  // transactions). Mirrors /presupuestos' saveTarget: monthly/weekly set_aside
+  // accumulates; a date makes it a by-date goal. Marks the category is_goal so
+  // it shows here and as a progress ring in Spotlight.
+  function invalidateSavings() {
+    qc.invalidateQueries({ queryKey: ['envelope-targets', profile.id] });
+    qc.invalidateQueries({ queryKey: ['categories', profile.household_id] });
+    qc.invalidateQueries({ queryKey: ['envelope-categories', profile.household_id] });
+  }
+  const saveSavingsMutation = useMutation({
+    mutationFn: async (d: SavingsDraft) => {
+      const { error } = await supabase.from('category_targets').upsert(
+        {
+          household_id: profile.household_id,
+          profile_id: profile.id,
+          category_id: d.categoryId,
+          target_amount: d.amount,
+          cadence: d.cadence,
+          target_date: d.cadence === 'by_date' ? d.date : null,
+          target_type: d.cadence === 'by_date' ? 'refill' : 'set_aside',
+          currency: 'ARS',
+        },
+        { onConflict: 'profile_id,category_id' },
+      );
+      if (error) throw error;
+      await supabase.from('categories').update({ is_goal: true }).eq('id', d.categoryId);
+    },
+    onSuccess: () => { toast.success('Ahorro guardado ✓'); setShowForm(false); setEditSavings(null); invalidateSavings(); },
+    onError: () => toast.error('No se pudo guardar el ahorro.'),
+  });
+  const deleteSavingsMutation = useMutation({
+    mutationFn: async (categoryId: string) => {
+      const { error } = await supabase.from('category_targets').delete().eq('profile_id', profile.id).eq('category_id', categoryId);
+      if (error) throw error;
+      await supabase.from('categories').update({ is_goal: false }).eq('id', categoryId);
+    },
+    onSuccess: () => { toast.success('Ahorro eliminado'); setEditSavings(null); invalidateSavings(); },
+    onError: () => toast.error('No se pudo eliminar el ahorro.'),
+  });
+
+  // Savings entries to list: is_goal categories that have a target this user set.
+  const savingsList = useMemo(
+    () =>
+      env.categories
+        .filter((c) => c.is_goal && !c.is_group && env.targetInfoByCategory.has(c.id))
+        .map((c) => ({ category: c, info: env.targetInfoByCategory.get(c.id)! })),
+    [env.categories, env.targetInfoByCategory],
+  );
+
   const cashRules = rules;
   const income = cashRules.filter((r) => r.direction === 'income');
   const expenses = cashRules.filter((r) => r.direction === 'expense');
@@ -992,16 +1200,23 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
   );
 
   function RuleCard({ rule }: { rule: Rule }) {
-    const schedule =
+    const scheduleBase =
       rule.cadence === 'weekly'
         ? `${CADENCE_LABEL[rule.cadence]} · ${WEEKDAYS[rule.anchor_day ?? 0]}`
         : `${CADENCE_LABEL[rule.cadence]} · ${rule.anchor_day === 31 ? 'último día' : `día ${rule.anchor_day}`}`;
+    // "cuota N de M" for finite rules — the cron decrements remaining_count.
+    const cuota =
+      rule.installments_total != null && rule.remaining_count != null
+        ? ` · cuota ${rule.installments_total - rule.remaining_count + 1} de ${rule.installments_total}`
+        : '';
+    const schedule = scheduleBase + cuota;
     return (
       <div
         className="flex items-center px-5 py-3.5"
         style={{ borderTop: '1px solid #ECE5DC', opacity: rule.active ? 1 : 0.55 }}
       >
-        {/* Tap the row to edit — frees up width so labels don't truncate */}
+        {/* The whole row is tap-to-edit; skip/delete live inside the edit sheet
+            so the upcoming list and these lists behave identically. */}
         <button
           onClick={() => setEditRule(rule)}
           aria-label={`Editar ${rule.label}`}
@@ -1038,29 +1253,8 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
           >
             {rule.direction === 'income' ? '+' : '-'}{fmtMoney(rule.amount, rule.currency)}
           </p>
+          <span className="text-[11px] flex-shrink-0 ml-1" style={{ color: '#C4B9AE' }}>✏️</span>
         </button>
-        <div className="flex items-center gap-0.5 pl-2 flex-shrink-0">
-          {rule.active && rule.next_run && (
-            <button
-              onClick={() => skipMutation.mutate(rule)}
-              disabled={skipMutation.isPending}
-              aria-label={`Saltar próxima de ${rule.label}`}
-              title="Saltar próxima ocurrencia"
-              className="w-8 h-8 rounded-full flex items-center justify-center text-xs active:bg-[#F0EDE8] transition-colors"
-              style={{ color: '#6B6459' }}
-            >
-              ⏭
-            </button>
-          )}
-          <button
-            onClick={() => setConfirmDeleteRule(rule)}
-            aria-label={`Eliminar ${rule.label}`}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-xs active:bg-[#FFE7E2] transition-colors"
-            style={{ color: '#FF7F6B' }}
-          >
-            🗑
-          </button>
-        </div>
       </div>
     );
   }
@@ -1068,19 +1262,19 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
   return (
     <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
       <header className="px-5 pt-14 pb-4 flex items-center gap-3">
-        <Link href="/mas" className="text-2xl">←</Link>
+        <Link href="/presupuestos" className="text-2xl">←</Link>
         <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Ingresos y gastos fijos</h1>
       </header>
 
       <div className="px-4 flex flex-col gap-4">
         {/* Upcoming bills this month — tap one to edit it */}
-        {!showForm && !editRule && <UpcomingBills rules={cashRules} availableByCat={availableByCat} onEdit={(r) => setEditRule(r)} />}
+        {!showForm && !editRule && !editSavings && <UpcomingBills rules={cashRules} availableByCat={availableByCat} onEdit={(r) => setEditRule(r)} />}
 
         {/* Monthly summary */}
-        {!showForm && !editRule && cashRules.length > 0 && <FixedSummaryCard rules={cashRules} />}
+        {!showForm && !editRule && !editSavings && cashRules.length > 0 && <FixedSummaryCard rules={cashRules} />}
 
         {/* Price changes: an active rule's merchant now charges a different amount */}
-        {!showForm && !editRule && priceChangeSuggestions.length > 0 && (
+        {!showForm && !editRule && !editSavings && priceChangeSuggestions.length > 0 && (
           <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
             <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>
               📈 Cambios de precio detectados
@@ -1109,7 +1303,7 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
         )}
 
         {/* Likely subscriptions: repeating merchant expenses without a rule */}
-        {!showForm && !editRule && subscriptionSuggestions.length > 0 && (
+        {!showForm && !editRule && !editSavings && subscriptionSuggestions.length > 0 && (
           <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
             <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>
               📡 Posibles suscripciones detectadas
@@ -1145,13 +1339,14 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
           </div>
         )}
 
-        {/* New rule form */}
-        {showForm && !editRule && (
+        {/* New rule / savings form */}
+        {showForm && !editRule && !editSavings && (
           <RuleForm
             accounts={accounts}
             categories={categories}
             existingTargetCats={existingTargetCats}
             onSave={(data, reserve) => createMutation.mutate({ data, reserve })}
+            onSaveSavings={(draft) => saveSavingsMutation.mutate(draft)}
             onCancel={() => setShowForm(false)}
           />
         )}
@@ -1163,18 +1358,84 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
             categories={categories}
             existingTargetCats={existingTargetCats}
             onSave={(data, reserve) => updateMutation.mutate({ id: editRule.id, data, reserve })}
+            onSaveSavings={(draft) => saveSavingsMutation.mutate(draft)}
             onCancel={() => setEditRule(null)}
+            onSkip={() => { skipMutation.mutate(editRule); setEditRule(null); }}
+            onDelete={() => setConfirmDeleteRule(editRule)}
+            canSkip={!!(editRule.active && editRule.next_run)}
           />
         )}
 
-        {!showForm && !editRule && (
+        {editSavings && (
+          <RuleForm
+            initialSavings={editSavings.draft}
+            accounts={accounts}
+            categories={categories}
+            existingTargetCats={existingTargetCats}
+            onSave={(data, reserve) => createMutation.mutate({ data, reserve })}
+            onSaveSavings={(draft) => saveSavingsMutation.mutate(draft)}
+            onCancel={() => setEditSavings(null)}
+            onDelete={() => setConfirmDeleteSavings({ categoryId: editSavings.categoryId, name: editSavings.name })}
+          />
+        )}
+
+        {!showForm && !editRule && !editSavings && (
           <button
             onClick={() => setShowForm(true)}
             className="w-full py-4 rounded-3xl text-sm font-bold text-white"
             style={{ background: '#7EC8A4' }}
           >
-            + Nueva regla
+            + Nueva regla o ahorro
           </button>
+        )}
+
+        {/* Savings targets (set from here or /presupuestos) */}
+        {!showForm && !editRule && !editSavings && savingsList.length > 0 && (
+          <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
+            <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid #ECE5DC' }}>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5B9BD5' }}>
+                Ahorros
+              </p>
+              <span className="text-xs font-bold" style={{ color: '#C4B9AE' }}>{savingsList.length}</span>
+            </div>
+            {savingsList.map(({ category, info }) => {
+              const cadenceLabel =
+                info.cadence === 'by_date'
+                  ? info.targetDate
+                    ? `Meta para ${shortDayMonth(info.targetDate)}`
+                    : 'Meta con fecha'
+                  : info.cadence === 'weekly'
+                    ? 'Sumás cada semana'
+                    : 'Sumás cada mes';
+              const draft: SavingsDraft = {
+                categoryId: category.id,
+                amount: Math.round(info.totalArs),
+                cadence: info.cadence,
+                date: info.targetDate,
+              };
+              return (
+                <button
+                  key={category.id}
+                  onClick={() => setEditSavings({ categoryId: category.id, name: category.name, draft })}
+                  aria-label={`Editar ahorro ${category.name}`}
+                  className="flex items-center gap-3 w-full px-5 py-3.5 text-left active:scale-[0.99] transition-transform"
+                  style={{ borderTop: '1px solid #ECE5DC' }}
+                >
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-lg flex-shrink-0" style={{ background: '#E7F0FA' }}>
+                    {category.icon || '🐷'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-sm truncate" style={{ color: '#2D2D2D' }}>{category.name}</p>
+                    <p className="text-xs truncate" style={{ color: '#6B6459' }}>{cadenceLabel}</p>
+                  </div>
+                  <p className="font-black text-sm flex-shrink-0" style={{ color: '#5B9BD5' }}>
+                    +{formatARS(Math.round(info.totalArs))}
+                  </p>
+                  <span className="text-[11px] flex-shrink-0 ml-1" style={{ color: '#C4B9AE' }}>✏️</span>
+                </button>
+              );
+            })}
+          </div>
         )}
 
         {/* Income rules */}
@@ -1222,6 +1483,18 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
           setConfirmDeleteRule(null);
         }}
         onCancel={() => setConfirmDeleteRule(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmDeleteSavings !== null}
+        title="¿Eliminar ahorro?"
+        message={confirmDeleteSavings ? `Se quitará la meta de ahorro de "${confirmDeleteSavings.name}". El dinero ya asignado no se toca.` : undefined}
+        confirmLabel="Eliminar"
+        onConfirm={() => {
+          if (confirmDeleteSavings) deleteSavingsMutation.mutate(confirmDeleteSavings.categoryId);
+          setConfirmDeleteSavings(null);
+        }}
+        onCancel={() => setConfirmDeleteSavings(null)}
       />
 
       <BottomNav onFab={(type) => { setFabType(type); setSheetOpen(true); }} />

@@ -733,10 +733,12 @@ export type Database = {
           direction: string
           household_id: string
           id: string
+          installments_total: number | null
           is_variable: boolean
           label: string
           next_run: string | null
           profile_id: string
+          remaining_count: number | null
           scope: string
         }
         Insert: {
@@ -750,10 +752,12 @@ export type Database = {
           direction: string
           household_id: string
           id?: string
+          installments_total?: number | null
           is_variable?: boolean
           label: string
           next_run?: string | null
           profile_id: string
+          remaining_count?: number | null
           scope?: string
         }
         Update: {
@@ -767,10 +771,12 @@ export type Database = {
           direction?: string
           household_id?: string
           id?: string
+          installments_total?: number | null
           is_variable?: boolean
           label?: string
           next_run?: string | null
           profile_id?: string
+          remaining_count?: number | null
           scope?: string
         }
         Relationships: [
