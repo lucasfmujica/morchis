@@ -6,7 +6,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 
 interface PendingAction { kind: string; payload: Record<string, unknown>; summary: string }
-interface Msg { role: 'user' | 'assistant'; content: string; action?: PendingAction | null }
+interface Msg { role: 'user' | 'assistant'; content: string; action?: PendingAction | null; suggestions?: string[] }
 
 // Minimal shape of the Web Speech API we use for voice dictation.
 interface SpeechRec {
@@ -45,6 +45,7 @@ export default function PreguntaleClient({ householdId, profileId }: { household
   const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
   const scrollRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<SpeechRec | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [listening, setListening] = useState(false);
   const [micSupported, setMicSupported] = useState(false);
 
@@ -102,7 +103,7 @@ export default function PreguntaleClient({ householdId, profileId }: { household
       const answer = res.ok && data?.answer
         ? data.answer
         : 'Uy, no pude responder eso ahora. Probá de nuevo en un ratito.';
-      setMessages((m) => [...m, { role: 'assistant', content: answer, action: (res.ok && data?.pending_action) || null }]);
+      setMessages((m) => [...m, { role: 'assistant', content: answer, action: (res.ok && data?.pending_action) || null, suggestions: (res.ok && data?.suggestions) || undefined }]);
     } catch {
       setMessages((m) => [...m, { role: 'assistant', content: 'Uy, no pude responder eso ahora. Probá de nuevo en un ratito.' }]);
     } finally {
@@ -138,6 +139,40 @@ export default function PreguntaleClient({ householdId, profileId }: { household
 
   function cancelAction(idx: number) {
     setMessages((m) => [...m.map((msg, i) => (i === idx ? { ...msg, action: null } : msg)), { role: 'assistant', content: 'Listo, no registré nada. 👍' }]);
+  }
+
+  // Photo of a receipt: upload → parse-receipt → propose the parsed expense as a
+  // confirm card (reuses the same confirm flow as the write actions).
+  async function handlePhoto(file: File) {
+    if (loading) return;
+    setMessages((m) => [...m.map((msg) => (msg.action ? { ...msg, action: null } : msg)), { role: 'user', content: '🧾 Te mandé un ticket' }]);
+    setLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { setMessages((m) => [...m, { role: 'assistant', content: 'Iniciá sesión de nuevo para leer el ticket.' }]); return; }
+      const ext = file.name.split('.').pop() || 'jpg';
+      const path = `${householdId}/${crypto.randomUUID()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('statements').upload(path, file, { contentType: file.type, upsert: false });
+      if (upErr) throw upErr;
+      const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/parse-receipt`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_paths: [path] }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.receipt) throw new Error(data?.error || 'parse failed');
+      const r = data.receipt as { merchant?: string; total: number; currency: string; items?: unknown[] };
+      const cur = r.currency === 'USD' ? 'USD' : 'ARS';
+      const amountTxt = cur === 'USD' ? `US$${Math.round(r.total)}` : `$${Math.round(r.total).toLocaleString('es-AR')}`;
+      const nItems = Array.isArray(r.items) ? r.items.length : 0;
+      const summary = `Gasto de ${amountTxt} en ${r.merchant || 'Compra'}${nItems ? ` (${nItems} ítems)` : ''}`;
+      const action: PendingAction = { kind: 'record_receipt', payload: { receipt: { ...r, currency: cur } }, summary };
+      setMessages((m) => [...m, { role: 'assistant', content: `Leí el ticket 🧾 — ${summary}. ¿Lo cargo?`, action }]);
+    } catch {
+      setMessages((m) => [...m, { role: 'assistant', content: 'Uy, no pude leer el ticket. Probá con una foto más nítida o cargalo a mano.' }]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -206,6 +241,20 @@ export default function PreguntaleClient({ householdId, profileId }: { household
                   </div>
                 </div>
               )}
+              {m.role === 'assistant' && !m.action && m.suggestions && m.suggestions.length > 0 && i === messages.length - 1 && !loading && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {m.suggestions.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => ask(s)}
+                      className="rounded-full px-3 py-1.5 text-xs font-semibold"
+                      style={{ background: '#E4F2EA', color: '#5BA886', border: '1px solid #7EC8A4' }}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
           {loading && (
@@ -227,6 +276,24 @@ export default function PreguntaleClient({ householdId, profileId }: { household
           onSubmit={(e) => { e.preventDefault(); ask(input); }}
           className="flex items-center gap-2"
         >
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            hidden
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePhoto(f); e.target.value = ''; }}
+          />
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={loading}
+            aria-label="Mandar foto de un ticket"
+            className="w-11 h-11 rounded-full text-lg flex items-center justify-center shrink-0"
+            style={{ background: '#FFFFFF', color: '#6B6459', border: '1px solid #ECE5DC' }}
+          >
+            🧾
+          </button>
           {micSupported && (
             <button
               type="button"

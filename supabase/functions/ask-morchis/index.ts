@@ -418,10 +418,31 @@ async function executeAction(ctx: Ctx, action: PendingAction): Promise<string> {
     }
     return `Listo, ${action.summary.charAt(0).toLowerCase()}${action.summary.slice(1)}. ✅`;
   }
+  if (action.kind === 'record_receipt') {
+    // Confirmed from the photo flow: the client parsed a receipt (parse-receipt)
+    // and the user tapped Confirmar. Insert the expense + its line items.
+    const r = action.payload.receipt as { merchant?: string; date?: string; total: number; currency: string; suggested_category?: string; items?: { name: string; qty?: number; line_total: number; group?: string }[] };
+    const amount = Number(r?.total);
+    if (!amount || amount <= 0) throw new Error('bad receipt total');
+    const currency = r.currency === 'USD' ? 'USD' : 'ARS';
+    const occurred_on = (typeof r.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.date)) ? r.date : todayISO();
+    const cat = await resolveCategory(ctx, r.suggested_category, 'expense');
+    const { data: tx, error } = await ctx.admin.from('transactions').insert({
+      household_id: ctx.hid, profile_id: ctx.askerId, type: 'expense', amount, currency,
+      usd_rate_snapshot: currency === 'USD' ? ctx.blue : null, category_id: cat.id, account_id: null,
+      merchant: r.merchant || 'Compra', occurred_on, scope: 'personal', is_shared: false, is_fixed: false, flag: null, source: 'receipt',
+    }).select('id').single();
+    if (error || !tx) throw error ?? new Error('insert failed');
+    const items = Array.isArray(r.items) ? r.items : [];
+    const rows = items.filter(it => it && it.name && Number(it.line_total) > 0)
+      .map(it => ({ household_id: ctx.hid, transaction_id: (tx as { id: string }).id, name: String(it.name).slice(0, 200), qty: Number(it.qty) || 1, line_total: Number(it.line_total), item_group: it.group || 'otros' }));
+    if (rows.length) await ctx.admin.from('transaction_items').insert(rows);
+    return `Listo, cargué el ticket: ${action.summary}. ✅`;
+  }
   throw new Error('unknown action');
 }
 
-const SYSTEM = 'Sos Morchi, el asistente financiero de la pareja Lucas y Sofi en la app Morchis (es-AR, tono cercano y motivador). Tenés HERRAMIENTAS para consultar su base de datos financiera real. Para CUALQUIER pregunta sobre montos, gastos, ingresos, comercios, categorías, meses, saldos, presupuestos, metas o deudas, USÁ las herramientas para obtener los números exactos antes de responder. IMPORTANTE: distinguí gastos personales de los del hogar según la pregunta y elegí el lens adecuado en aggregate_transactions (mine/partner/household/everyone). Si la pregunta es ambigua entre "lo mío" y "lo de los dos", aclaralo brevemente en la respuesta o preguntá. Reglas: (1) Nunca inventes ni estimes montos: salen siempre de las herramientas; si no hay datos, decílo. (2) Para fechas usá el dato de "Hoy". (3) Mostrá montos en formato $1.234.567. (4) Sé conciso: 2 a 4 oraciones. No uses tablas markdown ni encabezados; si listás, pocas líneas cortas con guión (-). Para resaltar usá **negrita**. (5) Para consejos, basate en los números que consultaste. ACCIONES: además de responder, podés REGISTRAR cosas con record_transaction (anotar un gasto/ingreso), settle_debt (saldar una deuda) y set_category_budget (fijar un presupuesto). Cuando el usuario pida registrar/anotar/cargar/saldar/poner algo, llamá la tool correspondiente (PREVISUALIZA, no escribe), después contale en UNA frase qué vas a hacer y pedile que confirme con el botón de abajo. NUNCA afirmes que ya quedó hecho ni inventes que lo registraste: lo confirma el usuario. Si la tool devuelve un error, explicá brevemente qué falta.';
+const SYSTEM = 'Sos Morchi, el asistente financiero de la pareja Lucas y Sofi en la app Morchis (es-AR, tono cercano y motivador). Tenés HERRAMIENTAS para consultar su base de datos financiera real. Para CUALQUIER pregunta sobre montos, gastos, ingresos, comercios, categorías, meses, saldos, presupuestos, metas o deudas, USÁ las herramientas para obtener los números exactos antes de responder. IMPORTANTE: distinguí gastos personales de los del hogar según la pregunta y elegí el lens adecuado en aggregate_transactions (mine/partner/household/everyone). Si la pregunta es ambigua entre "lo mío" y "lo de los dos", aclaralo brevemente en la respuesta o preguntá. Reglas: (1) Nunca inventes ni estimes montos: salen siempre de las herramientas; si no hay datos, decílo. (2) Para fechas usá el dato de "Hoy". (3) Mostrá montos en formato $1.234.567. (4) Sé conciso: 2 a 4 oraciones. No uses tablas markdown ni encabezados; si listás, pocas líneas cortas con guión (-). Para resaltar usá **negrita**. (5) Para consejos, basate en los números que consultaste. ACCIONES: además de responder, podés REGISTRAR cosas con record_transaction (anotar un gasto/ingreso), settle_debt (saldar una deuda) y set_category_budget (fijar un presupuesto). Cuando el usuario pida registrar/anotar/cargar/saldar/poner algo, llamá la tool correspondiente (PREVISUALIZA, no escribe), después contale en UNA frase qué vas a hacer y pedile que confirme con el botón de abajo. NUNCA afirmes que ya quedó hecho ni inventes que lo registraste: lo confirma el usuario. Si la tool devuelve un error, explicá brevemente qué falta. SEGUIMIENTOS: al final de CADA respuesta agregá una línea aparte, EXACTA, con 2 o 3 preguntas de seguimiento cortas y relevantes a lo que charlaron, con el formato: SUGERENCIAS: pregunta uno | pregunta dos | pregunta tres. No menciones esa línea en el cuerpo ni uses el prefijo "SUGERENCIAS:" para otra cosa. Si estás proponiendo una acción para confirmar, NO agregues la línea de SUGERENCIAS.';
 
 Deno.serve(async (req: Request) => {
   const cors = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
@@ -537,7 +558,16 @@ Deno.serve(async (req: Request) => {
     }
     messages.push({ role: 'user', content: results });
   }
+  // Pull the trailing "SUGERENCIAS: a | b | c" line out of the answer into tappable
+  // quick-replies. No suggestions alongside an action card (the card is the CTA).
+  let suggestions: string[] = [];
+  const sm = answer.match(/^[ \t]*SUGERENCIAS:[ \t]*(.+)$/im);
+  if (sm) {
+    suggestions = sm[1].split('|').map(s => s.trim()).filter(Boolean).slice(0, 3);
+    answer = answer.replace(/\n?[ \t]*SUGERENCIAS:.*$/im, '').trim();
+  }
   if (!answer) answer = pending ? `Voy a registrar: ${pending.summary}. Confirmá abajo 👇` : 'Uy, no pude llegar a una respuesta. Probá reformulando la pregunta.';
+  if (pending) suggestions = [];
 
-  return new Response(JSON.stringify({ ok: true, answer, pending_action: pending }), { headers: cors });
+  return new Response(JSON.stringify({ ok: true, answer, pending_action: pending, suggestions }), { headers: cors });
 });
