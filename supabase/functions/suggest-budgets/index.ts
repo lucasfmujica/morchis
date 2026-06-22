@@ -1,27 +1,18 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import Anthropic from "npm:@anthropic-ai/sdk";
 import { createClient, SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import { fmt, iso, buildSuggestions } from "./math.ts";
+import type { Suggestion } from "./math.ts";
 
 // AI-suggested budgets. HARD RULE: the suggested amount is computed in TS from
 // the household's real history; Claude only writes a short rationale per
 // category. It never picks or computes the number.
-
-const fmt = (n: number): string => '$' + Math.round(n).toLocaleString('es-AR');
-const iso = (y: number, m: number, d: number) => new Date(y, m, d).toISOString().slice(0, 10);
-
-// Round a raw average up to a "nice" budget figure so suggestions read cleanly.
-function niceRound(n: number): number {
-  if (n <= 0) return 0;
-  const step = n < 50000 ? 5000 : n < 200000 ? 10000 : 25000;
-  return Math.ceil(n / step) * step;
-}
 
 function jwtPayload(token: string): Record<string, unknown> | null {
   try { return JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))); } catch { return null; }
 }
 
 interface HistRow { category_id: string | null; amount: number; currency: string; usd_rate_snapshot: number | null; }
-interface Suggestion { category_id: string; name: string; suggested: number; avg3m: number; lastMonth: number; projected: number; rationale: string; }
 
 Deno.serve(async (req: Request) => {
   const cors = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
@@ -81,22 +72,7 @@ Deno.serve(async (req: Request) => {
   const cur0: Record<string, number> = {};
   for (const t of (curRq.data ?? []) as HistRow[]) { if (!t.category_id) continue; cur0[t.category_id] = (cur0[t.category_id] ?? 0) + ars(t.amount, t.currency, t.usd_rate_snapshot); }
 
-  // Candidates: expense categories WITHOUT an active budget for this scope, with
-  // a meaningful spending history. Base the figure on the larger of the 3-month
-  // average, last month, and this month projected to full month (so new
-  // households with no history still get useful suggestions from the current pace).
-  const suggestions: Suggestion[] = cats
-    .filter(c => !budgeted.has(c.id))
-    .map(c => {
-      const avg3m = Math.round((hist3[c.id] ?? 0) / 3);
-      const lastMonth = Math.round(last1[c.id] ?? 0);
-      const projected = day > 0 ? Math.round((cur0[c.id] ?? 0) / day * dim) : Math.round(cur0[c.id] ?? 0);
-      const base = Math.max(avg3m, lastMonth, projected);
-      return { category_id: c.id, name: c.name, suggested: niceRound(base), avg3m, lastMonth, projected, rationale: '' };
-    })
-    .filter(s => s.suggested >= 10000)
-    .sort((a, b) => b.suggested - a.suggested)
-    .slice(0, 8);
+  const suggestions: Suggestion[] = buildSuggestions(cats, budgeted, hist3, last1, cur0, day, dim);
 
   if (!suggestions.length) {
     return new Response(JSON.stringify({ ok: true, scope, suggestions: [] }), { headers: cors });

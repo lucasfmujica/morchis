@@ -1,6 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import Anthropic from "npm:@anthropic-ai/sdk";
 import { createClient, SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import { iso, MONTHLY, norm, toArs, jwtPayload, shareForExpense, lensFraction, buildPrimer } from "./math.ts";
+import type { Debt, ExpRow, ItemParent } from "./math.ts";
 
 // "Preguntale a Morchi" — an agent that can answer ANY question about the
 // household finances. Claude has tools to query the database; every tool runs a
@@ -12,50 +14,10 @@ import { createClient, SupabaseClient } from "jsr:@supabase/supabase-js@2";
 // repays) from the household's shared spending, so the chat can tell apart
 // "mis gastos" from "gastos del hogar" based on the question.
 
-const iso = (y: number, m: number, d: number) => new Date(y, m, d).toISOString().slice(0, 10);
-const MONTHLY: Record<string, number> = { weekly: 4.345, biweekly: 2.17, monthly: 1 };
-const norm = (s: string) => (s ?? '').toLowerCase();
-const toArs = (a: number, cur: string, snap: number | null, blue: number) => cur === 'USD' ? a * (Number(snap) || blue) : a;
-
-function jwtPayload(token: string): Record<string, unknown> | null {
-  try { return JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))); } catch { return null; }
-}
-
-interface Split { payer_profile_id: string; ower_profile_id: string; amount: number }
-interface Debt { transaction_id: string | null; direction: string; amount: number; currency: string }
 interface Ctx {
   admin: SupabaseClient; hid: string; blue: number;
   pm: Record<string, string>; askerId: string; partnerId: string | null;
   debtByTx: Record<string, Debt[]>; catNames: string;
-}
-
-function owedBackArs(txId: string, debtByTx: Record<string, Debt[]>, blue: number): number {
-  return (debtByTx[txId] ?? []).filter(d => d.direction === 'owed').reduce((s, d) => s + toArs(d.amount, d.currency, null, blue), 0);
-}
-
-interface ExpRow { id: string; profile_id: string; scope: string; is_shared: boolean; amount: number; currency: string; usd_rate_snapshot: number | null; splits: Split[] | null }
-// Amount of an expense attributable to a lens, in ARS:
-//  - 'everyone'  → full amount (total money the couple spent)
-//  - 'household' → only shared/household-scope expenses, full
-//  - a profileId → that person's own expenses + their split share of shared ones
-// Money a friend repays (a linked 'owed' debt) is netted out of the real cost.
-function shareForExpense(t: ExpRow, lens: string, ctx: Ctx): number {
-  const total = toArs(t.amount, t.currency, t.usd_rate_snapshot, ctx.blue);
-  let base: number, owns: boolean;
-  if (lens === 'everyone') { base = total; owns = true; }
-  else if (lens === 'household') { if (t.scope !== 'household') return 0; base = total; owns = true; }
-  else {
-    owns = t.profile_id === lens;
-    if (!t.is_shared) base = owns ? total : 0;
-    else {
-      const sp = t.splits ?? [];
-      const iOwe = sp.filter(s => s.ower_profile_id === lens).reduce((a, s) => a + s.amount, 0);
-      if (iOwe > 0) base = iOwe;
-      else { const owedToMe = sp.filter(s => s.payer_profile_id === lens).reduce((a, s) => a + s.amount, 0); base = owedToMe > 0 ? Math.max(0, total - owedToMe) : (owns ? total : 0); }
-    }
-  }
-  if (base <= 0) return 0;
-  return owns ? Math.max(0, base - owedBackArs(t.id, ctx.debtByTx, ctx.blue)) : base;
 }
 
 // ── tool executors (all money math lives here) ───────────────────────────────
@@ -189,23 +151,6 @@ async function getRecurring(ctx: Ctx) {
   return { rules: rows, fixed_expense_monthly_ars: Math.round(expTotal) };
 }
 
-interface ItemParent { occurred_on: string; currency: string; usd_rate_snapshot: number | null; scope: string; is_shared: boolean; profile_id: string; amount: number; splits: Split[] | null }
-// Fraction of a transaction attributable to a lens (0..1), for splitting line items.
-function lensFraction(p: ItemParent, lensTarget: string, blue: number): number {
-  const total = toArs(p.amount, p.currency, p.usd_rate_snapshot, blue);
-  if (lensTarget === 'everyone') return 1;
-  if (lensTarget === 'household') return p.scope === 'household' ? 1 : 0;
-  let base: number;
-  if (!p.is_shared) base = p.profile_id === lensTarget ? total : 0;
-  else {
-    const sp = p.splits ?? [];
-    const iOwe = sp.filter(s => s.ower_profile_id === lensTarget).reduce((a, s) => a + s.amount, 0);
-    if (iOwe > 0) base = iOwe;
-    else { const owedToMe = sp.filter(s => s.payer_profile_id === lensTarget).reduce((a, s) => a + s.amount, 0); base = owedToMe > 0 ? Math.max(0, total - owedToMe) : (p.profile_id === lensTarget ? total : 0); }
-  }
-  return total > 0 ? base / total : 0;
-}
-
 // Analyse the line ITEMS inside scanned receipts (transaction_items): what was
 // actually bought, grouped by type or product name. Amounts are in the parent
 // transaction's currency → normalised to ARS, and split by lens proportionally.
@@ -285,20 +230,6 @@ async function runTool(name: string, input: Record<string, unknown>, ctx: Ctx): 
     case 'aggregate_items': return await aggregateItems(ctx, input as ItemAggInput);
     default: return { error: 'herramienta desconocida' };
   }
-}
-
-function buildPrimer(ctx: Ctx): string {
-  const now = new Date(); const y = now.getFullYear(), m = now.getMonth();
-  const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-  const asker = ctx.pm[ctx.askerId] ?? 'el usuario';
-  const partner = ctx.partnerId ? (ctx.pm[ctx.partnerId] ?? 'su pareja') : 'su pareja';
-  return [
-    `Hoy es ${iso(y, m, now.getDate())} (${months[m]} de ${y}).`,
-    `Quien te escribe es ${asker}. Su pareja es ${partner}.`,
-    `Categorías de gasto existentes (usá estos nombres exactos al filtrar): ${ctx.catNames || 'n/d'}.`,
-    'Cada gasto puede ser personal (de una persona) o del hogar (compartido). Para "mis/mi" usá lens="mine"; para tu pareja lens="partner"; para lo compartido/del hogar/"juntos" lens="household"; para el total combinado lens="everyone".',
-    'La moneda base es el peso argentino (ARS); los dólares ya vienen convertidos en las herramientas.',
-  ].join('\n');
 }
 
 const SYSTEM = 'Sos Morchi, el asistente financiero de la pareja Lucas y Sofi en la app Morchis (es-AR, tono cercano y motivador). Tenés HERRAMIENTAS para consultar su base de datos financiera real. Para CUALQUIER pregunta sobre montos, gastos, ingresos, comercios, categorías, meses, saldos, presupuestos, metas o deudas, USÁ las herramientas para obtener los números exactos antes de responder. IMPORTANTE: distinguí gastos personales de los del hogar según la pregunta y elegí el lens adecuado en aggregate_transactions (mine/partner/household/everyone). Si la pregunta es ambigua entre "lo mío" y "lo de los dos", aclaralo brevemente en la respuesta o preguntá. Reglas: (1) Nunca inventes ni estimes montos: salen siempre de las herramientas; si no hay datos, decílo. (2) Para fechas usá el dato de "Hoy". (3) Mostrá montos en formato $1.234.567. (4) Sé conciso: 2 a 4 oraciones. No uses tablas markdown ni encabezados; si listás, pocas líneas cortas con guión (-). Para resaltar usá **negrita**. (5) Para consejos, basate en los números que consultaste.';

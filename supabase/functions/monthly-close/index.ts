@@ -1,5 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import { isoUTC, fmt, MONTHS, toArs, spentForBudget, prefOn } from "./math.ts";
+import type { Split, Exp, Budget, ProfileRow } from "./math.ts";
 
 // Monthly close: on day 1 (cron) builds a deterministic report of the month
 // that just CLOSED — spend vs previous month (nominal and inflation-adjusted),
@@ -61,39 +63,7 @@ function jwtPayload(token: string): Record<string, unknown> | null {
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 // "now" in Argentina (UTC-3, no DST) — the server clock is UTC.
 const artNow = () => new Date(Date.now() - 3 * 60 * 60 * 1000);
-const isoUTC = (y: number, m: number, d: number) => new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10);
-const fmt = (n: number): string => '$' + Math.round(n).toLocaleString('es-AR');
-const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-const toArs = (a: number, cur: string, snap: number | null, blue: number) => cur === 'USD' ? a * (Number(snap) || blue) : a;
 
-interface Split { payer_profile_id: string; ower_profile_id: string; amount: number }
-interface Exp { category_id: string | null; categories: { name: string } | null; profile_id: string; scope: string; is_shared: boolean; amount: number; currency: string; usd_rate_snapshot: number | null; splits: Split[] | null }
-interface Budget { id: string; category_id: string | null; scope: string; amount: number; currency: string | null; profile_id: string | null; period: string | null; categories: { name: string } | null }
-interface ProfileRow { id: string; nickname: string | null; display_name: string | null; notification_prefs: Record<string, boolean> | null }
-
-// Same per-share math as src/lib/budgets.ts.
-function myShareArs(t: Exp, profileId: string, blue: number): number {
-  const total = toArs(t.amount, t.currency, t.usd_rate_snapshot, blue);
-  if (!t.is_shared) return total;
-  const sp = t.splits ?? [];
-  const iOwe = sp.filter(s => s.ower_profile_id === profileId).reduce((a, s) => a + s.amount, 0);
-  if (iOwe > 0) return iOwe;
-  const owedToMe = sp.filter(s => s.payer_profile_id === profileId).reduce((a, s) => a + s.amount, 0);
-  if (owedToMe > 0) return Math.max(0, total - owedToMe);
-  return t.profile_id === profileId ? total : 0;
-}
-function spentForBudget(b: Budget, rows: Exp[], blue: number): number {
-  const owner = b.profile_id ?? '';
-  return rows.filter(t => b.category_id == null || t.category_id === b.category_id).reduce((sum, t) => {
-    if (b.scope === 'household') return t.scope === 'household' ? sum + toArs(t.amount, t.currency, t.usd_rate_snapshot, blue) : sum;
-    if (t.is_shared) return sum + myShareArs(t, owner, blue);
-    return t.profile_id === owner ? sum + toArs(t.amount, t.currency, t.usd_rate_snapshot, blue) : sum;
-  }, 0);
-}
-
-function prefOn(p: ProfileRow | undefined, key: string): boolean {
-  return (p?.notification_prefs?.[key]) !== false; // absent = enabled
-}
 
 async function pushTo(admin: SupabaseClient, profileIds: string[], payload: Record<string, string>, vPub: string, vPriv: string): Promise<void> {
   if (!vPub || !vPriv || profileIds.length === 0) return;
@@ -118,7 +88,7 @@ async function processHousehold(admin: SupabaseClient, hid: string, vPub: string
     admin.from('transactions').select(expSel).eq('household_id', hid).eq('type', 'expense').gte('occurred_on', b0).lt('occurred_on', m0),
     admin.from('transactions').select('amount,currency,usd_rate_snapshot').eq('household_id', hid).eq('type', 'income').gte('occurred_on', m0).lt('occurred_on', m1),
     admin.from('transactions').select('amount,currency,usd_rate_snapshot').eq('household_id', hid).eq('type', 'income').gte('occurred_on', b0).lt('occurred_on', m0),
-    admin.from('budgets').select('id,category_id,scope,amount,currency,profile_id,period,categories(name)').eq('household_id', hid).eq('active', true),
+    admin.from('category_targets').select('category_id,target_amount,currency,cadence,profile_id,categories(name,is_goal)').eq('household_id', hid),
     admin.from('profiles').select('id,nickname,display_name,notification_prefs').eq('household_id', hid),
     admin.from('fx_rates').select('ars_per_usd').eq('source', 'blue').order('date', { ascending: false }).limit(1).maybeSingle(),
     admin.from('savings_goals').select('target_pct').order('month', { ascending: false }).limit(1).maybeSingle(),
@@ -185,8 +155,12 @@ async function processHousehold(admin: SupabaseClient, hid: string, vPub: string
     cards.push({ title: `En qué se fue ${monthName}`, body, severity: jumps.length ? 'warning' : 'info' });
   }
 
-  // 3. Budget compliance over the CLOSED month (monthly budgets only).
-  const monthly = ((budR.data ?? []) as unknown as Budget[]).filter(b => b.period !== 'weekly');
+  // 3. Budget compliance over the CLOSED month (monthly envelope targets only).
+  // Envelope model: a category's "budget" is its monthly target (category_targets,
+  // per profile); skip weekly targets and savings-goal categories.
+  const monthly = ((budR.data ?? []) as unknown as { category_id: string; target_amount: number; currency: string | null; cadence: string | null; profile_id: string | null; categories: { name: string; is_goal: boolean } | null }[])
+    .filter(t => t.cadence !== 'weekly' && !t.categories?.is_goal)
+    .map(t => ({ id: t.category_id, category_id: t.category_id, scope: 'personal', amount: t.target_amount, currency: t.currency, profile_id: t.profile_id, period: null, categories: t.categories ? { name: t.categories.name } : null } as Budget));
   if (monthly.length) {
     const results = monthly.map(b => {
       const limit = toArs(b.amount, b.currency ?? 'ARS', null, blue);

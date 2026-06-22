@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { normalize, isDuplicate } from "./math.ts";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
@@ -167,27 +168,7 @@ class ClaudeProvider implements AIProvider {
 
 // ── Dedup logic ──────────────────────────────────────────────────────
 
-function normalize(s: string) {
-  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
-}
 
-function isDuplicate(
-  draft: ParsedTransaction,
-  existing: { occurred_on: string; amount: number; merchant: string | null }[],
-): boolean {
-  return existing.some((tx) => {
-    if (tx.occurred_on !== draft.date) return false;
-    if (Math.abs(tx.amount - draft.amount) > 1) return false;
-    const a = normalize(tx.merchant ?? "");
-    const b = normalize(draft.merchant);
-    // Require a real merchant match to suppress. The old behavior treated ANY
-    // same-day same-amount row as a duplicate when either merchant was empty,
-    // which silently dropped legitimate charges (two SUBE top-ups, two coffees).
-    if (a.length === 0 || b.length === 0) return false;
-    // fuzzy: one contains the other or edit distance small
-    return a.includes(b) || b.includes(a);
-  });
-}
 
 // ── Main handler ─────────────────────────────────────────────────
 

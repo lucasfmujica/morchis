@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import { isoOf, fmtARS, nextOccurrence, prevOccurrence, daysBetween } from "./math.ts";
 
 // Daily cron: push a reminder 3 days before (and on) each credit card's due
 // date, with the closed cycle's spend so the couple knows roughly how much is
@@ -18,8 +19,6 @@ const VAPID_SUBJECT = Deno.env.get("VAPID_SUBJECT") ?? "mailto:hola@morchis.app"
 
 // "now" in Argentina (UTC-3, no DST) — the server clock is UTC.
 const artNow = () => new Date(Date.now() - 3 * 60 * 60 * 1000);
-const isoOf = (d: Date) => d.toISOString().slice(0, 10);
-const fmtARS = (n: number) => '$' + Math.round(n).toLocaleString('es-AR');
 
 function jwtPayload(token: string): Record<string, unknown> | null {
   try { return JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))); } catch { return null; }
@@ -72,33 +71,6 @@ async function sendWebPush(sub: { endpoint: string; p256dh: string; auth_key: st
   return r.status;
 }
 
-// Next monthly occurrence of `anchorISO`'s day-of-month that is >= today,
-// clamped to each month's length (a day-31 anchor hits Feb 28 / Mar 31).
-function nextOccurrence(anchorISO: string, todayISO: string): string {
-  const [, , dStr] = anchorISO.split('-');
-  const anchorDay = Number(dStr);
-  const [ty, tm] = todayISO.split('-').map(Number);
-  for (let k = 0; k < 14; k++) {
-    const probe = new Date(Date.UTC(ty, tm - 1 + k, 1));
-    const lastDay = new Date(Date.UTC(probe.getUTCFullYear(), probe.getUTCMonth() + 1, 0)).getUTCDate();
-    const cand = new Date(Date.UTC(probe.getUTCFullYear(), probe.getUTCMonth(), Math.min(anchorDay, lastDay)));
-    const candISO = isoOf(cand);
-    if (candISO >= todayISO) return candISO;
-  }
-  return todayISO;
-}
-// Previous occurrence strictly before `beforeISO`.
-function prevOccurrence(anchorISO: string, beforeISO: string): string {
-  const next = nextOccurrence(anchorISO, beforeISO);
-  const [y, m] = next.split('-').map(Number);
-  const anchorDay = Number(anchorISO.split('-')[2]);
-  const prevMonth = new Date(Date.UTC(y, m - 2, 1));
-  const lastDay = new Date(Date.UTC(prevMonth.getUTCFullYear(), prevMonth.getUTCMonth() + 1, 0)).getUTCDate();
-  return isoOf(new Date(Date.UTC(prevMonth.getUTCFullYear(), prevMonth.getUTCMonth(), Math.min(anchorDay, lastDay))));
-}
-function daysBetween(aISO: string, bISO: string): number {
-  return Math.round((Date.parse(bISO) - Date.parse(aISO)) / 86400000);
-}
 
 interface Card { id: string; name: string; currency: string; household_id: string; owner_profile_id: string | null; closing_date: string | null; due_date: string | null; statement_ars: number | null; statement_usd: number | null }
 interface ProfileRow { id: string; notification_prefs: Record<string, boolean> | null }
