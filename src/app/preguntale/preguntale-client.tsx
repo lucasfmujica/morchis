@@ -5,7 +5,8 @@ import { createClient } from '@/lib/supabase';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 
-interface Msg { role: 'user' | 'assistant'; content: string }
+interface PendingAction { kind: string; payload: Record<string, unknown>; summary: string }
+interface Msg { role: 'user' | 'assistant'; content: string; action?: PendingAction | null }
 
 const SUGGESTIONS = [
   '¿Cuánto gastamos este mes y en qué se nos va más?',
@@ -44,7 +45,8 @@ export default function PreguntaleClient({ householdId, profileId }: { household
     const q = question.trim();
     if (!q || loading) return;
     const history = messages.slice(-6);
-    setMessages((m) => [...m, { role: 'user', content: q }]);
+    // Asking something new supersedes any still-open action card.
+    setMessages((m) => [...m.map((msg) => (msg.action ? { ...msg, action: null } : msg)), { role: 'user', content: q }]);
     setInput('');
     setLoading(true);
     try {
@@ -62,12 +64,42 @@ export default function PreguntaleClient({ householdId, profileId }: { household
       const answer = res.ok && data?.answer
         ? data.answer
         : 'Uy, no pude responder eso ahora. Probá de nuevo en un ratito.';
-      setMessages((m) => [...m, { role: 'assistant', content: answer }]);
+      setMessages((m) => [...m, { role: 'assistant', content: answer, action: (res.ok && data?.pending_action) || null }]);
     } catch {
       setMessages((m) => [...m, { role: 'assistant', content: 'Uy, no pude responder eso ahora. Probá de nuevo en un ratito.' }]);
     } finally {
       setLoading(false);
     }
+  }
+
+  // Execute a previewed action after the user taps "Confirmar".
+  async function confirmAction(idx: number, action: PendingAction) {
+    if (loading) return;
+    setMessages((m) => m.map((msg, i) => (i === idx ? { ...msg, action: null } : msg)));
+    setLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setMessages((m) => [...m, { role: 'assistant', content: 'Iniciá sesión de nuevo para confirmar.' }]);
+        return;
+      }
+      const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/ask-morchis`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: action }),
+      });
+      const data = await res.json().catch(() => null);
+      const answer = res.ok && data?.answer ? data.answer : 'Uy, no pude completar esa acción. Probá de nuevo.';
+      setMessages((m) => [...m, { role: 'assistant', content: answer }]);
+    } catch {
+      setMessages((m) => [...m, { role: 'assistant', content: 'Uy, no pude completar esa acción. Probá de nuevo.' }]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function cancelAction(idx: number) {
+    setMessages((m) => [...m.map((msg, i) => (i === idx ? { ...msg, action: null } : msg)), { role: 'assistant', content: 'Listo, no registré nada. 👍' }]);
   }
 
   return (
@@ -104,7 +136,7 @@ export default function PreguntaleClient({ householdId, profileId }: { household
 
         <div className="flex flex-col gap-3 mt-2">
           {messages.map((m, i) => (
-            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
               <div
                 className="max-w-[85%] rounded-3xl px-4 py-3 text-sm leading-snug whitespace-pre-wrap"
                 style={m.role === 'user'
@@ -113,6 +145,29 @@ export default function PreguntaleClient({ householdId, profileId }: { household
               >
                 <Rich text={m.content} />
               </div>
+              {m.role === 'assistant' && m.action && (
+                <div className="mt-2 max-w-[85%] rounded-2xl p-3" style={{ background: '#FFFFFF', border: '1px solid #ECE5DC' }}>
+                  <p className="text-sm font-semibold" style={{ color: '#2D2D2D' }}>{m.action.summary}</p>
+                  <div className="mt-2.5 flex gap-2">
+                    <button
+                      onClick={() => confirmAction(i, m.action!)}
+                      disabled={loading}
+                      className="flex-1 rounded-full py-2 text-sm font-bold text-white"
+                      style={{ background: loading ? '#C4B9AE' : '#7EC8A4' }}
+                    >
+                      Confirmar
+                    </button>
+                    <button
+                      onClick={() => cancelAction(i)}
+                      disabled={loading}
+                      className="rounded-full px-4 py-2 text-sm font-semibold"
+                      style={{ background: '#F2ECE4', color: '#6B6459' }}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
           {loading && (

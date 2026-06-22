@@ -3,6 +3,7 @@ import Anthropic from "npm:@anthropic-ai/sdk";
 import { createClient, SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { iso, MONTHLY, norm, toArs, jwtPayload, shareForExpense, lensFraction, buildPrimer } from "./math.ts";
 import type { Debt, ExpRow, ItemParent } from "./math.ts";
+import { computeProjection } from "../_shared/projection.ts";
 
 // "Preguntale a Morchi" — an agent that can answer ANY question about the
 // household finances. Claude has tools to query the database; every tool runs a
@@ -177,6 +178,43 @@ async function aggregateItems(ctx: Ctx, input: ItemAggInput) {
   return { total_ars: Math.round(total), items_count: withArs.length, group_by: gb, groups, note: withArs.length === 0 ? 'No hay ítems de ticket para esos filtros (los ítems se cargan al escanear un ticket).' : undefined };
 }
 
+// End-of-month projection for the whole household, with optional purchase sim.
+interface ProjInput { purchase_amount?: number; purchase_currency?: string; installments?: number }
+async function projectMonth(ctx: Ctx, input: ProjInput) {
+  const artNow = new Date(Date.now() - 3 * 60 * 60 * 1000); // ARG (UTC-3)
+  const y = artNow.getUTCFullYear(), m = artNow.getUTCMonth();
+  const ms = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+  const dim = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const me = `${y}-${String(m + 1).padStart(2, '0')}-${String(dim).padStart(2, '0')}`;
+  const [{ data: txRows }, { data: ruleRows }] = await Promise.all([
+    ctx.admin.from('transactions').select('type,amount,currency,usd_rate_snapshot,occurred_on').eq('household_id', ctx.hid).gte('occurred_on', ms).lte('occurred_on', me),
+    ctx.admin.from('recurring_rules').select('direction,amount,currency,next_run,active,cadence').eq('household_id', ctx.hid).eq('active', true),
+  ]);
+  const txs = ((txRows ?? []) as { type: string; amount: number; currency: string; usd_rate_snapshot: number | null; occurred_on: string }[])
+    .map(t => ({ type: t.type, amount: toArs(t.amount, t.currency, t.usd_rate_snapshot, ctx.blue), occurred_on: t.occurred_on }));
+  const rules = ((ruleRows ?? []) as { direction: string; amount: number; currency: string; next_run: string | null; active: boolean; cadence: string | null }[])
+    .map(r => ({ direction: r.direction, amount: toArs(r.amount, r.currency, null, ctx.blue), next_run: r.next_run, active: r.active, cadence: r.cadence }));
+  const proj = computeProjection(txs, rules, artNow);
+  let purchase: { amount_ars: number; installments: number | null; monthly_cost_ars: number; projected_end_balance_after_ars: number } | undefined;
+  const amt = Number(input.purchase_amount);
+  if (amt && amt > 0) {
+    const ars = input.purchase_currency === 'USD' ? amt * ctx.blue : amt;
+    const inst = Number(input.installments);
+    const monthly = inst && inst > 1 ? Math.round(ars / inst) : Math.round(ars);
+    purchase = { amount_ars: Math.round(ars), installments: inst > 1 ? inst : null, monthly_cost_ars: monthly, projected_end_balance_after_ars: Math.round(proj.projectedBalance - monthly) };
+  }
+  return {
+    scope: 'todo el hogar',
+    expenses_so_far_ars: Math.round(proj.expensesSoFar),
+    remaining_fixed_ars: Math.round(proj.remainingFixed),
+    remaining_income_ars: Math.round(proj.remainingIncome),
+    projected_end_balance_ars: Math.round(proj.projectedBalance),
+    projected_total_income_ars: Math.round(proj.totalIncome),
+    projected_savings_rate_pct: proj.totalIncome > 0 ? Math.round(proj.projectedBalance / proj.totalIncome * 100) : null,
+    purchase,
+  };
+}
+
 const TOOLS = [
   {
     name: 'aggregate_transactions',
@@ -217,6 +255,54 @@ const TOOLS = [
       required: [],
     },
   },
+  {
+    name: 'project_month',
+    description: 'Proyección de fin de mes del HOGAR: lo gastado hasta hoy, los gastos fijos e ingresos que faltan, y el saldo proyectado a fin de mes al ritmo actual. Opcional: simular una compra (purchase_amount, en cuotas) para ver el impacto. Usala para "¿llegamos a fin de mes?", "¿podemos comprar X?", "¿cuánto nos va a sobrar?".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        purchase_amount: { type: 'number', description: 'monto de una compra hipotética a simular (opcional)' },
+        purchase_currency: { type: 'string', enum: ['ARS', 'USD'], description: 'moneda de la compra (default ARS)' },
+        installments: { type: 'number', description: 'cantidad de cuotas de la compra (opcional)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'record_transaction',
+    description: 'PREVISUALIZA registrar un gasto o ingreso personal de quien escribe (no escribe hasta que el usuario confirme con el botón). Usala cuando pidan "anotá/registrá/cargá un gasto/ingreso".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['expense', 'income'], description: 'gasto (default) o ingreso' },
+        amount: { type: 'number', description: 'monto positivo en la moneda indicada' },
+        currency: { type: 'string', enum: ['ARS', 'USD'], description: 'ARS (default) o USD' },
+        category: { type: 'string', description: 'nombre de la categoría (se resuelve a la existente más parecida; opcional)' },
+        merchant: { type: 'string', description: 'comercio/descripción (opcional)' },
+        date: { type: 'string', description: 'fecha YYYY-MM-DD (default hoy)' },
+      },
+      required: ['amount'],
+    },
+  },
+  {
+    name: 'settle_debt',
+    description: 'PREVISUALIZA marcar como saldada(s) la(s) deuda(s) sin saldar con una persona (no escribe hasta que el usuario confirme).',
+    input_schema: { type: 'object', properties: { counterparty: { type: 'string', description: 'nombre de la persona de la deuda' } }, required: ['counterparty'] },
+  },
+  {
+    name: 'set_category_budget',
+    description: 'PREVISUALIZA fijar el presupuesto (target del sobre) de una categoría de gasto de quien escribe (no escribe hasta confirmar).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category: { type: 'string', description: 'nombre de la categoría de gasto' },
+        amount: { type: 'number', description: 'monto del presupuesto, positivo' },
+        currency: { type: 'string', enum: ['ARS', 'USD'], description: 'ARS (default) o USD' },
+        cadence: { type: 'string', enum: ['monthly', 'weekly'], description: 'mensual (default) o semanal' },
+      },
+      required: ['category', 'amount'],
+    },
+  },
 ];
 
 async function runTool(name: string, input: Record<string, unknown>, ctx: Ctx): Promise<unknown> {
@@ -228,11 +314,114 @@ async function runTool(name: string, input: Record<string, unknown>, ctx: Ctx): 
     case 'get_debts': return await getDebts(ctx);
     case 'get_recurring': return await getRecurring(ctx);
     case 'aggregate_items': return await aggregateItems(ctx, input as ItemAggInput);
+    case 'project_month': return await projectMonth(ctx, input as ProjInput);
     default: return { error: 'herramienta desconocida' };
   }
 }
 
-const SYSTEM = 'Sos Morchi, el asistente financiero de la pareja Lucas y Sofi en la app Morchis (es-AR, tono cercano y motivador). Tenés HERRAMIENTAS para consultar su base de datos financiera real. Para CUALQUIER pregunta sobre montos, gastos, ingresos, comercios, categorías, meses, saldos, presupuestos, metas o deudas, USÁ las herramientas para obtener los números exactos antes de responder. IMPORTANTE: distinguí gastos personales de los del hogar según la pregunta y elegí el lens adecuado en aggregate_transactions (mine/partner/household/everyone). Si la pregunta es ambigua entre "lo mío" y "lo de los dos", aclaralo brevemente en la respuesta o preguntá. Reglas: (1) Nunca inventes ni estimes montos: salen siempre de las herramientas; si no hay datos, decílo. (2) Para fechas usá el dato de "Hoy". (3) Mostrá montos en formato $1.234.567. (4) Sé conciso: 2 a 4 oraciones. No uses tablas markdown ni encabezados; si listás, pocas líneas cortas con guión (-). Para resaltar usá **negrita**. (5) Para consejos, basate en los números que consultaste.';
+// ── write actions ───────────────────────────────────────────────────────────
+// Morchi never writes on its own. A write tool only PREVIEWS: it validates and
+// resolves a PendingAction that the client renders as a confirm card. The DB
+// write happens later, when the client re-calls with `confirm: <action>` and
+// executeAction runs — re-deriving household/owner from the JWT so the
+// service-role client can't be tricked into touching another household.
+const WRITE_TOOLS = new Set(['record_transaction', 'settle_debt', 'set_category_budget']);
+interface PendingAction { kind: string; payload: Record<string, unknown>; summary: string }
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const arsFmt = (n: number) => '$' + Math.round(n).toLocaleString('es-AR');
+
+async function resolveCategory(ctx: Ctx, name: unknown, kind: 'expense' | 'income'): Promise<{ id: string | null; name: string | null }> {
+  const q = (name ?? '').toString().trim();
+  if (!q) return { id: null, name: null };
+  const { data } = await ctx.admin.from('categories').select('id,name').eq('household_id', ctx.hid).eq('kind', kind);
+  const cats = (data ?? []) as { id: string; name: string }[];
+  const n = norm(q);
+  const hit = cats.find(c => norm(c.name) === n) ?? cats.find(c => norm(c.name).includes(n) || n.includes(norm(c.name)));
+  return hit ? { id: hit.id, name: hit.name } : { id: null, name: null };
+}
+
+// Validate + resolve a tool call into a PendingAction (no write). Returns {error} on bad input.
+async function buildAction(ctx: Ctx, kind: string, input: Record<string, unknown>): Promise<PendingAction | { error: string }> {
+  if (kind === 'record_transaction') {
+    const type = input.type === 'income' ? 'income' : 'expense';
+    const amount = Number(input.amount);
+    if (!amount || amount <= 0) return { error: 'El monto tiene que ser un número positivo.' };
+    const currency = input.currency === 'USD' ? 'USD' : 'ARS';
+    const occurred_on = (typeof input.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.date)) ? input.date : todayISO();
+    const cat = await resolveCategory(ctx, input.category, type);
+    const merchant = (input.merchant ?? '').toString().trim() || null;
+    const payload = {
+      household_id: ctx.hid, profile_id: ctx.askerId, type, amount, currency,
+      usd_rate_snapshot: currency === 'USD' ? ctx.blue : null, category_id: cat.id,
+      account_id: null, merchant, occurred_on, scope: 'personal', is_shared: false,
+      is_fixed: false, flag: null, source: 'manual',
+    };
+    const amountTxt = currency === 'USD' ? `US$${amount}` : arsFmt(amount);
+    const summary = `${type === 'income' ? 'Ingreso' : 'Gasto'} de ${amountTxt}${cat.name ? ` en ${cat.name}` : ''}${merchant ? ` (${merchant})` : ''}${occurred_on !== todayISO() ? ` el ${occurred_on}` : ''}`;
+    return { kind, payload, summary };
+  }
+  if (kind === 'settle_debt') {
+    const who = (input.counterparty ?? '').toString().trim();
+    if (!who) return { error: 'Decime con quién es la deuda.' };
+    const { data } = await ctx.admin.from('debts').select('id,counterparty,amount,currency').eq('household_id', ctx.hid).eq('settled', false);
+    const debts = (data ?? []) as { id: string; counterparty: string; amount: number; currency: string }[];
+    const matches = debts.filter(d => norm(d.counterparty).includes(norm(who)) || norm(who).includes(norm(d.counterparty)));
+    if (matches.length === 0) return { error: `No encontré deudas sin saldar con "${who}".` };
+    const total = matches.reduce((s, d) => s + (d.currency === 'USD' ? d.amount * ctx.blue : d.amount), 0);
+    const summary = `Saldar ${matches.length} deuda${matches.length > 1 ? 's' : ''} con ${matches[0].counterparty} (≈ ${arsFmt(total)})`;
+    return { kind, payload: { ids: matches.map(d => d.id) }, summary };
+  }
+  if (kind === 'set_category_budget') {
+    const cat = await resolveCategory(ctx, input.category, 'expense');
+    if (!cat.id) return { error: `No encontré la categoría "${(input.category ?? '').toString()}".` };
+    const amount = Number(input.amount);
+    if (!amount || amount <= 0) return { error: 'El monto tiene que ser un número positivo.' };
+    const currency = input.currency === 'USD' ? 'USD' : 'ARS';
+    const cadence = input.cadence === 'weekly' ? 'weekly' : 'monthly';
+    const amountTxt = currency === 'USD' ? `US$${amount}` : arsFmt(amount);
+    const summary = `Presupuesto ${cadence === 'weekly' ? 'semanal' : 'mensual'} de ${amountTxt} para ${cat.name}`;
+    return { kind, payload: { category_id: cat.id, target_amount: amount, currency, cadence }, summary };
+  }
+  return { error: 'Acción desconocida.' };
+}
+
+// Execute a confirmed action. Re-derives household/owner from ctx (never trusts
+// client-supplied ids for ownership) and re-checks that referenced rows are this
+// household's.
+async function executeAction(ctx: Ctx, action: PendingAction): Promise<string> {
+  if (action.kind === 'record_transaction') {
+    const p = { ...action.payload, household_id: ctx.hid, profile_id: ctx.askerId, scope: 'personal', is_shared: false, source: 'manual' };
+    const { error } = await ctx.admin.from('transactions').insert(p);
+    if (error) throw error;
+    return `Listo, lo anoté: ${action.summary}. ✅`;
+  }
+  if (action.kind === 'settle_debt') {
+    const wanted = (action.payload.ids as string[]) ?? [];
+    const { data } = await ctx.admin.from('debts').select('id').eq('household_id', ctx.hid).eq('settled', false).in('id', wanted);
+    const ids = ((data ?? []) as { id: string }[]).map(d => d.id);
+    if (ids.length === 0) throw new Error('no matching debts');
+    const { error } = await ctx.admin.from('debts').update({ settled: true }).in('id', ids);
+    if (error) throw error;
+    return `Listo, marqué como saldada${ids.length > 1 ? 's' : ''} ${ids.length} deuda${ids.length > 1 ? 's' : ''}. ✅`;
+  }
+  if (action.kind === 'set_category_budget') {
+    const p = action.payload as { category_id: string; target_amount: number; currency: string; cadence: string };
+    const { data: cat } = await ctx.admin.from('categories').select('id').eq('household_id', ctx.hid).eq('id', p.category_id).maybeSingle();
+    if (!cat) throw new Error('category not in household');
+    const { data: existing } = await ctx.admin.from('category_targets').select('id').eq('household_id', ctx.hid).eq('profile_id', ctx.askerId).eq('category_id', p.category_id).maybeSingle();
+    if (existing) {
+      const { error } = await ctx.admin.from('category_targets').update({ target_amount: p.target_amount, currency: p.currency, cadence: p.cadence }).eq('id', (existing as { id: string }).id);
+      if (error) throw error;
+    } else {
+      const { error } = await ctx.admin.from('category_targets').insert({ household_id: ctx.hid, profile_id: ctx.askerId, category_id: p.category_id, target_amount: p.target_amount, currency: p.currency, cadence: p.cadence });
+      if (error) throw error;
+    }
+    return `Listo, ${action.summary.charAt(0).toLowerCase()}${action.summary.slice(1)}. ✅`;
+  }
+  throw new Error('unknown action');
+}
+
+const SYSTEM = 'Sos Morchi, el asistente financiero de la pareja Lucas y Sofi en la app Morchis (es-AR, tono cercano y motivador). Tenés HERRAMIENTAS para consultar su base de datos financiera real. Para CUALQUIER pregunta sobre montos, gastos, ingresos, comercios, categorías, meses, saldos, presupuestos, metas o deudas, USÁ las herramientas para obtener los números exactos antes de responder. IMPORTANTE: distinguí gastos personales de los del hogar según la pregunta y elegí el lens adecuado en aggregate_transactions (mine/partner/household/everyone). Si la pregunta es ambigua entre "lo mío" y "lo de los dos", aclaralo brevemente en la respuesta o preguntá. Reglas: (1) Nunca inventes ni estimes montos: salen siempre de las herramientas; si no hay datos, decílo. (2) Para fechas usá el dato de "Hoy". (3) Mostrá montos en formato $1.234.567. (4) Sé conciso: 2 a 4 oraciones. No uses tablas markdown ni encabezados; si listás, pocas líneas cortas con guión (-). Para resaltar usá **negrita**. (5) Para consejos, basate en los números que consultaste. ACCIONES: además de responder, podés REGISTRAR cosas con record_transaction (anotar un gasto/ingreso), settle_debt (saldar una deuda) y set_category_budget (fijar un presupuesto). Cuando el usuario pida registrar/anotar/cargar/saldar/poner algo, llamá la tool correspondiente (PREVISUALIZA, no escribe), después contale en UNA frase qué vas a hacer y pedile que confirme con el botón de abajo. NUNCA afirmes que ya quedó hecho ni inventes que lo registraste: lo confirma el usuario. Si la tool devuelve un error, explicá brevemente qué falta.';
 
 Deno.serve(async (req: Request) => {
   const cors = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
@@ -261,10 +450,12 @@ Deno.serve(async (req: Request) => {
   }
   if (!hid) return new Response(JSON.stringify({ error: 'No household' }), { status: 400, headers: cors });
 
-  let body: { question?: string; history?: { role: string; content: string }[]; as?: string } = {};
+  let body: { question?: string; history?: { role: string; content: string }[]; as?: string; confirm?: PendingAction } = {};
   try { body = await req.json(); } catch { /* empty */ }
   const question = (body.question ?? '').trim();
-  if (!question) return new Response(JSON.stringify({ error: 'question requerida' }), { status: 400, headers: cors });
+  // A request carries EITHER a question (chat turn) or a confirm (execute a
+  // previously-previewed action). Reject only when both are missing.
+  if (!question && !body.confirm) return new Response(JSON.stringify({ error: 'question requerida' }), { status: 400, headers: cors });
 
   const [{ data: fxRow }, { data: profs }, { data: debtRows }, { data: cats }] = await Promise.all([
     admin.from('fx_rates').select('ars_per_usd').eq('source', 'blue').order('date', { ascending: false }).limit(1).maybeSingle(),
@@ -291,6 +482,17 @@ Deno.serve(async (req: Request) => {
   for (const d of (debtRows ?? []) as Debt[]) { if (!d.transaction_id) continue; (debtByTx[d.transaction_id] ??= []).push(d); }
   const ctx: Ctx = { admin, hid, blue, pm, askerId, partnerId, debtByTx, catNames };
 
+  // Confirm path: the user tapped "Confirmar" on a previewed action → execute it.
+  if (body.confirm) {
+    try {
+      const answer = await executeAction(ctx, body.confirm);
+      return new Response(JSON.stringify({ ok: true, answer }), { headers: cors });
+    } catch (e) {
+      console.error('executeAction failed', e);
+      return new Response(JSON.stringify({ ok: true, answer: 'Uy, no pude completar esa acción. Probá de nuevo en un ratito.' }), { headers: cors });
+    }
+  }
+
   const primer = buildPrimer(ctx);
   const history = (body.history ?? []).slice(-6)
     .filter(h => (h.role === 'user' || h.role === 'assistant') && typeof h.content === 'string' && h.content.trim())
@@ -301,6 +503,7 @@ Deno.serve(async (req: Request) => {
   const messages: any[] = [...history, { role: 'user', content: question }];
 
   let answer = '';
+  let pending: PendingAction | null = null;
   for (let i = 0; i < 8; i++) {
     const resp = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
@@ -320,13 +523,21 @@ Deno.serve(async (req: Request) => {
     const results = [];
     for (const block of resp.content) {
       if (block.type === 'tool_use') {
-        const out = await runTool(block.name, block.input as Record<string, unknown>, ctx);
+        let out: unknown;
+        if (WRITE_TOOLS.has(block.name)) {
+          // Write tools only PREVIEW — they never touch the DB here.
+          const built = await buildAction(ctx, block.name, block.input as Record<string, unknown>);
+          if ('error' in built) { out = built; }
+          else { pending = built; out = { ok: true, preview: built.summary, instruccion: 'Contale al usuario en una frase qué vas a registrar y pedile que confirme con el botón. NO digas que ya quedó hecho.' }; }
+        } else {
+          out = await runTool(block.name, block.input as Record<string, unknown>, ctx);
+        }
         results.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(out) });
       }
     }
     messages.push({ role: 'user', content: results });
   }
-  if (!answer) answer = 'Uy, no pude llegar a una respuesta. Probá reformulando la pregunta.';
+  if (!answer) answer = pending ? `Voy a registrar: ${pending.summary}. Confirmá abajo 👇` : 'Uy, no pude llegar a una respuesta. Probá reformulando la pregunta.';
 
-  return new Response(JSON.stringify({ ok: true, answer }), { headers: cors });
+  return new Response(JSON.stringify({ ok: true, answer, pending_action: pending }), { headers: cors });
 });
