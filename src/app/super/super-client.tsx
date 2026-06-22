@@ -352,9 +352,9 @@ export default function SuperClient({ profile }: { profile: Profile }) {
         const meta = groupMeta(drillGroup);
         const groupTotal = list.reduce((s, it) => s + it.ars, 0);
         return (
-          <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={() => setDrillGroup(null)}>
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={() => setDrillGroup(null)}>
             <div
-              className="w-full rounded-t-3xl p-6 max-h-[78vh] overflow-y-auto"
+              className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 max-h-[78vh] overflow-y-auto"
               style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
               onClick={(e) => e.stopPropagation()}
             >

@@ -22,6 +22,14 @@ export function PullToRefresh({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     function onTouchStart(e: TouchEvent) {
       if (refreshingRef.current) return;
+      // Don't arm inside an open sheet/dialog. Otherwise a downward drag there
+      // (the sheet's drag-to-dismiss grabber, or scrolling its content from the
+      // top) would double as a page refresh.
+      const target = e.target as Element | null;
+      if (target?.closest('[data-slot="sheet-content"], [role="dialog"]')) {
+        startY.current = null;
+        return;
+      }
       // Only arm the gesture when the page is at the top.
       if (window.scrollY <= 0 && e.touches.length === 1) {
         startY.current = e.touches[0].clientY;

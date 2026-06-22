@@ -900,8 +900,8 @@ export default function AnalisisClient({
       </div>
 
       {drillCat && (
-        <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={() => setDrillCat(null)}>
-          <div className="w-full rounded-t-3xl p-6" style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={() => setDrillCat(null)}>
+          <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6" style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
             <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
             <div className="flex items-center gap-2 mb-1">
               <span className="text-2xl">{drillCat.icon}</span>

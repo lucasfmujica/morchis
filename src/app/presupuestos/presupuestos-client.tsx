@@ -167,9 +167,9 @@ function CategoryDetailSheet({
   const curLabel = monthLabel(month);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
       <div
-        className="w-full rounded-t-3xl p-6 max-h-[88vh] overflow-y-auto"
+        className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 max-h-[88vh] overflow-y-auto"
         style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -429,9 +429,9 @@ function NewCategorySheet({ groups, onClose, onCreate }: { groups: EnvelopeCateg
   const [isGroup, setIsGroup] = useState(false);
   const [parentId, setParentId] = useState('');
   return (
-    <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
       <div
-        className="w-full rounded-t-3xl p-6"
+        className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6"
         style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -515,8 +515,8 @@ function NewViewSheet({
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const toggle = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   return (
-    <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
-      <div className="w-full rounded-t-3xl p-6 max-h-[88vh] overflow-y-auto" style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
+      <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 max-h-[88vh] overflow-y-auto" style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
         <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
         <h2 className="text-lg font-black mb-4" style={{ color: '#2D2D2D' }}>Vistas guardadas</h2>
 
@@ -574,8 +574,8 @@ function PrioritiesSheet({
   const [picked, setPicked] = useState<Set<string>>(new Set(selected));
   const toggle = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   return (
-    <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
-      <div className="w-full rounded-t-3xl p-6 max-h-[88vh] overflow-y-auto" style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
+      <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 max-h-[88vh] overflow-y-auto" style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
         <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
         <h2 className="text-lg font-black mb-1" style={{ color: '#2D2D2D' }}>Prioridades del mes</h2>
         <p className="text-sm mb-4" style={{ color: '#6B6459' }}>¿Qué es lo importante este mes? Fijalo arriba para tenerlo a mano.</p>

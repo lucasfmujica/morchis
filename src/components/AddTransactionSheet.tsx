@@ -6,8 +6,10 @@ import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { NumberKeypad } from '@/components/NumberKeypad';
 import { useFx } from '@/hooks/useFx';
+import { useHaptics } from '@/hooks/useHaptics';
+import { useDragToDismiss } from '@/hooks/useDragToDismiss';
 import { createClient } from '@/lib/supabase';
-import { formatARS, formatUSD, usdToArs, arsToUsd, parseMoney, roundMoney, formatTypedAmount } from '@/lib/format';
+import { formatARS, formatUSD, usdToArs, arsToUsd, parseMoney, roundMoney, formatTypedAmount, evalMoneyExpr, hasMoneyOperator, formatExprDisplay } from '@/lib/format';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { todayISO, toLocalISO } from '@/lib/date';
 import { triggerBudgetAlerts } from '@/lib/notifyBudgets';
@@ -86,6 +88,10 @@ export function AddTransactionSheet({
   initialType = 'expense',
 }: AddTransactionSheetProps) {
   const { arsPerUsd, showUSD } = useFx();
+  const haptic = useHaptics();
+  // Drag the grabber down to dismiss (mobile). dragY stays 0 on desktop — the
+  // handle is sm:hidden — so it never fights the centered-dialog transform.
+  const { dragY, dragging, handleProps } = useDragToDismiss(onClose);
   const supabase = createClient();
   const qc = useQueryClient();
   const router = useRouter();
@@ -418,21 +424,43 @@ export function AddTransactionSheet({
     return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
   }
 
+  // `raw` is an arithmetic expression (e.g. "1200+350"); the digit/comma caps
+  // apply to the operand currently being typed — the part after the last
+  // operator — not the whole string.
+  function currentOperand(s: string) {
+    const lastOp = Math.max(s.lastIndexOf('+'), s.lastIndexOf('-'), s.lastIndexOf('*'), s.lastIndexOf('/'));
+    return s.slice(lastOp + 1);
+  }
+
   function handleDigit(d: string) {
+    haptic('tap');
     setRaw((prev) => {
+      const operand = currentOperand(prev);
       if (d === ',') {
-        if (prev.includes(',')) return prev; // only one decimal separator
-        return prev === '' ? '0,' : prev + ',';
+        if (operand.includes(',')) return prev; // only one decimal separator per operand
+        return operand === '' ? prev + '0,' : prev + ',';
       }
       // cap decimals at 2 places
-      if (prev.includes(',') && (prev.split(',')[1]?.length ?? 0) >= 2) return prev;
+      if (operand.includes(',') && (operand.split(',')[1]?.length ?? 0) >= 2) return prev;
       const next = prev + d;
-      if (next.replace(/\D/g, '').length > 12) return prev;
+      if (currentOperand(next).replace(/\D/g, '').length > 12) return prev;
       return next;
     });
   }
 
+  function handleOperator(op: string) {
+    haptic('tap');
+    setRaw((prev) => {
+      if (prev === '') return prev; // no leading operator
+      const last = prev[prev.length - 1];
+      if ('+-*/'.includes(last)) return prev.slice(0, -1) + op; // swap a just-typed operator
+      if (last === ',') return prev.slice(0, -1) + op; // drop a dangling decimal comma
+      return prev + op;
+    });
+  }
+
   function handleBackspace() {
+    haptic('tap');
     setRaw((prev) => prev.slice(0, -1));
   }
 
@@ -461,17 +489,26 @@ export function AddTransactionSheet({
   // The transaction is stored in its native currency (USD stays USD instead of
   // being force-converted to ARS), so USD accounts/income keep correct balances.
   // A transfer's currency is fixed by its origin account.
-  const nativeAmount = parseMoney(raw);
+  // The keypad allows quick math: when an operator is present, `raw` is an
+  // expression we evaluate; otherwise it's a plain typed amount.
+  const isExpr = hasMoneyOperator(raw);
+  const nativeAmount = isExpr ? evalMoneyExpr(raw) : parseMoney(raw);
   const txCurrency: 'ARS' | 'USD' = isTransfer ? transferCurrency : inputUSD ? 'USD' : 'ARS';
   // ARS equivalent, used only for the couple-split math and the ≈ preview.
   const arsAmount = txCurrency === 'USD' ? usdToArs(nativeAmount, arsPerUsd) : nativeAmount;
 
-  // Show exactly what was typed on the keypad (comma visible the instant it's
-  // pressed, trailing zeros preserved) instead of re-deriving from the float.
-  const displayAmount = formatTypedAmount(raw, txCurrency);
+  // No operator: show exactly what was typed (comma visible the instant it's
+  // pressed, trailing zeros preserved). With an operator: show the running
+  // result as the big number and the formula below it.
+  const displayAmount = isExpr
+    ? txCurrency === 'USD'
+      ? formatUSD(nativeAmount)
+      : formatARS(nativeAmount)
+    : formatTypedAmount(raw, txCurrency);
 
-  const secondaryAmount =
-    txCurrency === 'USD'
+  const secondaryAmount = isExpr
+    ? formatExprDisplay(raw)
+    : txCurrency === 'USD'
       ? `≈ ${formatARS(arsAmount)}`
       : `≈ ${formatUSD(arsToUsd(arsAmount, arsPerUsd))}`;
 
@@ -605,7 +642,13 @@ export function AddTransactionSheet({
       toast.error('No se pudo identificar el movimiento. Cerralo y abrilo de nuevo.');
       return;
     }
+    haptic('success');
+    // Close the sheet right away so the add flow feels instant. Every value the
+    // write needs is already captured in this closure, so the insert/update runs
+    // to completion in the background; a toast reports the outcome and the lists
+    // refetch on success (invalidateMoneyQueries). On error nothing was committed.
     setSaving(true);
+    onClose();
     try {
       if (isTransfer) {
         // A transfer is ONE row: money leaves account_id (origin) and arrives at
@@ -837,14 +880,21 @@ export function AddTransactionSheet({
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
       <SheetContent
         side="bottom"
-        className="rounded-t-3xl p-0 overflow-hidden"
-        style={{ background: '#F9F5F0', maxHeight: '95dvh' }}
+        className="rounded-t-3xl sm:rounded-3xl p-0 gap-0 overflow-hidden flex flex-col"
+        style={{
+          background: '#F9F5F0',
+          maxHeight: '95dvh',
+          transform: dragY ? `translateY(${dragY}px)` : undefined,
+          transition: dragging ? 'none' : undefined,
+        }}
       >
-        <div className="overflow-y-auto flex flex-col h-full">
-          {/* drag handle */}
-          <div className="flex justify-center pt-3 pb-2">
-            <div className="w-10 h-1 rounded-full" style={{ background: '#ECE5DC' }} />
-          </div>
+        {/* drag handle (mobile only — on desktop this renders as a centered
+            dialog). Drag it down to dismiss. */}
+        <div className="flex justify-center pt-3 pb-2 sm:hidden shrink-0 touch-none" {...handleProps}>
+          <div className="w-10 h-1 rounded-full" style={{ background: '#ECE5DC' }} />
+        </div>
+        <div className="hidden sm:block pt-5 shrink-0" />
+        <div className="overflow-y-auto flex flex-col flex-1 min-h-0">
 
           {/* Amount display */}
           <div className="text-center px-6 pb-2">
@@ -1003,7 +1053,7 @@ export function AddTransactionSheet({
           )}
 
           {/* Keypad */}
-          <NumberKeypad onDigit={handleDigit} onBackspace={handleBackspace} />
+          <NumberKeypad onDigit={handleDigit} onBackspace={handleBackspace} onOperator={handleOperator} />
 
           {/* Transfer: origin → destination accounts (same currency). */}
           {isTransfer && (
@@ -1175,11 +1225,15 @@ export function AddTransactionSheet({
               style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
             />
 
-            {/* Colour flag */}
-            <div className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl border" style={{ borderColor: '#ECE5DC' }}>
-              <button type="button" onClick={() => setFlag(null)} title="Sin flag" className="w-5 h-5 rounded-full border flex items-center justify-center text-[10px]" style={{ borderColor: flag === null ? '#2D2D2D' : '#ECE5DC', color: '#6B6459' }}>○</button>
+            {/* Colour flag — discs stay small but each gets a ~36px tap target. */}
+            <div className="flex items-center gap-0.5 px-1 rounded-xl border" style={{ borderColor: '#ECE5DC' }}>
+              <button type="button" onClick={() => setFlag(null)} title="Sin flag" aria-label="Sin flag" className="w-9 h-9 rounded-full flex items-center justify-center">
+                <span className="w-5 h-5 rounded-full border flex items-center justify-center text-[10px]" style={{ borderColor: flag === null ? '#2D2D2D' : '#ECE5DC', color: '#6B6459' }}>○</span>
+              </button>
               {FLAG_COLORS.map((f) => (
-                <button key={f.key} type="button" onClick={() => setFlag(f.key)} title={f.label} className="w-5 h-5 rounded-full" style={{ background: f.hex, outline: flag === f.key ? '2px solid #2D2D2D' : 'none', outlineOffset: '1px' }} />
+                <button key={f.key} type="button" onClick={() => setFlag(f.key)} title={f.label} aria-label={f.label} className="w-9 h-9 rounded-full flex items-center justify-center">
+                  <span className="w-5 h-5 rounded-full block" style={{ background: f.hex, outline: flag === f.key ? '2px solid #2D2D2D' : 'none', outlineOffset: '1px' }} />
+                </button>
               ))}
             </div>
           </div>
@@ -1291,22 +1345,33 @@ export function AddTransactionSheet({
             />
           </div>
 
-          {/* Save button */}
-          <div className="px-4 pb-6 mt-4" style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}>
-            {txType === 'expense' && !categoryId && nativeAmount > 0 && (
-              <p className="text-[11px] mb-2 text-center" style={{ color: '#C79A2B' }}>
-                Elegí una categoría para que el gasto entre en un sobre.
-              </p>
-            )}
-            <PrimaryButton
-              onClick={handleSave}
-              disabled={nativeAmount === 0 || transferInvalid || (txType === 'expense' && !categoryId)}
-              loading={saving}
-              className="w-full py-4 text-lg"
-            >
-              {saving ? 'Guardando…' : 'Guardar'}
-            </PrimaryButton>
-          </div>
+          {/* breathing room so the last field clears the sticky save bar */}
+          <div className="h-2 shrink-0" />
+        </div>
+
+        {/* Sticky save bar — always reachable without scrolling to the bottom of
+            a long form. */}
+        <div
+          className="shrink-0 px-4 pt-3"
+          style={{
+            background: '#F9F5F0',
+            borderTop: '1px solid #ECE5DC',
+            paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))',
+          }}
+        >
+          {txType === 'expense' && !categoryId && nativeAmount > 0 && (
+            <p className="text-[11px] mb-2 text-center" style={{ color: '#C79A2B' }}>
+              Elegí una categoría para que el gasto entre en un sobre.
+            </p>
+          )}
+          <PrimaryButton
+            onClick={handleSave}
+            disabled={nativeAmount === 0 || transferInvalid || (txType === 'expense' && !categoryId)}
+            loading={saving}
+            className="w-full py-4 text-lg"
+          >
+            {saving ? 'Guardando…' : 'Guardar'}
+          </PrimaryButton>
         </div>
       </SheetContent>
       <ConfirmDialog

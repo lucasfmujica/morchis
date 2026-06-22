@@ -9,6 +9,8 @@ import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { ReceiptItemsSheet } from '@/components/ReceiptItemsSheet';
 import { BottomNav } from '@/components/BottomNav';
 import { EmptyState } from '@/components/EmptyState';
+import { SwipeAction } from '@/components/SwipeAction';
+import { useHaptics } from '@/hooks/useHaptics';
 import { exportTransactionsToCSV } from '@/lib/csvExport';
 import { formatARS } from '@/lib/format';
 import { FLAG_COLORS, flagHex } from '@/lib/flags';
@@ -66,6 +68,7 @@ function normalizeText(s: string): string {
 export default function MovimientosClient({ profile, partnerProfileId }: MovimientosClientProps) {
   const supabase = createClient();
   const { format, secondary, toggle, showUSD, arsPerUsd } = useFx();
+  const haptic = useHaptics();
   // Normalize a stored amount to ARS so USD and ARS movements aggregate together;
   // format()/secondary() then render it in the active display currency.
   const toArs = useCallback(
@@ -387,6 +390,18 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     qc.invalidateQueries({ queryKey: ['envelope-tx'] });
     qc.invalidateQueries({ queryKey: ['envelope'] });
   };
+  // Single-row delete, fired by the swipe-left gesture. Splits have no ON DELETE
+  // CASCADE, so clear them before the parent row (same order as the sheet's own
+  // delete). Only this row is removed — other cuotas of a plan stay.
+  async function deleteTx(tx: Tx) {
+    if (!window.confirm('¿Borrar este movimiento? No se puede deshacer.')) return;
+    haptic('warning');
+    await supabase.from('splits').delete().eq('transaction_id', tx.id);
+    const { error } = await supabase.from('transactions').delete().eq('id', tx.id);
+    if (error) { toast.error('No se pudo borrar'); return; }
+    toast.success('Movimiento borrado');
+    invalidateMoney();
+  }
   async function bulkUpdate(patch: { category_id?: string; is_fixed?: boolean }, label: string) {
     const ids = [...selected];
     if (ids.length === 0) return;
@@ -669,8 +684,12 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
             </p>
             <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
               {txs.map((tx, i) => (
-                <button
+                <SwipeAction
                   key={tx.id}
+                  onDelete={() => void deleteTx(tx)}
+                  disabled={selectMode || isLocked(tx)}
+                >
+                <button
                   className="w-full flex items-center gap-3 px-4 py-3.5 text-left animate-in fade-in slide-in-from-bottom-2 duration-200"
                   style={{
                     borderTop: i > 0 ? '1px solid #ECE5DC' : 'none',
@@ -765,6 +784,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                     )}
                   </div>
                 </button>
+                </SwipeAction>
               ))}
             </div>
           </div>
@@ -798,8 +818,8 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
 
       {/* Bulk categorize picker */}
       {bulkCatOpen && (
-        <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={() => setBulkCatOpen(false)}>
-          <div className="w-full rounded-t-3xl p-6 max-h-[70vh] overflow-y-auto" style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={() => setBulkCatOpen(false)}>
+          <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 max-h-[70vh] overflow-y-auto" style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
             <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
             <h2 className="text-lg font-black mb-1" style={{ color: '#2D2D2D' }}>Asignar categoría</h2>
             <p className="text-xs mb-4" style={{ color: '#6B6459' }}>A {selected.size} movimiento(s) seleccionados.</p>
@@ -817,8 +837,8 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
 
       {/* Reconcile sheet */}
       {reconcileOpen && selectedAccount && clearedBalance != null && (
-        <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={() => setReconcileOpen(false)}>
-          <div className="w-full rounded-t-3xl p-6" style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={() => setReconcileOpen(false)}>
+          <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6" style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
             <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
             <h2 className="text-lg font-black mb-1" style={{ color: '#2D2D2D' }}>Conciliar {selectedAccount.name}</h2>
             <p className="text-xs mb-4" style={{ color: '#6B6459' }}>

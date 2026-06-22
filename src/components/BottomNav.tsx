@@ -49,6 +49,24 @@ export function BottomNav({ onFab }: BottomNavProps) {
     );
   }
 
+  // Desktop top-nav link (horizontal pill instead of stacked icon+label).
+  function topTab(href: string, label: string, icon: string) {
+    const active = path === href || path.startsWith(href + '/');
+    return (
+      <Link
+        href={href}
+        className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-bold transition-colors"
+        style={{
+          color: active ? '#5BA886' : '#6B6459',
+          background: active ? '#E4F2EA' : 'transparent',
+        }}
+      >
+        <span className="text-base">{icon}</span>
+        <span>{label}</span>
+      </Link>
+    );
+  }
+
   function pick(type: 'expense' | 'income' | 'transfer') {
     setMenuOpen(false);
     onFab(type);
@@ -69,7 +87,7 @@ export function BottomNav({ onFab }: BottomNavProps) {
         <Link
           href="/preguntale"
           aria-label="Preguntale a Morchi"
-          className="fixed z-40 flex items-center justify-center rounded-full shadow-lg"
+          className="fixed z-40 flex items-center justify-center rounded-full shadow-lg md:hidden"
           style={{
             right: 16,
             bottom: 'calc(env(safe-area-inset-bottom) + 76px)',
@@ -87,10 +105,10 @@ export function BottomNav({ onFab }: BottomNavProps) {
         <div className="fixed inset-0 z-40" style={{ background: 'rgba(0,0,0,0.25)' }} onClick={() => setMenuOpen(false)} />
       )}
 
-      {/* Speed-dial actions */}
+      {/* Speed-dial actions (mobile, anchored above the bottom FAB) */}
       {menuOpen && (
         <div
-          className="fixed left-0 right-0 z-40 flex flex-col items-center gap-3"
+          className="fixed left-0 right-0 z-40 flex flex-col items-center gap-3 md:hidden"
           style={{ bottom: 'calc(env(safe-area-inset-bottom) + 88px)' }}
         >
           <button
@@ -119,9 +137,9 @@ export function BottomNav({ onFab }: BottomNavProps) {
 
       {/* "Más" slide-up menu */}
       {moreOpen && (
-        <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={() => setMoreOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={() => setMoreOpen(false)}>
           <div
-            className="w-full rounded-t-3xl p-5 max-h-[80vh] overflow-y-auto"
+            className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-5 max-h-[80vh] overflow-y-auto"
             style={{ background: '#FFFFFF', paddingBottom: 'max(20px, env(safe-area-inset-bottom))' }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -169,8 +187,91 @@ export function BottomNav({ onFab }: BottomNavProps) {
         </div>
       )}
 
+      {/* Desktop top nav — replaces the bottom bar on md+. */}
       <nav
-        className="fixed bottom-0 left-0 right-0 flex items-center z-40"
+        className="hidden md:flex fixed top-0 left-0 right-0 items-center z-40"
+        style={{ background: '#FFFFFF', borderBottom: '1px solid #ECE5DC' }}
+      >
+        <div className="w-full max-w-5xl mx-auto px-6 h-14 flex items-center gap-1">
+          <Link href="/presupuestos" className="text-lg font-black mr-3" style={{ color: '#2D2D2D' }}>
+            Morchis
+          </Link>
+          {topTab('/presupuestos', 'Presupuesto', '💵')}
+          {topTab('/movimientos', 'Movimientos', '📋')}
+          {topTab('/analisis', 'Análisis', '📊')}
+
+          <div className="flex-1" />
+
+          {/* + Agregar with dropdown speed-dial */}
+          <div className="relative">
+            <button
+              onClick={() => setMenuOpen((v) => !v)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-black text-white shadow-sm"
+              style={{ background: '#FF7F6B' }}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+            >
+              <span className="text-base">+</span> Agregar
+            </button>
+            {menuOpen && (
+              <div
+                className="absolute right-0 mt-2 z-50 flex flex-col gap-1.5 p-2 rounded-2xl shadow-lg"
+                style={{ background: '#FFFFFF', border: '1px solid #ECE5DC', minWidth: 200 }}
+              >
+                <button
+                  onClick={() => pick('income')}
+                  className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-bold text-left"
+                  style={{ color: '#2D2D2D' }}
+                >
+                  <span className="text-lg">💰</span> Ingreso
+                </button>
+                <button
+                  onClick={() => pick('expense')}
+                  className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-bold text-left"
+                  style={{ color: '#2D2D2D' }}
+                >
+                  <span className="text-lg">💸</span> Gasto
+                </button>
+                <button
+                  onClick={() => pick('transfer')}
+                  className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-bold text-left"
+                  style={{ color: '#2D2D2D' }}
+                >
+                  <span className="text-lg">🔄</span> Transferencia
+                </button>
+              </div>
+            )}
+          </div>
+
+          <Link
+            href="/preguntale"
+            aria-label="Preguntale a Morchi"
+            className="ml-1 flex items-center justify-center rounded-full w-10 h-10 text-xl"
+            style={{ background: '#E4F2EA' }}
+          >
+            💬
+          </Link>
+
+          <button
+            onClick={() => setMoreOpen(true)}
+            className="ml-1 flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-bold"
+            style={{ color: moreActive ? '#5BA886' : '#6B6459', background: moreActive ? '#E4F2EA' : 'transparent' }}
+            aria-label="Menú"
+            aria-expanded={moreOpen}
+          >
+            <span className="text-base">☰</span> Más
+          </button>
+        </div>
+      </nav>
+
+      {/* Speed-dial dropdown backdrop (desktop) — closes the menu on outside click.
+          z-30 keeps it below the top nav (z-40) so the dropdown (z-50) stays clickable. */}
+      {menuOpen && (
+        <div className="hidden md:block fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />
+      )}
+
+      <nav
+        className="md:hidden fixed bottom-0 left-0 right-0 flex items-center z-40"
         style={{
           background: '#FFFFFF',
           borderTop: '1px solid #ECE5DC',

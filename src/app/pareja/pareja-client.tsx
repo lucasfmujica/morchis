@@ -159,9 +159,9 @@ function SettleUpSheet({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={onClose}>
       <div
-        className="w-full rounded-t-3xl p-6"
+        className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6"
         style={{ background: '#F9F5F0' }}
         onClick={(e) => e.stopPropagation()}
       >

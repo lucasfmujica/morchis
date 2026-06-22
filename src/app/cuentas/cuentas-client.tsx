@@ -127,9 +127,9 @@ function AccountMovementsSheet({
     currency === 'USD' ? formatUSD(amount) : formatARS(amount);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
       <div
-        className="w-full rounded-t-3xl p-6 flex flex-col"
+        className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 flex flex-col"
         style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))', maxHeight: '80vh' }}
         onClick={(e) => e.stopPropagation()}
       >

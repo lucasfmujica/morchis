@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { roundMoney } from '@/lib/format';
+import { roundMoney, evalMoneyExpr, hasMoneyOperator } from '@/lib/format';
 
 // Text input that shows the amount with es-AR thousand separators
 // (e.g. 4.500.000) while storing a number with up to 2 decimals. Avoids
@@ -57,11 +57,16 @@ export function MoneyInput({
   autoFocus?: boolean;
 }) {
   const [text, setText] = useState(() => formatValue(value));
+  // While the field has focus we don't reformat from the outside `value`, so a
+  // half-typed expression like "1200+" isn't clobbered mid-keystroke. The
+  // expression collapses to its result on blur.
+  const [focused, setFocused] = useState(false);
 
   // Keep in sync when the value is changed from outside (reset after submit,
-  // loading an existing row to edit) without clobbering an in-progress decimal.
+  // loading an existing row to edit) without clobbering an in-progress decimal
+  // or expression.
   useEffect(() => {
-    if (esARToNumber(text) !== roundMoney(value)) {
+    if (!focused && esARToNumber(text) !== roundMoney(value)) {
       setText(formatValue(value));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -76,8 +81,24 @@ export function MoneyInput({
       className={className}
       style={style}
       autoFocus={autoFocus}
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        setFocused(false);
+        // Collapse a finished expression ("1200+350") into its formatted result.
+        if (hasMoneyOperator(text)) setText(formatValue(evalMoneyExpr(text)));
+      }}
       onChange={(e) => {
-        const formatted = formatTyping(e.target.value);
+        const next = e.target.value;
+        // Quick math: let the user type + − × ÷ to compute an amount. We keep
+        // the raw operators visible (only stripping clearly invalid chars) and
+        // report the evaluated result upward.
+        if (hasMoneyOperator(next)) {
+          const cleaned = next.replace(/[^\d.,+\-*/×÷]/g, '');
+          setText(cleaned);
+          onChange(evalMoneyExpr(cleaned));
+          return;
+        }
+        const formatted = formatTyping(next);
         setText(formatted);
         onChange(esARToNumber(formatted));
       }}
