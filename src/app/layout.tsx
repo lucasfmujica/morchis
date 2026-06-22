@@ -21,7 +21,13 @@ export const metadata: Metadata = {
     statusBarStyle: 'default',
     title: 'Morchis',
   },
-  icons: { apple: '/apple-touch-icon.png' },
+  icons: {
+    icon: [
+      { url: '/icons/icon.svg', type: 'image/svg+xml' },
+      { url: '/icons/icon-192.png', type: 'image/png', sizes: '192x192' },
+    ],
+    apple: '/apple-touch-icon.png',
+  },
 };
 
 export const viewport: Viewport = {

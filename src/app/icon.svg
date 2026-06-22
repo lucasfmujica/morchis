@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- cream background -->
-  <rect width="512" height="512" rx="80" fill="#F9F5F0"/>
-  <!-- coral heart -->
-  <path d="M256 380 C256 380 140 290 140 210 C140 170 170 145 200 145 C225 145 245 160 256 175 C267 160 287 145 312 145 C342 145 372 170 372 210 C372 290 256 380 256 380Z" fill="#FF7F6B"/>
-  <!-- sage coin/leaf -->
-  <circle cx="320" cy="320" r="60" fill="#7EC8A4"/>
-  <text x="320" y="340" text-anchor="middle" font-size="60" fill="white">$</text>
-</svg>
