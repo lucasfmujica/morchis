@@ -8,6 +8,14 @@ import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 interface PendingAction { kind: string; payload: Record<string, unknown>; summary: string }
 interface Msg { role: 'user' | 'assistant'; content: string; action?: PendingAction | null }
 
+// Minimal shape of the Web Speech API we use for voice dictation.
+interface SpeechRec {
+  lang: string; interimResults: boolean; continuous: boolean;
+  start: () => void; stop: () => void;
+  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onend: (() => void) | null; onerror: (() => void) | null;
+}
+
 const SUGGESTIONS = [
   '¿Cuánto gastamos este mes y en qué se nos va más?',
   '¿Cuánto gastó cada uno este mes?',
@@ -36,10 +44,40 @@ export default function PreguntaleClient({ householdId, profileId }: { household
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
   const scrollRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<SpeechRec | null>(null);
+  const [listening, setListening] = useState(false);
+  const [micSupported, setMicSupported] = useState(false);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, loading]);
+
+  useEffect(() => {
+    const w = window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown };
+    setMicSupported(!!(w.SpeechRecognition || w.webkitSpeechRecognition));
+  }, []);
+
+  // Voice dictation (es-AR): fills the input as you speak; tap again to stop.
+  function toggleMic() {
+    if (listening) { recognitionRef.current?.stop(); return; }
+    const w = window as unknown as { SpeechRecognition?: new () => SpeechRec; webkitSpeechRecognition?: new () => SpeechRec };
+    const SR = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    if (!SR) return;
+    const rec = new SR();
+    rec.lang = 'es-AR';
+    rec.interimResults = true;
+    rec.continuous = false;
+    rec.onresult = (e) => {
+      let t = '';
+      for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
+      setInput(t);
+    };
+    rec.onend = () => setListening(false);
+    rec.onerror = () => setListening(false);
+    recognitionRef.current = rec;
+    setListening(true);
+    rec.start();
+  }
 
   async function ask(question: string) {
     const q = question.trim();
@@ -189,10 +227,23 @@ export default function PreguntaleClient({ householdId, profileId }: { household
           onSubmit={(e) => { e.preventDefault(); ask(input); }}
           className="flex items-center gap-2"
         >
+          {micSupported && (
+            <button
+              type="button"
+              onClick={toggleMic}
+              aria-label={listening ? 'Detener dictado' : 'Dictar por voz'}
+              className="w-11 h-11 rounded-full text-lg flex items-center justify-center shrink-0"
+              style={listening
+                ? { background: '#E0584F', color: '#FFFFFF', border: '1px solid #E0584F' }
+                : { background: '#FFFFFF', color: '#6B6459', border: '1px solid #ECE5DC' }}
+            >
+              🎤
+            </button>
+          )}
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Escribí tu pregunta…"
+            placeholder={listening ? 'Escuchando…' : 'Escribí tu pregunta…'}
             enterKeyHint="send"
             className="flex-1 rounded-full px-4 py-3 text-sm outline-none"
             style={{ background: '#FFFFFF', border: '1px solid #ECE5DC', color: '#2D2D2D' }}
