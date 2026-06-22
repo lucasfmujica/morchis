@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useFx } from '@/hooks/useFx';
 import { useEnvelope, type EnvelopeCategory, type EnvelopeDetailTx, type UseEnvelopeResult, type TargetInfo, type AutoAssignStrategy } from '@/hooks/useEnvelope';
+import { useCoupleBalance } from '@/hooks/useCouple';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { MoneyInput } from '@/components/MoneyInput';
@@ -781,6 +782,38 @@ function SpotlightView({
         </div>
       </section>
 
+      {/* Compromisos futuros — cuotas y cargos ya agendados para meses próximos */}
+      {env.futureCommitmentsByMonth.length > 0 && (
+        <section>
+          <p className="text-xs font-bold uppercase tracking-wide mb-2 px-1" style={{ color: '#6B6459' }}>Compromisos futuros</p>
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+            <p className="text-3xl font-black" style={{ color: '#2D2D2D', fontVariantNumeric: 'tabular-nums' }}>{format(env.futureCommitmentsTotal)}</p>
+            <p className="text-[11px] mb-3" style={{ color: '#6B6459' }}>
+              Tu parte de cuotas y gastos fijos ya agendados para meses que vienen. No te bajan este mes, pero ya están prometidos.
+            </p>
+            <div className="flex flex-col">
+              {env.futureCommitmentsByMonth.map((m, i) => {
+                const covered = m.assigned >= m.amountArs;
+                return (
+                  <button key={m.month} onClick={() => onGotoMonth(m.month)} className="flex items-center justify-between gap-3 py-2.5 text-left" style={{ borderTop: i > 0 ? '1px solid #F1ECE4' : 'none' }}>
+                    <div className="min-w-0">
+                      <span className="text-sm font-semibold" style={{ color: '#2D2D2D' }}>{monthLabel(m.month)}</span>
+                      <span className="text-[11px] ml-2" style={{ color: '#A89B8C' }}>{m.count} {m.count === 1 ? 'movimiento' : 'movimientos'}</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={covered ? { background: '#E4F2EA', color: '#5BA886' } : { background: '#FBF0D6', color: '#C79A2B' }}>
+                        {covered ? 'Cubierto' : 'A financiar'}
+                      </span>
+                      <span className="text-sm font-black tabular-nums" style={{ color: '#2D2D2D' }}>{format(m.amountArs)} ›</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Prioritized alerts */}
       {alerts.length > 0 && (
         <section>
@@ -860,6 +893,14 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   const editable = view === 'mine';
 
   const env = useEnvelope(profile.household_id, targetProfileId, month);
+
+  // What the partner owes me (net > 0). When I front a shared expense my cash
+  // drops by the whole bill but my envelope only by my share, so this receivable
+  // sits invisibly inside "Para asignar" until I'm paid back — surfacing it here
+  // explains why the number looks lower than my cash suggests. From my own
+  // perspective only (the couple balance is computed as mine), so the partner-view.
+  const { net: coupleNet } = useCoupleBalance(profile.household_id, profile.id, partner?.id);
+  const receivable = editable && coupleNet > 0 ? Math.round(coupleNet) : 0;
 
   const paymentCatOwner = useMemo(() => {
     const m = new Map<string, string | null>();
@@ -1176,6 +1217,14 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
         <p className="text-[11px] mt-0.5" style={{ color: '#A89B8C' }}>
           Solo {editable ? 'tus' : 'sus'} cuentas on-budget · asignado este mes {format(env.assignedTotal)}
         </p>
+        {receivable > 0 && (
+          <div className="mt-2 flex items-center gap-2 rounded-2xl px-3 py-2" style={{ background: '#FFFFFF' }}>
+            <span className="text-base">💸</span>
+            <p className="text-[11px] leading-snug flex-1" style={{ color: '#6B6459' }}>
+              <b style={{ color: '#5BA886' }}>{partner?.nickname || 'Tu pareja'} te debe {format(receivable)}</b> — plata que fronteaste. Te baja “Para asignar” hasta que te la devuelva.
+            </p>
+          </div>
+        )}
         {editable && overspentCount >= 4 && (
           <p className="text-[11px] mt-2 leading-snug" style={{ color: '#6B6459' }}>
             Empezaste a presupuestar a mitad de mes. Tocá <b>Cubrir lo ya gastado</b> para asignar

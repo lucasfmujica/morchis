@@ -433,7 +433,7 @@ export default function ParejaClient({
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('amount, type, currency, scope, profile_id, category_id, is_shared, categories(name, icon)')
+        .select('amount, type, currency, scope, profile_id, category_id, is_shared, categories(name, icon), splits(payer_profile_id, ower_profile_id, amount)')
         .eq('household_id', profile.household_id)
         .gte('occurred_on', monthStart)
         .order('occurred_on', { ascending: false });
@@ -453,15 +453,23 @@ export default function ParejaClient({
   const personalExpenses = expenses.filter((t) => t.scope === 'personal').reduce((s, t) => s + toArs(t.amount, t.currency), 0);
   const sharedExpenses = expenses.filter((t) => t.is_shared).reduce((s, t) => s + toArs(t.amount, t.currency), 0);
 
-  // Category breakdown for shared expenses
-  const sharedByCategory: Record<string, { name: string; icon: string; amount: number }> = {};
+  // Category breakdown for shared expenses. `amount` is the full combined spend;
+  // `owedToMe`/`iOwe` come from the split rows (ARS) so each category shows who's
+  // carrying whose share THIS month — net > 0 means the partner owes me there.
+  type SplitRow = { payer_profile_id: string; ower_profile_id: string; amount: number };
+  const sharedByCategory: Record<string, { name: string; icon: string; amount: number; owedToMe: number; iOwe: number }> = {};
   for (const t of expenses.filter((t) => t.is_shared)) {
     const cat = (t as unknown as { categories: { name: string; icon: string } | null }).categories;
     const key = t.category_id ?? 'sin-categoria';
     if (!sharedByCategory[key]) {
-      sharedByCategory[key] = { name: cat?.name ?? 'Sin categoría', icon: cat?.icon ?? '🏷️', amount: 0 };
+      sharedByCategory[key] = { name: cat?.name ?? 'Sin categoría', icon: cat?.icon ?? '🏷️', amount: 0, owedToMe: 0, iOwe: 0 };
     }
     sharedByCategory[key].amount += toArs(t.amount, t.currency);
+    const splits = ((t as unknown as { splits: SplitRow[] | null }).splits) ?? [];
+    for (const s of splits) {
+      if (s.payer_profile_id === profile.id && s.ower_profile_id === partner?.id) sharedByCategory[key].owedToMe += s.amount;
+      else if (partner && s.payer_profile_id === partner.id && s.ower_profile_id === profile.id) sharedByCategory[key].iOwe += s.amount;
+    }
   }
   const sharedCats = Object.values(sharedByCategory).sort((a, b) => b.amount - a.amount);
 
@@ -654,6 +662,8 @@ export default function ParejaClient({
           <div className="flex flex-col gap-2">
             {sharedCats.map((cat) => {
               const pct = sharedExpenses > 0 ? cat.amount / sharedExpenses : 0;
+              // Net of this month's split rows for the category: who's owed what.
+              const net = Math.round(cat.owedToMe - cat.iOwe);
               return (
                 <div key={cat.name}>
                   <div className="flex items-center justify-between mb-1">
@@ -669,6 +679,13 @@ export default function ParejaClient({
                       style={{ background: '#7EC8A4', width: `${Math.min(pct * 100, 100)}%` }}
                     />
                   </div>
+                  {partner && Math.abs(net) >= 1 && (
+                    <p className="text-[11px] mt-1" style={{ color: net > 0 ? '#5BA886' : '#E5604C' }}>
+                      {net > 0
+                        ? `${partner.name} te debe ${f(net)} acá`
+                        : `Le debés ${f(-net)} a ${partner.name} acá`}
+                    </p>
+                  )}
                 </div>
               );
             })}

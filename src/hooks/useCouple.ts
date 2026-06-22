@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
-import { todayISO } from '@/lib/date';
+import { todayISO, toLocalISO } from '@/lib/date';
 import { toast } from 'sonner';
 
 export interface CoupleBalance {
@@ -28,13 +28,23 @@ export function useCoupleBalance(
     queryFn: async () => {
       if (!partnerProfileId) return { net: 0, iOwedToMe: 0, iOwePartner: 0 };
 
-      // All unsettled splits for this household
+      // Only count splits whose charge has already come due — up to the end of
+      // the current month. A purchase in cuotas creates one transaction (and one
+      // split) per month, so a future cuota must NOT inflate today's balance; it
+      // joins the debt in the month it's actually charged. The split has no date
+      // of its own, so we filter on the linked transaction's occurred_on via an
+      // inner join.
+      const now = new Date();
+      const monthEnd = toLocalISO(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+
+      // All unsettled splits for this household whose cuota is due by month end.
       const { data: splits, error: splitsErr } = await supabase
         .from('splits')
-        .select('payer_profile_id, ower_profile_id, amount, settled')
+        .select('payer_profile_id, ower_profile_id, amount, settled, transactions!inner(occurred_on)')
         .in('payer_profile_id', [myProfileId, partnerProfileId])
         .in('ower_profile_id', [myProfileId, partnerProfileId])
-        .eq('settled', false);
+        .eq('settled', false)
+        .lte('transactions.occurred_on', monthEnd);
 
       if (splitsErr) throw splitsErr;
 

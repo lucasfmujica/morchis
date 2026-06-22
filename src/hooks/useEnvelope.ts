@@ -77,6 +77,10 @@ export interface UseEnvelopeResult {
   targetInfoByCategory: Map<string, TargetInfo>;
   summary: EnvelopeSummary;
   assignedFutureByMonth: { month: string; assigned: number }[]; // months after the current real month
+  // Expenses already booked into future months (later cuotas, future fixed charges),
+  // the viewer's share, grouped by month — with that month's assignment for coverage.
+  futureCommitmentsByMonth: { month: string; amountArs: number; count: number; assigned: number }[];
+  futureCommitmentsTotal: number; // Σ of the above (ARS)
   cash: number; // on-budget cash now (ARS) for the viewed person
   ageOfMoney: number | null; // Age of Money in days (FIFO), null if not enough data
   assignedTotal: number; // Σ assigned this month (ARS)
@@ -127,6 +131,12 @@ export function useEnvelope(
   // Load tx at least through today (so cash-now is right when viewing a past
   // month) and through the viewed month (so future-month carryover works).
   const asOfRows = monthEnd > today ? monthEnd : today;
+  // "Compromisos futuros": expenses already on the books but dated in months
+  // AFTER the current real one (the later cuotas of an installment plan, future
+  // fixed charges). They don't touch this month, but they're money you've
+  // effectively promised — the first day of next month is the cutoff.
+  const currentRealMonth = monthKey();
+  const futureStart = `${shiftMonth(currentRealMonth, 1)}-01`;
 
   // Distinct key (not the shared ['categories']) so the budget's richer select
   // — which needs parent_id/is_goal/is_group for groups & rings — isn't clobbered
@@ -204,9 +214,26 @@ export function useEnvelope(
     },
   });
 
+  // Future-dated expenses (cuotas yet to fall due, future fixed charges) for the
+  // "Compromisos futuros" panel. Not loaded by `txQ` (capped at the viewed month)
+  // and intentionally separate so it never feeds the current envelope math.
+  const futureTxQ = useQuery<EnvelopeTx[]>({
+    queryKey: ['envelope-future-tx', householdId, futureStart],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('transactions')
+        .select(`${BUDGET_EXPENSE_SELECT}, id, type`)
+        .eq('household_id', householdId)
+        .eq('type', 'expense')
+        .gte('occurred_on', futureStart);
+      return (data ?? []) as EnvelopeTx[];
+    },
+  });
+
   const categories = categoriesQ.data ?? [];
   const accounts = accountsQ.data ?? [];
   const tx = txQ.data ?? [];
+  const futureTx = futureTxQ.data ?? [];
   const assignments = assignmentsQ.data ?? [];
   const debts = debtsQ.data ?? [];
   const targets = targetsQ.data ?? [];
@@ -305,8 +332,7 @@ export function useEnvelope(
   const spent = rows.reduce((s, r) => s + Math.max(0, r.activity), 0);
   const summary: EnvelopeSummary = { totalTargets, underfunded, assigned: assignedTotal, spent };
 
-  // Assigned in months after the current real month.
-  const currentRealMonth = monthKey();
+  // Assigned in months after the current real month (`currentRealMonth` set up top).
   const futureMap = new Map<string, number>();
   for (const a of assignments) {
     if (a.month > currentRealMonth) futureMap.set(a.month, (futureMap.get(a.month) ?? 0) + toArs(a.assigned, a.currency, arsPerUsd));
@@ -314,6 +340,30 @@ export function useEnvelope(
   const assignedFutureByMonth = [...futureMap.entries()]
     .map(([m, assigned]) => ({ month: m, assigned }))
     .sort((a, b) => a.month.localeCompare(b.month));
+
+  // Compromisos futuros: the viewer's share of expenses already booked into
+  // future months (later cuotas, future fixed charges), grouped by month. Money
+  // that's effectively promised but hasn't hit a budget yet. Settled against the
+  // month's assignment so a future-funded cuota shows as already covered.
+  const commitMap = new Map<string, { amountArs: number; count: number }>();
+  for (const t of futureTx) {
+    const share = expenseShareArs(t, targetProfileId, arsPerUsd);
+    if (share <= 0) continue;
+    const m = t.occurred_on.slice(0, 7);
+    const cur = commitMap.get(m) ?? { amountArs: 0, count: 0 };
+    cur.amountArs += share;
+    cur.count += 1;
+    commitMap.set(m, cur);
+  }
+  const futureCommitmentsByMonth = [...commitMap.entries()]
+    .map(([month, v]) => ({
+      month,
+      amountArs: Math.round(v.amountArs),
+      count: v.count,
+      assigned: Math.round(futureMap.get(month) ?? 0),
+    }))
+    .sort((a, b) => a.month.localeCompare(b.month));
+  const futureCommitmentsTotal = futureCommitmentsByMonth.reduce((s, m) => s + m.amountArs, 0);
 
   const transactionsForCategory = (categoryId: string): EnvelopeDetailTx[] =>
     tx
@@ -374,6 +424,8 @@ export function useEnvelope(
     targetInfoByCategory,
     summary,
     assignedFutureByMonth,
+    futureCommitmentsByMonth,
+    futureCommitmentsTotal,
     cash,
     ageOfMoney,
     assignedTotal,
