@@ -18,6 +18,7 @@ const MENU = [
   { href: '/reglas', icon: '📅', label: 'Fijos' },
   { href: '/deudas', icon: '🤝', label: 'Deudas' },
   { href: '/pareja', icon: '👫', label: 'Pareja' },
+  { href: '/super', icon: '🛒', label: 'Súper' },
   { href: '/ticket', icon: '🧾', label: 'Escanear ticket' },
   { href: '/extractos', icon: '💳', label: 'Extractos' },
   { href: '/simulador', icon: '🔮', label: 'Simulador' },

@@ -9,7 +9,7 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, content-type",
 };
 
-const GROUPS = ["frutas y verduras", "carnes y fiambres", "lácteos y huevos", "almacén", "panadería", "bebidas", "snacks", "limpieza", "cuidado personal", "hogar", "mascotas", "otros"];
+const GROUPS = ["frutas y verduras", "carnes y fiambres", "lácteos y huevos", "almacén", "panadería", "agua", "bebidas", "snacks", "limpieza", "cuidado personal", "hogar", "mascotas", "otros"];
 const CURRENCIES = ["ARS", "USD"];
 
 interface ReceiptItem {
@@ -55,7 +55,8 @@ Devolvé SIEMPRE este JSON:
             · lácteos y huevos = leche, quesos, yogur, manteca, crema, dulce de leche y huevos.
             · almacén = secos y de despensa: arroz, fideos, harina, aceite, azúcar, sal, conservas, legumbres, salsas, condimentos, café, té, yerba, untables (hummus, pasta de maní) y mermeladas.
             · panadería = pan, facturas, figacitas, tortillas, wraps y productos de panadería.
-            · bebidas = SOLO bebidas para tomar: agua, aguas saborizadas, jugos, gaseosas y bebidas alcohólicas (cerveza, vino, etc.). La leche va a "lácteos y huevos" y el café/té/yerba a "almacén".
+            · agua = SOLO agua de tomar: agua mineral/de mesa, con o sin gas (incluí las aguas saborizadas). NO incluye gaseosas, jugos ni alcohol.
+            · bebidas = el resto de las bebidas para tomar: jugos, gaseosas y bebidas alcohólicas (cerveza, vino, etc.). El agua va a "agua", la leche a "lácteos y huevos" y el café/té/yerba a "almacén".
             · snacks = golosinas, papas fritas, chocolates, galletitas dulces, helados y antojos.
             · limpieza = detergente, lavandina, esponjas, papel de cocina/higiénico y artículos de limpieza del hogar.
             · cuidado personal = shampoo, jabón, pasta dental, desodorante e higiene personal.
