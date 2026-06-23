@@ -12,6 +12,7 @@ import { MoneyInput } from '@/components/MoneyInput';
 import { useDragToDismiss } from '@/hooks/useDragToDismiss';
 import { monthKey } from '@/lib/date';
 import { toast } from 'sonner';
+import Link from 'next/link';
 
 interface Profile {
   id: string;
@@ -915,19 +916,14 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
 
   const env = useEnvelope(profile.household_id, targetProfileId, month);
 
-  // The couple balance, surfaced from BOTH sides so each person treats that money
-  // right. net > 0 = the partner owes me (receivable): when I front a shared
-  // expense my cash drops by the whole bill but my envelope only by my share, so
-  // it sits invisibly inside "Para asignar" until I'm paid back — the chip explains
-  // why the number looks lower than my cash suggests, and that it IS coming back.
-  // net < 0 = I owe the partner (payable): their share of a gasto they fronted hit
-  // my envelope but never my cash, so that money is still sitting in my account and
-  // INFLATES "Para asignar" — the chip warns me to set it aside, not budget it.
-  // From my own perspective only (the couple balance is computed as mine), so it's
-  // gated to my view.
+  // Couple balance from my perspective (net > 0 = the partner owes me, net < 0 =
+  // I owe the partner). Surfaced as its own "Deuda con la pareja" row in the
+  // category list (both directions) so each person treats that money right: the
+  // one who owes doesn't budget it, the one who's owed knows it's coming. The
+  // receivable case also depresses "Para asignar" (I fronted cash I'll get back),
+  // which the hero chip still explains. Gated to my view since the balance is mine.
   const { net: coupleNet } = useCoupleBalance(profile.household_id, profile.id, partner?.id);
   const receivable = editable && coupleNet > 0 ? Math.round(coupleNet) : 0;
-  const payable = editable && coupleNet < 0 ? Math.round(-coupleNet) : 0;
 
   const paymentCatOwner = useMemo(() => {
     const m = new Map<string, string | null>();
@@ -1214,6 +1210,22 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
 
   const detailRow = detailCat ? env.rowByCategory.get(detailCat.id) : undefined;
 
+  // "Deuda con la pareja" — a synthetic category row at the top of the list that
+  // shows the couple balance both ways. net > 0 = the partner owes me (count on
+  // it), net < 0 = I owe (set it aside, don't budget it). Tapping it opens /pareja
+  // for the full per-category breakdown. Only in my view and when there's a partner.
+  const coupleDebt = editable && partner
+    ? (() => {
+        const net = Math.round(coupleNet);
+        const partnerName = partner.nickname || 'tu pareja';
+        if (Math.abs(net) < 1)
+          return { label: 'Están a mano 🤝', color: '#1F8A68', pillBg: '#DDF0E8', pillFg: '#1F8A68', amount: format(0) };
+        if (net > 0)
+          return { label: `${partnerName} te debe · contá con esa plata`, color: '#1F8A68', pillBg: '#1F8A68', pillFg: '#FFFFFF', amount: `+${format(net)}` };
+        return { label: `Le debés a ${partnerName} · apartala, no la presupuestes`, color: '#E25749', pillBg: '#FFE5E0', pillFg: '#E25749', amount: format(net) };
+      })()
+    : null;
+
   return (
     <div className="min-h-screen pb-24" style={{ background: '#F1F5F3' }}>
       <header className="px-5 pt-14 pb-3">
@@ -1279,15 +1291,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
           <div className="mt-3 flex items-center gap-2 rounded-2xl px-3 py-2" style={{ background: '#DDF0E8' }}>
             <span className="text-base">💸</span>
             <p className="text-[11px] leading-snug flex-1" style={{ color: '#5B6660' }}>
-              <b style={{ color: '#1F8A68' }}>{partner?.nickname || 'Tu pareja'} te debe {format(receivable)}</b> — plata que fronteaste. Te baja “Para asignar” hasta que te la devuelva. Contá con que vuelve. ✓
-            </p>
-          </div>
-        )}
-        {payable > 0 && (
-          <div className="mt-3 flex items-center gap-2 rounded-2xl px-3 py-2" style={{ background: '#FFE5E0' }}>
-            <span className="text-base">⚠️</span>
-            <p className="text-[11px] leading-snug flex-1" style={{ color: '#5B6660' }}>
-              <b style={{ color: '#E25749' }}>Le debés {format(payable)} a {partner?.nickname || 'tu pareja'}</b> — gastos que fronteó. Esa plata todavía está en tus cuentas y te <b>infla</b> “Para asignar”. Apartala para saldar, no la presupuestes.
+              <b style={{ color: '#1F8A68' }}>{partner?.nickname || 'Tu pareja'} te debe {format(receivable)}</b> — plata que fronteaste. Te baja “Para asignar” hasta que te la devuelva.
             </p>
           </div>
         )}
@@ -1402,6 +1406,28 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
       </div>
 
       <div className="px-4 flex flex-col gap-4">
+        {/* Couple debt as its own category-style row, above the real categories. */}
+        {coupleDebt && (
+          <div>
+            <div className="flex items-center gap-2 px-3 mb-1.5">
+              <p className="flex-1 text-left text-xs font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>🤝 Pareja</p>
+            </div>
+            <Link href="/pareja" className="block rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+              <div className="px-4 py-3 transition-colors hover:bg-[#F4F8F6] active:bg-[#EEF3F1]">
+                <div className="flex items-center gap-2">
+                  <span className="shrink-0 text-lg">🤝</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold truncate" style={{ color: '#18211D' }}>Deuda con la pareja</p>
+                    <p className="text-[10px] font-semibold" style={{ color: coupleDebt.color }}>{coupleDebt.label}</p>
+                  </div>
+                  <span className="shrink-0 inline-block px-2.5 py-1 rounded-full text-sm font-black tabular-nums" style={{ background: coupleDebt.pillBg, color: coupleDebt.pillFg }}>
+                    {coupleDebt.amount}
+                  </span>
+                </div>
+              </div>
+            </Link>
+          </div>
+        )}
         {env.isLoading ? (
           <div className="rounded-3xl p-8 text-center text-sm" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', color: '#5B6660' }}>Cargando…</div>
         ) : (
