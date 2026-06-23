@@ -13,6 +13,7 @@ import { SwipeAction } from '@/components/SwipeAction';
 import { useHaptics } from '@/hooks/useHaptics';
 import { exportTransactionsToCSV } from '@/lib/csvExport';
 import { formatARS } from '@/lib/format';
+import { ChartTooltip } from '@/components/ChartTooltip';
 import { FLAG_COLORS, flagHex } from '@/lib/flags';
 import { todayISO, weekRange, shortDM } from '@/lib/date';
 import {
@@ -506,7 +507,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
               <BarChart data={chartData} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
                 <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#5B6660' }} />
                 <YAxis tickFormatter={(v) => formatARS(v)} tick={{ fontSize: 9, fill: '#5B6660' }} width={70} />
-                <Tooltip formatter={(v) => formatARS(Number(v))} />
+                <Tooltip content={<ChartTooltip formatter={formatARS} />} cursor={{ fill: 'rgba(47,163,124,0.06)' }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Bar dataKey="Este mes" fill="#2FA37C" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="Mes anterior" fill="#5B6660" radius={[4, 4, 0, 0]} />
@@ -524,7 +525,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full px-4 py-2.5 rounded-2xl text-sm border bg-white outline-none"
-          style={{ borderColor: '#E5EBE8', color: '#18211D', boxShadow: 'var(--shadow-soft)' }}
+          style={{ borderColor: '#E5EBE8', color: '#18211D' }}
         />
         <div className="flex gap-2 overflow-x-auto no-scrollbar">
           {(['all', 'personal', 'household'] as const).map((s) => (

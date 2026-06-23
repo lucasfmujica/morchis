@@ -115,6 +115,18 @@
   ::selection {
     background: color-mix(in oklab, var(--primary) 22%, transparent);
   }
+  /* Premium focus state for the app's many inline-styled inputs. The ring is a
+     box-shadow (no inline boxShadow on these fields to override), so it shows
+     everywhere without editing each screen; the border tints toward emerald. */
+  input, select, textarea {
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  }
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 22%, transparent);
+    border-color: var(--primary);
+  }
 }
 
 .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -140,4 +152,44 @@
     background: color-mix(in oklab, var(--muted-foreground) 45%, transparent);
     background-clip: padding-box;
   }
+}
+
+/* Toasts (Sonner) — match the card system: rounded, lifted, hairline. */
+.cn-toast {
+  border-radius: 1rem !important;
+  box-shadow: var(--shadow-pop) !important;
+  border: 1px solid var(--border) !important;
+  padding: 14px 16px !important;
+  font-weight: 700;
+}
+
+/* Skeleton shimmer — a soft highlight sweeping across the placeholder. */
+@keyframes skeleton-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+.skeleton {
+  background-color: #E5EBE8;
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, #FFFFFF 65%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+/* Respect users who prefer reduced motion: kill entrance/shimmer/press effects. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .skeleton { animation: none !important; }
 }

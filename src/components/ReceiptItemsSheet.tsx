@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { useDragToDismiss } from '@/hooks/useDragToDismiss';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { createClient } from '@/lib/supabase';
@@ -58,6 +59,7 @@ export function ReceiptItemsSheet({
 }: ReceiptItemsSheetProps) {
   const supabase = createClient();
   const qc = useQueryClient();
+  const { dragY, dragging, handleProps } = useDragToDismiss(onClose);
   // `draft` holds the working copy while editing; read mode renders straight off
   // the fetched rows (deriving instead of mirroring keeps state in one place).
   const [draft, setDraft] = useState<EditItem[]>([]);
@@ -230,11 +232,11 @@ export function ReceiptItemsSheet({
       <SheetContent
         side="bottom"
         className="rounded-t-3xl p-0 overflow-hidden"
-        style={{ background: '#F1F5F3', maxHeight: '92dvh' }}
+        style={{ background: '#F1F5F3', maxHeight: '92dvh', transform: dragY ? `translateY(${dragY}px)` : undefined, transition: dragging ? 'none' : undefined }}
       >
         <div className="overflow-y-auto flex flex-col h-full">
-          {/* drag handle */}
-          <div className="flex justify-center pt-3 pb-2">
+          {/* drag handle — drag down to dismiss */}
+          <div className="flex justify-center pt-3 pb-2 touch-none" {...handleProps}>
             <div className="w-10 h-1 rounded-full" style={{ background: '#E5EBE8' }} />
           </div>
 

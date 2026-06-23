@@ -9,6 +9,7 @@ import { useCoupleBalance } from '@/hooks/useCouple';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { MoneyInput } from '@/components/MoneyInput';
+import { useDragToDismiss } from '@/hooks/useDragToDismiss';
 import { monthKey } from '@/lib/date';
 
 interface Profile {
@@ -166,15 +167,18 @@ function CategoryDetailSheet({
   const carryover = row.available - row.assigned + row.activity;
   const prevLabel = monthLabel(shiftMonth(month, -1));
   const curLabel = monthLabel(month);
+  const { dragY, dragging, handleProps } = useDragToDismiss(onClose);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(20,28,24,0.45)' }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center animate-in fade-in duration-200" style={{ background: 'rgba(20,28,24,0.45)' }} onClick={onClose}>
       <div
-        className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 max-h-[88vh] overflow-y-auto"
-        style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
+        className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 max-h-[88vh] overflow-y-auto animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
+        style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-pop)', paddingBottom: 'max(24px, env(safe-area-inset-bottom))', transform: dragY ? `translateY(${dragY}px)` : undefined, transition: dragging ? 'none' : undefined }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#E5EBE8' }} />
+        <div className="flex justify-center -mt-2 pb-3 mb-2 touch-none" {...handleProps}>
+          <div className="w-10 h-1 rounded-full" style={{ background: '#E5EBE8' }} />
+        </div>
         <div className="flex items-center gap-2 mb-4">
           <span className="text-2xl">{category.icon}</span>
           <h2 className="text-lg font-black flex-1 min-w-0 truncate" style={{ color: '#18211D' }}>{category.name}</h2>
@@ -398,7 +402,10 @@ function CategoryDetailSheet({
           Movimientos del mes · {transactions.length}
         </p>
         {transactions.length === 0 ? (
-          <p className="text-sm py-4 text-center" style={{ color: '#5B6660' }}>Sin gastos este mes.</p>
+          <div className="py-6 text-center">
+            <p className="text-2xl mb-1">🧾</p>
+            <p className="text-sm" style={{ color: '#8C968F' }}>Sin gastos este mes.</p>
+          </div>
         ) : (
           <div className="rounded-2xl overflow-hidden" style={{ background: '#F1F5F3' }}>
             {transactions.map((t, i) => (
@@ -430,10 +437,10 @@ function NewCategorySheet({ groups, onClose, onCreate }: { groups: EnvelopeCateg
   const [isGroup, setIsGroup] = useState(false);
   const [parentId, setParentId] = useState('');
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(20,28,24,0.45)' }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center animate-in fade-in duration-200" style={{ background: 'rgba(20,28,24,0.45)' }} onClick={onClose}>
       <div
-        className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6"
-        style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
+        className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
+        style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-pop)', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#E5EBE8' }} />
@@ -516,8 +523,8 @@ function NewViewSheet({
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const toggle = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(20,28,24,0.45)' }} onClick={onClose}>
-      <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 max-h-[88vh] overflow-y-auto" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center animate-in fade-in duration-200" style={{ background: 'rgba(20,28,24,0.45)' }} onClick={onClose}>
+      <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 max-h-[88vh] overflow-y-auto animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-pop)', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
         <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#E5EBE8' }} />
         <h2 className="text-lg font-black mb-4" style={{ color: '#18211D' }}>Vistas guardadas</h2>
 
@@ -575,8 +582,8 @@ function PrioritiesSheet({
   const [picked, setPicked] = useState<Set<string>>(new Set(selected));
   const toggle = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(20,28,24,0.45)' }} onClick={onClose}>
-      <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 max-h-[88vh] overflow-y-auto" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center animate-in fade-in duration-200" style={{ background: 'rgba(20,28,24,0.45)' }} onClick={onClose}>
+      <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 max-h-[88vh] overflow-y-auto animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-pop)', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
         <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#E5EBE8' }} />
         <h2 className="text-lg font-black mb-1" style={{ color: '#18211D' }}>Prioridades del mes</h2>
         <p className="text-sm mb-4" style={{ color: '#5B6660' }}>¿Qué es lo importante este mes? Fijalo arriba para tenerlo a mano.</p>

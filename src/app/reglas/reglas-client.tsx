@@ -670,11 +670,12 @@ function RuleForm({
             <button
               type="button"
               onClick={() => setAnchorDay('31')}
-              className="text-xs font-bold px-3 py-2 rounded-xl border"
+              className="text-xs font-bold px-3 py-2 rounded-xl border transition-all"
               style={{
                 background: anchorDay === '31' ? '#DDF0E8' : '#FFFFFF',
                 borderColor: anchorDay === '31' ? '#2FA37C' : '#E5EBE8',
                 color: anchorDay === '31' ? '#1F8A68' : '#5B6660',
+                boxShadow: anchorDay === '31' ? 'var(--shadow-soft)' : 'none',
               }}
             >
               Último día
@@ -733,11 +734,12 @@ function RuleForm({
         <button
           type="button"
           onClick={() => setReserveInBudget((v) => !v)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold border w-full text-left"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold border w-full text-left transition-all"
           style={{
             background: reserveInBudget ? '#DDF0E8' : '#FFFFFF',
             borderColor: reserveInBudget ? '#2FA37C' : '#E5EBE8',
             color: reserveInBudget ? '#1F8A68' : '#5B6660',
+            boxShadow: reserveInBudget ? 'var(--shadow-soft)' : 'none',
           }}
         >
           {reserveInBudget ? '✓ ' : '○ '}Reservar en presupuesto
@@ -779,11 +781,12 @@ function RuleForm({
       {/* Scope */}
       <button
         onClick={() => setScope(scope === 'personal' ? 'household' : 'personal')}
-        className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border w-fit"
+        className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border w-fit transition-all"
         style={{
           background: scope === 'household' ? '#DDF0E8' : '#FFFFFF',
           borderColor: scope === 'household' ? '#2FA37C' : '#E5EBE8',
           color: scope === 'household' ? '#1F8A68' : '#5B6660',
+          boxShadow: scope === 'household' ? 'var(--shadow-soft)' : 'none',
         }}
       >
         {scope === 'household' ? '🏠 Hogar' : '👤 Personal'}
@@ -810,11 +813,12 @@ function RuleForm({
       {/* Active toggle */}
       <button
         onClick={() => setActive((v) => !v)}
-        className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border w-fit"
+        className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border w-fit transition-all"
         style={{
           background: active ? '#DDF0E8' : '#FFFFFF',
           borderColor: active ? '#2FA37C' : '#E5EBE8',
           color: active ? '#1F8A68' : '#5B6660',
+          boxShadow: active ? 'var(--shadow-soft)' : 'none',
         }}
       >
         {active ? '✓ Activa' : '✗ Inactiva'}

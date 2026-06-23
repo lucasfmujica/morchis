@@ -963,11 +963,12 @@ export function AddTransactionSheet({
                   setTxType(t);
                   setCategoryId(null);
                 }}
-                className="flex-1 py-2.5 text-[13px] font-bold transition-colors"
+                className="flex-1 py-2.5 text-[13px] font-bold transition-all"
                 style={{
                   background: txType === t ? color : 'transparent',
                   color: txType === t ? '#FFFFFF' : '#5B6660',
                   borderRadius: '14px',
+                  boxShadow: txType === t ? 'var(--shadow-soft)' : 'none',
                 }}
               >
                 {label}
@@ -983,11 +984,12 @@ export function AddTransactionSheet({
                 <button
                   key={c.id}
                   onClick={() => setCategoryId(categoryId === c.id ? null : c.id)}
-                  className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-2xl text-sm font-semibold border transition-colors"
+                  className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-2xl text-sm font-semibold border transition-all"
                   style={{
                     background: categoryId === c.id ? '#DDF0E8' : '#FFFFFF',
                     borderColor: categoryId === c.id ? '#2FA37C' : '#E5EBE8',
                     color: categoryId === c.id ? '#1F8A68' : '#18211D',
+                    boxShadow: categoryId === c.id ? '0 4px 12px -4px rgba(47,163,124,0.45)' : 'var(--shadow-soft)',
                   }}
                 >
                   <span>{c.icon}</span>
@@ -1123,10 +1125,11 @@ export function AddTransactionSheet({
                   <button
                     key={o.key}
                     onClick={() => setOwner(o.key)}
-                    className="flex-1 py-2 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1"
+                    className="flex-1 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1"
                     style={{
                       background: active ? (o.key === 'household' ? '#2FA37C' : '#FFFFFF') : 'transparent',
                       color: active ? (o.key === 'household' ? '#FFFFFF' : '#18211D') : '#5B6660',
+                      boxShadow: active ? 'var(--shadow-soft)' : 'none',
                     }}
                   >
                     {o.label}
@@ -1152,10 +1155,11 @@ export function AddTransactionSheet({
                     <button
                       key={o.key}
                       onClick={() => setPaidBy(o.key)}
-                      className="flex-1 py-2 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1"
+                      className="flex-1 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1"
                       style={{
                         background: active ? '#FFFFFF' : 'transparent',
                         color: active ? '#18211D' : '#5B6660',
+                        boxShadow: active ? 'var(--shadow-soft)' : 'none',
                       }}
                     >
                       {o.label}

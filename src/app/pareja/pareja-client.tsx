@@ -159,10 +159,10 @@ function SettleUpSheet({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(20,28,24,0.42)' }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center animate-in fade-in duration-200" style={{ background: 'rgba(20,28,24,0.42)' }} onClick={onClose}>
       <div
-        className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6"
-        style={{ background: '#F1F5F3' }}
+        className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
+        style={{ background: '#F1F5F3', boxShadow: 'var(--shadow-pop)' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-center mb-4">

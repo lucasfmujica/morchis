@@ -92,11 +92,11 @@ function EditDraftModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center"
+      className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center animate-in fade-in duration-200"
       style={{ background: 'rgba(20,28,24,0.42)' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-5 pb-8" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+      <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-5 pb-8 animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-pop)' }}>
         <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#E5EBE8' }} />
         <h3 className="text-lg font-black mb-4" style={{ color: '#18211D' }}>Editar movimiento</h3>
 
