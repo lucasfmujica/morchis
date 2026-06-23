@@ -94,7 +94,7 @@ export function PullToRefresh({ children }: { children: React.ReactNode }) {
         <div
           className="mb-2 w-9 h-9 rounded-full flex items-center justify-center text-lg shadow-sm"
           style={{
-            background: '#FFFFFF',
+            background: '#FFFFFF', boxShadow: 'var(--shadow-card)',
             opacity: pull > 8 ? 1 : 0,
             transform: refreshing ? 'none' : `rotate(${pull * 3}deg)`,
           }}

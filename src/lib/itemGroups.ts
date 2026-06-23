@@ -21,19 +21,19 @@ export const ITEM_GROUPS = [
 export type ItemGroup = (typeof ITEM_GROUPS)[number];
 
 export const ITEM_GROUP_META: Record<string, { icon: string; color: string }> = {
-  'frutas y verduras': { icon: '🥬', color: '#7EC8A4' },
-  'carnes y fiambres': { icon: '🥩', color: '#E8806B' },
+  'frutas y verduras': { icon: '🥬', color: '#2FA37C' },
+  'carnes y fiambres': { icon: '🥩', color: '#FF6F61' },
   'lácteos y huevos': { icon: '🥚', color: '#F2C94C' },
   almacén: { icon: '🫙', color: '#B5926B' },
   panadería: { icon: '🥖', color: '#D9A05B' },
   agua: { icon: '💧', color: '#5BC4D6' },
-  bebidas: { icon: '🥤', color: '#6FA8DC' },
+  bebidas: { icon: '🥤', color: '#7AA6E6' },
   snacks: { icon: '🍫', color: '#F5A623' },
   limpieza: { icon: '🧼', color: '#5C9CE6' },
   'cuidado personal': { icon: '🧴', color: '#E89AC7' },
   hogar: { icon: '🏠', color: '#B084CC' },
   mascotas: { icon: '🐾', color: '#A0855B' },
-  otros: { icon: '🏷️', color: '#C4B9AE' },
+  otros: { icon: '🏷️', color: '#B0BAB4' },
 };
 
 export function groupMeta(group: string): { icon: string; color: string } {

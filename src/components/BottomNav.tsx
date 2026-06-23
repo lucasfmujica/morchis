@@ -41,11 +41,16 @@ export function BottomNav({ onFab }: BottomNavProps) {
     return (
       <Link
         href={href}
-        className="flex flex-col items-center gap-0.5 flex-1 py-2"
-        style={{ color: active ? '#7EC8A4' : '#6B6459' }}
+        className="flex flex-col items-center gap-1 flex-1 py-1.5"
+        style={{ color: active ? '#1F8A68' : '#5B6660' }}
       >
-        <span className="text-2xl">{icon}</span>
-        <span className="text-[10px] font-semibold">{label}</span>
+        <span
+          className="flex items-center justify-center rounded-full transition-all duration-200"
+          style={{ width: 46, height: 26, fontSize: 20, background: active ? '#DDF0E8' : 'transparent' }}
+        >
+          {icon}
+        </span>
+        <span className="text-[10px] font-bold">{label}</span>
       </Link>
     );
   }
@@ -58,8 +63,8 @@ export function BottomNav({ onFab }: BottomNavProps) {
         href={href}
         className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-bold transition-colors"
         style={{
-          color: active ? '#5BA886' : '#6B6459',
-          background: active ? '#E4F2EA' : 'transparent',
+          color: active ? '#1F8A68' : '#5B6660',
+          background: active ? '#DDF0E8' : 'transparent',
         }}
       >
         <span className="text-base">{icon}</span>
@@ -88,12 +93,13 @@ export function BottomNav({ onFab }: BottomNavProps) {
         <Link
           href="/preguntale"
           aria-label="Preguntale a Morchi"
-          className="fixed z-40 flex items-center justify-center rounded-full shadow-lg md:hidden"
+          className="fixed z-40 flex items-center justify-center rounded-full md:hidden active:scale-95 transition-transform"
           style={{
             right: 16,
             bottom: 'calc(env(safe-area-inset-bottom) + 76px)',
-            width: 52, height: 52,
-            background: '#7EC8A4',
+            width: 54, height: 54,
+            background: 'linear-gradient(180deg, #34AD84 0%, #2FA37C 60%, #1F8A68 100%)',
+            boxShadow: 'var(--shadow-glow)',
             fontSize: 24,
           }}
         >
@@ -103,7 +109,7 @@ export function BottomNav({ onFab }: BottomNavProps) {
 
       {/* Speed-dial backdrop */}
       {menuOpen && (
-        <div className="fixed inset-0 z-40" style={{ background: 'rgba(0,0,0,0.25)' }} onClick={() => setMenuOpen(false)} />
+        <div className="fixed inset-0 z-40" style={{ background: 'rgba(20,28,24,0.28)' }} onClick={() => setMenuOpen(false)} />
       )}
 
       {/* Speed-dial actions (mobile, anchored above the bottom FAB) */}
@@ -115,21 +121,21 @@ export function BottomNav({ onFab }: BottomNavProps) {
           <button
             onClick={() => pick('income')}
             className="flex items-center gap-2 pl-4 pr-5 py-3 rounded-full text-sm font-black text-white shadow-lg"
-            style={{ background: '#7EC8A4' }}
+            style={{ background: '#2FA37C' }}
           >
             <span className="text-lg">💰</span> Ingreso
           </button>
           <button
             onClick={() => pick('expense')}
             className="flex items-center gap-2 pl-4 pr-5 py-3 rounded-full text-sm font-black text-white shadow-lg"
-            style={{ background: '#FF7F6B' }}
+            style={{ background: '#FF6F61' }}
           >
             <span className="text-lg">💸</span> Gasto
           </button>
           <button
             onClick={() => pick('transfer')}
             className="flex items-center gap-2 pl-4 pr-5 py-3 rounded-full text-sm font-black text-white shadow-lg"
-            style={{ background: '#5B8DEF' }}
+            style={{ background: '#4E84E0' }}
           >
             <span className="text-lg">🔄</span> Transferencia
           </button>
@@ -138,14 +144,14 @@ export function BottomNav({ onFab }: BottomNavProps) {
 
       {/* "Más" slide-up menu */}
       {moreOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={() => setMoreOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(20,28,24,0.45)' }} onClick={() => setMoreOpen(false)}>
           <div
             className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-5 max-h-[80vh] overflow-y-auto"
             style={{ background: '#FFFFFF', paddingBottom: 'max(20px, env(safe-area-inset-bottom))' }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ background: '#ECE5DC' }} />
-            <h2 className="text-lg font-black mb-4 px-1" style={{ color: '#2D2D2D' }}>Menú</h2>
+            <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ background: '#E5EBE8' }} />
+            <h2 className="text-lg font-black mb-4 px-1" style={{ color: '#18211D' }}>Menú</h2>
 
             <div className="grid grid-cols-3 gap-2">
               {MENU.map((item) => (
@@ -154,22 +160,22 @@ export function BottomNav({ onFab }: BottomNavProps) {
                   href={item.href}
                   onClick={() => setMoreOpen(false)}
                   className="flex flex-col items-center justify-center gap-1 rounded-2xl py-4 px-1 text-center"
-                  style={{ background: '#F9F5F0' }}
+                  style={{ background: '#F1F5F3' }}
                 >
                   <span className="text-2xl">{item.icon}</span>
-                  <span className="text-[11px] font-bold leading-tight" style={{ color: '#2D2D2D' }}>{item.label}</span>
+                  <span className="text-[11px] font-bold leading-tight" style={{ color: '#18211D' }}>{item.label}</span>
                 </Link>
               ))}
             </div>
 
-            <div className="mt-4 pt-3" style={{ borderTop: '1px solid #ECE5DC' }}>
+            <div className="mt-4 pt-3" style={{ borderTop: '1px solid #E5EBE8' }}>
               {SECONDARY.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
                   onClick={() => setMoreOpen(false)}
                   className="flex items-center gap-3 px-2 py-3 text-sm"
-                  style={{ color: '#6B6459' }}
+                  style={{ color: '#5B6660' }}
                 >
                   <span className="text-lg">{item.icon}</span>
                   <span className="font-semibold">{item.label}</span>
@@ -178,7 +184,7 @@ export function BottomNav({ onFab }: BottomNavProps) {
               <button
                 onClick={logout}
                 className="flex items-center gap-3 px-2 py-3 text-sm w-full text-left"
-                style={{ color: '#6B6459' }}
+                style={{ color: '#5B6660' }}
               >
                 <span className="text-lg">🚪</span>
                 <span className="font-semibold">Cerrar sesión</span>
@@ -190,11 +196,11 @@ export function BottomNav({ onFab }: BottomNavProps) {
 
       {/* Desktop top nav — replaces the bottom bar on md+. */}
       <nav
-        className="hidden md:flex fixed top-0 left-0 right-0 items-center z-40"
-        style={{ background: '#FFFFFF', borderBottom: '1px solid #ECE5DC' }}
+        className="glass hidden md:flex fixed top-0 left-0 right-0 items-center z-40"
+        style={{ borderBottom: '1px solid var(--glass-border)' }}
       >
         <div className="w-full max-w-5xl mx-auto px-6 h-14 flex items-center gap-1">
-          <Link href="/presupuestos" className="text-lg font-black mr-3" style={{ color: '#2D2D2D' }}>
+          <Link href="/presupuestos" className="text-lg font-black mr-3" style={{ color: '#18211D' }}>
             Morchis
           </Link>
           {topTab('/presupuestos', 'Presupuesto', '💵')}
@@ -207,8 +213,8 @@ export function BottomNav({ onFab }: BottomNavProps) {
           <div className="relative">
             <button
               onClick={() => setMenuOpen((v) => !v)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-black text-white shadow-sm"
-              style={{ background: '#FF7F6B' }}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-black text-white active:scale-95 transition-transform"
+              style={{ background: 'linear-gradient(180deg, #FF8173 0%, #FF6F61 60%, #E25749 100%)', boxShadow: 'var(--shadow-glow-coral)' }}
               aria-haspopup="menu"
               aria-expanded={menuOpen}
             >
@@ -217,26 +223,26 @@ export function BottomNav({ onFab }: BottomNavProps) {
             {menuOpen && (
               <div
                 className="absolute right-0 mt-2 z-50 flex flex-col gap-1.5 p-2 rounded-2xl shadow-lg"
-                style={{ background: '#FFFFFF', border: '1px solid #ECE5DC', minWidth: 200 }}
+                style={{ background: '#FFFFFF', border: '1px solid #E5EBE8', minWidth: 200 }}
               >
                 <button
                   onClick={() => pick('income')}
                   className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-bold text-left"
-                  style={{ color: '#2D2D2D' }}
+                  style={{ color: '#18211D' }}
                 >
                   <span className="text-lg">💰</span> Ingreso
                 </button>
                 <button
                   onClick={() => pick('expense')}
                   className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-bold text-left"
-                  style={{ color: '#2D2D2D' }}
+                  style={{ color: '#18211D' }}
                 >
                   <span className="text-lg">💸</span> Gasto
                 </button>
                 <button
                   onClick={() => pick('transfer')}
                   className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-bold text-left"
-                  style={{ color: '#2D2D2D' }}
+                  style={{ color: '#18211D' }}
                 >
                   <span className="text-lg">🔄</span> Transferencia
                 </button>
@@ -248,7 +254,7 @@ export function BottomNav({ onFab }: BottomNavProps) {
             href="/preguntale"
             aria-label="Preguntale a Morchi"
             className="ml-1 flex items-center justify-center rounded-full w-10 h-10 text-xl"
-            style={{ background: '#E4F2EA' }}
+            style={{ background: '#DDF0E8' }}
           >
             💬
           </Link>
@@ -256,7 +262,7 @@ export function BottomNav({ onFab }: BottomNavProps) {
           <button
             onClick={() => setMoreOpen(true)}
             className="ml-1 flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-bold"
-            style={{ color: moreActive ? '#5BA886' : '#6B6459', background: moreActive ? '#E4F2EA' : 'transparent' }}
+            style={{ color: moreActive ? '#1F8A68' : '#5B6660', background: moreActive ? '#DDF0E8' : 'transparent' }}
             aria-label="Menú"
             aria-expanded={moreOpen}
           >
@@ -272,10 +278,10 @@ export function BottomNav({ onFab }: BottomNavProps) {
       )}
 
       <nav
-        className="md:hidden fixed bottom-0 left-0 right-0 flex items-center z-40"
+        className="glass md:hidden fixed bottom-0 left-0 right-0 flex items-center z-40"
         style={{
-          background: '#FFFFFF',
-          borderTop: '1px solid #ECE5DC',
+          borderTop: '1px solid var(--glass-border)',
+          boxShadow: '0 -10px 28px -14px rgba(20,42,33,0.20)',
           paddingBottom: 'env(safe-area-inset-bottom)',
         }}
       >
@@ -284,8 +290,8 @@ export function BottomNav({ onFab }: BottomNavProps) {
         <div className="flex-1 flex justify-center">
           <button
             onClick={() => setMenuOpen((v) => !v)}
-            className="w-14 h-14 rounded-full text-2xl text-white flex items-center justify-center shadow-lg -mt-5 transition-transform"
-            style={{ background: '#FF7F6B', transform: menuOpen ? 'rotate(45deg)' : 'none' }}
+            className="w-14 h-14 rounded-full text-2xl text-white flex items-center justify-center -mt-5 transition-transform duration-200"
+            style={{ background: 'linear-gradient(180deg, #FF8173 0%, #FF6F61 60%, #E25749 100%)', boxShadow: 'var(--shadow-glow-coral)', transform: menuOpen ? 'rotate(45deg) scale(1.05)' : 'none' }}
             aria-label="Agregar movimiento"
             aria-expanded={menuOpen}
           >
@@ -296,7 +302,7 @@ export function BottomNav({ onFab }: BottomNavProps) {
         <button
           onClick={() => setMoreOpen(true)}
           className="flex flex-col items-center gap-0.5 flex-1 py-2"
-          style={{ color: moreActive ? '#7EC8A4' : '#6B6459' }}
+          style={{ color: moreActive ? '#2FA37C' : '#5B6660' }}
           aria-label="Menú"
           aria-expanded={moreOpen}
         >

@@ -88,42 +88,42 @@ export default function NotificacionesClient() {
   }
 
   return (
-    <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
+    <div className="min-h-screen pb-24" style={{ background: '#F1F5F3' }}>
       <header className="px-5 pt-14 pb-4 flex items-center gap-3">
         <Link href="/mas" className="text-2xl">←</Link>
-        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Notificaciones</h1>
+        <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>Notificaciones</h1>
       </header>
 
       <div className="px-4">
-        <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
+        <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
           {PREFERENCES.map((pref, i) => (
             <div
               key={pref.key}
-              className="flex items-center gap-3 px-5 py-4"
-              style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}
+              className="flex items-center gap-3 px-5 py-4 transition-colors hover:bg-[#F4F8F6]"
+              style={{ borderTop: i > 0 ? '1px solid #E5EBE8' : 'none' }}
             >
               <span className="text-2xl">{pref.icon}</span>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm" style={{ color: '#2D2D2D' }}>{pref.label}</p>
-                <p className="text-xs mt-0.5" style={{ color: '#6B6459' }}>{pref.description}</p>
+                <p className="font-semibold text-sm" style={{ color: '#18211D' }}>{pref.label}</p>
+                <p className="text-xs mt-0.5" style={{ color: '#5B6660' }}>{pref.description}</p>
               </div>
               <button
                 onClick={() => toggle(pref.key)}
                 disabled={isLoading}
-                className="relative w-12 h-6 rounded-full transition-colors flex-shrink-0 disabled:opacity-50"
-                style={{ background: isEnabled(pref.key) ? '#7EC8A4' : '#ECE5DC' }}
+                className="relative w-12 h-6 rounded-full transition-colors flex-shrink-0 disabled:opacity-50 active:scale-95"
+                style={{ background: isEnabled(pref.key) ? '#2FA37C' : '#E5EBE8', boxShadow: isEnabled(pref.key) ? 'var(--shadow-soft)' : 'none' }}
                 aria-checked={isEnabled(pref.key)}
                 role="switch"
               >
                 <span
-                  className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
-                  style={{ transform: isEnabled(pref.key) ? 'translateX(24px)' : 'translateX(0)' }}
+                  className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform"
+                  style={{ transform: isEnabled(pref.key) ? 'translateX(24px)' : 'translateX(0)', boxShadow: 'var(--shadow-card)' }}
                 />
               </button>
             </div>
           ))}
         </div>
-        <p className="text-xs mt-4 px-2" style={{ color: '#6B6459' }}>
+        <p className="text-xs mt-4 px-2" style={{ color: '#5B6660' }}>
           Las notificaciones requieren que hayas aceptado los permisos de notificaciones en tu dispositivo.
         </p>
       </div>

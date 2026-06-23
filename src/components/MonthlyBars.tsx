@@ -32,18 +32,18 @@ export function MonthlyBars({ rows, showRate = true }: { rows: MonthBar[]; showR
           <div className="flex items-end gap-1 w-full justify-center" style={{ height: 110 }}>
             <div
               className="rounded-t-md"
-              style={{ width: 12, height: `${(r.income / max) * 100}%`, minHeight: r.income > 0 ? 3 : 0, background: '#7EC8A4' }}
+              style={{ width: 12, height: `${(r.income / max) * 100}%`, minHeight: r.income > 0 ? 3 : 0, background: '#2FA37C' }}
             />
             <div
               className="rounded-t-md"
-              style={{ width: 12, height: `${(r.expense / max) * 100}%`, minHeight: r.expense > 0 ? 3 : 0, background: '#FF7F6B' }}
+              style={{ width: 12, height: `${(r.expense / max) * 100}%`, minHeight: r.expense > 0 ? 3 : 0, background: '#FF6F61' }}
             />
           </div>
-          <span className="text-[10px] font-semibold" style={{ color: '#6B6459' }}>{r.label}</span>
+          <span className="text-[10px] font-semibold" style={{ color: '#5B6660' }}>{r.label}</span>
           {showRate && (
             <span
               className="text-[10px] font-bold"
-              style={{ color: r.rate == null ? '#C4B9AE' : r.rate >= 0 ? '#5BA886' : '#E5604C' }}
+              style={{ color: r.rate == null ? '#B0BAB4' : r.rate >= 0 ? '#1F8A68' : '#E25749' }}
             >
               {r.rate == null ? '—' : `${Math.round(r.rate * 100)}%`}
             </span>
@@ -59,7 +59,7 @@ export function MonthlyBars({ rows, showRate = true }: { rows: MonthBar[]; showR
  *  is highlighted. */
 export function SingleBars({
   rows,
-  color = '#FF7F6B',
+  color = '#FF6F61',
   onSelect,
   selectedKey,
 }: {
@@ -89,7 +89,7 @@ export function SingleBars({
             </div>
             <span
               className="text-[10px] font-semibold"
-              style={{ color: selected ? color : '#6B6459' }}
+              style={{ color: selected ? color : '#5B6660' }}
             >
               {r.label}
             </span>

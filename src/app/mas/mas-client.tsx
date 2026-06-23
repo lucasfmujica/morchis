@@ -65,26 +65,26 @@ export default function MasClient({ profile }: { profile: Profile }) {
   ];
 
   return (
-    <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
+    <div className="min-h-screen pb-24" style={{ background: '#F1F5F3' }}>
       <header className="px-5 pt-14 pb-4">
-        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Más</h1>
+        <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>Más</h1>
       </header>
 
       <div className="px-4 flex flex-col gap-4">
         {sections.map((section) => (
           <div key={section.title}>
-            <p className="text-xs font-bold uppercase tracking-wide mb-2 px-1" style={{ color: '#6B6459' }}>{section.title}</p>
-            <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
+            <p className="text-xs font-bold uppercase tracking-wide mb-2 px-1" style={{ color: '#5B6660' }}>{section.title}</p>
+            <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
               {section.items.map((item, i) => (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="flex items-center gap-3 px-5 py-4"
-                  style={i > 0 ? { borderTop: '1px solid #ECE5DC' } : undefined}
+                  className="flex items-center gap-3 px-5 py-4 transition-colors hover:bg-[#F4F8F6] active:bg-[#EEF3F1]"
+                  style={i > 0 ? { borderTop: '1px solid #E5EBE8' } : undefined}
                 >
                   <span className="text-2xl">{item.icon}</span>
-                  <p className="flex-1 font-semibold" style={{ color: '#2D2D2D' }}>{item.label}</p>
-                  <span style={{ color: '#6B6459' }}>→</span>
+                  <p className="flex-1 font-semibold" style={{ color: '#18211D' }}>{item.label}</p>
+                  <span style={{ color: '#5B6660' }}>→</span>
                 </Link>
               ))}
             </div>
@@ -92,30 +92,30 @@ export default function MasClient({ profile }: { profile: Profile }) {
         ))}
 
         {/* De-emphasised: rarely used. */}
-        <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
+        <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
           <button
             onClick={() => setInviteOpen(true)}
-            className="w-full flex items-center gap-3 px-5 py-3.5 text-left"
+            className="w-full flex items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-[#F4F8F6] active:bg-[#EEF3F1]"
           >
             <span className="text-xl">💌</span>
-            <p className="flex-1 text-sm font-semibold" style={{ color: '#6B6459' }}>Invitar a mi pareja</p>
-            <span style={{ color: '#6B6459' }}>→</span>
+            <p className="flex-1 text-sm font-semibold" style={{ color: '#5B6660' }}>Invitar a mi pareja</p>
+            <span style={{ color: '#5B6660' }}>→</span>
           </button>
           <Link
             href="/mas/pin"
-            className="flex items-center gap-3 px-5 py-3.5"
-            style={{ borderTop: '1px solid #ECE5DC' }}
+            className="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-[#F4F8F6] active:bg-[#EEF3F1]"
+            style={{ borderTop: '1px solid #E5EBE8' }}
           >
             <span className="text-xl">🔐</span>
-            <p className="flex-1 text-sm font-semibold" style={{ color: '#6B6459' }}>Bloqueo con PIN</p>
-            <span style={{ color: '#6B6459' }}>→</span>
+            <p className="flex-1 text-sm font-semibold" style={{ color: '#5B6660' }}>Bloqueo con PIN</p>
+            <span style={{ color: '#5B6660' }}>→</span>
           </Link>
         </div>
 
         <button
           onClick={logout}
-          className="w-full py-4 rounded-3xl text-sm font-bold border"
-          style={{ borderColor: '#ECE5DC', color: '#6B6459', background: '#FFFFFF' }}
+          className="w-full py-4 rounded-3xl text-sm font-bold border transition-colors hover:bg-[#F4F8F6] active:bg-[#EEF3F1]"
+          style={{ borderColor: '#E5EBE8', color: '#5B6660', background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}
         >
           Cerrar sesión
         </button>

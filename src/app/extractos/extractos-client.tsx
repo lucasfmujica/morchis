@@ -30,10 +30,10 @@ interface Statement {
 }
 
 const STATUS_LABELS: Record<string, { label: string; color: string; bg: string; icon: string }> = {
-  uploaded: { label: 'Subido', color: '#6B6459', bg: '#ECE5DC', icon: '📄' },
-  parsing: { label: 'Analizando…', color: '#5BA886', bg: '#E4F2EA', icon: '⚙️' },
-  parsed: { label: 'Listo', color: '#5BA886', bg: '#E4F2EA', icon: '✅' },
-  failed: { label: 'Error', color: '#E5604C', bg: '#FFE7E2', icon: '⚠️' },
+  uploaded: { label: 'Subido', color: '#5B6660', bg: '#E5EBE8', icon: '📄' },
+  parsing: { label: 'Analizando…', color: '#1F8A68', bg: '#DDF0E8', icon: '⚙️' },
+  parsed: { label: 'Listo', color: '#1F8A68', bg: '#DDF0E8', icon: '✅' },
+  failed: { label: 'Error', color: '#E25749', bg: '#FFE5E0', icon: '⚠️' },
 };
 
 export default function ExtractosClient({
@@ -135,27 +135,28 @@ export default function ExtractosClient({
   }
 
   return (
-    <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
+    <div className="min-h-screen pb-24" style={{ background: '#F1F5F3' }}>
       <header className="px-5 pt-14 pb-4">
-        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Extractos</h1>
-        <p className="text-xs mt-0.5" style={{ color: '#6B6459' }}>Subí un resumen para importar movimientos — PDF, foto o CSV (ej: actividad de Mercado Pago)</p>
+        <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>Extractos</h1>
+        <p className="text-xs mt-0.5" style={{ color: '#5B6660' }}>Subí un resumen para importar movimientos — PDF, foto o CSV (ej: actividad de Mercado Pago)</p>
       </header>
 
       {/* Upload card */}
-      <div className="mx-4 mb-4 rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+      <div className="mx-4 mb-4 rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
         {accounts.length > 0 && (
           <div className="mb-4">
-            <p className="text-xs font-bold mb-1.5" style={{ color: '#6B6459' }}>Cuenta</p>
+            <p className="text-[11px] font-black uppercase tracking-wide mb-1.5" style={{ color: '#8C968F' }}>Cuenta</p>
             <div className="flex gap-2 flex-wrap">
               {accounts.map((acc) => (
                 <button
                   key={acc.id}
                   onClick={() => setSelectedAccountId(acc.id)}
-                  className="px-3 py-1.5 rounded-full text-xs font-bold border"
+                  className="px-3.5 py-2 rounded-full text-xs font-bold border transition-all"
                   style={{
-                    background: selectedAccountId === acc.id ? '#2D2D2D' : 'transparent',
-                    borderColor: selectedAccountId === acc.id ? '#2D2D2D' : '#ECE5DC',
-                    color: selectedAccountId === acc.id ? '#FFFFFF' : '#6B6459',
+                    background: selectedAccountId === acc.id ? '#18211D' : 'transparent',
+                    borderColor: selectedAccountId === acc.id ? '#18211D' : '#E5EBE8',
+                    color: selectedAccountId === acc.id ? '#FFFFFF' : '#5B6660',
+                    boxShadow: selectedAccountId === acc.id ? 'var(--shadow-soft)' : 'none',
                   }}
                 >
                   {acc.name}
@@ -187,8 +188,8 @@ export default function ExtractosClient({
               }
             }}
             disabled={uploading}
-            className="flex-1 py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2"
-            style={{ background: '#E4F2EA', color: '#5BA886' }}
+            className="flex-1 py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 transition-all"
+            style={{ background: '#DDF0E8', color: '#1F8A68', boxShadow: 'var(--shadow-soft)' }}
           >
             📄 Subir archivo
           </button>
@@ -200,15 +201,15 @@ export default function ExtractosClient({
               }
             }}
             disabled={uploading}
-            className="flex-1 py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2"
-            style={{ background: '#FF7F6B', color: '#FFFFFF' }}
+            className="flex-1 py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 transition-all"
+            style={{ background: 'linear-gradient(135deg, #FF8173 0%, #E25749 100%)', color: '#FFFFFF', boxShadow: 'var(--shadow-glow)' }}
           >
             📷 Sacar foto
           </button>
         </div>
 
         {uploading && (
-          <p className="text-xs text-center mt-3 font-semibold" style={{ color: '#7EC8A4' }}>
+          <p className="text-xs text-center mt-3 font-semibold" style={{ color: '#2FA37C' }}>
             Subiendo y analizando con IA…
           </p>
         )}
@@ -217,16 +218,16 @@ export default function ExtractosClient({
       {/* Statement history */}
       {statements.length > 0 && (
         <div className="px-4">
-          <p className="text-sm font-black mb-3" style={{ color: '#2D2D2D' }}>Historial</p>
-          <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
+          <p className="text-sm font-black mb-3" style={{ color: '#18211D' }}>Historial</p>
+          <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
             {statements.map((s, i) => {
               const badge = STATUS_LABELS[s.status] ?? STATUS_LABELS.uploaded;
               return (
                 <button
                   key={s.id}
                   onClick={() => router.push(`/extractos/${s.id}`)}
-                  className="w-full flex items-center gap-3 px-4 py-4 text-left active:bg-[#F9F5F0] transition-colors"
-                  style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}
+                  className="w-full flex items-center gap-3 px-4 py-4 text-left transition-colors hover:bg-[#F4F8F6] active:bg-[#EEF3F1]"
+                  style={{ borderTop: i > 0 ? '1px solid #E5EBE8' : 'none' }}
                 >
                   <span
                     className="w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0"
@@ -235,10 +236,10 @@ export default function ExtractosClient({
                     <span className={s.status === 'parsing' ? 'animate-spin' : ''}>{badge.icon}</span>
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold truncate" style={{ color: '#2D2D2D' }}>
+                    <p className="text-sm font-bold truncate" style={{ color: '#18211D' }}>
                       {accounts.find((a) => a.id === s.account_id)?.name ?? 'Sin cuenta'}
                     </p>
-                    <p className="text-xs mt-0.5" style={{ color: '#6B6459' }}>
+                    <p className="text-xs mt-0.5" style={{ color: '#5B6660' }}>
                       {fmtDate(s.created_at)}
                     </p>
                   </div>
@@ -248,7 +249,7 @@ export default function ExtractosClient({
                   >
                     {badge.label}
                   </span>
-                  <span className="text-base shrink-0" style={{ color: '#C4B9AE' }}>›</span>
+                  <span className="text-base shrink-0" style={{ color: '#B0BAB4' }}>›</span>
                 </button>
               );
             })}
@@ -259,8 +260,8 @@ export default function ExtractosClient({
       {statements.length === 0 && !uploading && (
         <div className="text-center py-16 px-8">
           <p className="text-5xl mb-4">🧾</p>
-          <p className="text-base font-bold" style={{ color: '#2D2D2D' }}>Ningún extracto todavía</p>
-          <p className="text-sm mt-2" style={{ color: '#6B6459' }}>
+          <p className="text-base font-bold" style={{ color: '#18211D' }}>Ningún extracto todavía</p>
+          <p className="text-sm mt-2" style={{ color: '#5B6660' }}>
             Subí tu resumen en PDF, foto o CSV (ej: actividad de Mercado Pago) — la IA extrae todos los movimientos para que los revisés.
           </p>
         </div>

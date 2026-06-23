@@ -31,7 +31,7 @@ export function DonutChart({
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       {/* Track */}
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#ECE5DC" strokeWidth={thickness} />
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#E5EBE8" strokeWidth={thickness} />
       {total > 0 &&
         segments.map((seg, i) => {
           const len = (seg.value / total) * circ;
@@ -60,7 +60,7 @@ export function DonutChart({
           textAnchor="middle"
           fontSize="11"
           fontWeight="700"
-          fill="#6B6459"
+          fill="#5B6660"
         >
           {centerTop}
         </text>
@@ -72,7 +72,7 @@ export function DonutChart({
           textAnchor="middle"
           fontSize="15"
           fontWeight="800"
-          fill="#2D2D2D"
+          fill="#18211D"
         >
           {centerBottom}
         </text>

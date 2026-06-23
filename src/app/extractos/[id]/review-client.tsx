@@ -93,54 +93,55 @@ function EditDraftModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center"
-      style={{ background: 'rgba(0,0,0,0.4)' }}
+      style={{ background: 'rgba(20,28,24,0.42)' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-5 pb-8" style={{ background: '#FFFFFF' }}>
-        <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
-        <h3 className="text-lg font-black mb-4" style={{ color: '#2D2D2D' }}>Editar movimiento</h3>
+      <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-5 pb-8" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+        <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#E5EBE8' }} />
+        <h3 className="text-lg font-black mb-4" style={{ color: '#18211D' }}>Editar movimiento</h3>
 
         <div className="flex flex-col gap-3">
           <div>
-            <p className="text-xs font-bold mb-1" style={{ color: '#6B6459' }}>Comercio</p>
+            <p className="text-xs font-bold mb-1" style={{ color: '#5B6660' }}>Comercio</p>
             <input
               value={merchant}
               onChange={(e) => setMerchant(e.target.value)}
               className="w-full px-4 py-3 rounded-2xl text-sm border outline-none"
-              style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+              style={{ borderColor: '#E5EBE8', color: '#18211D' }}
             />
           </div>
           <div>
-            <p className="text-xs font-bold mb-1" style={{ color: '#6B6459' }}>Monto (ARS)</p>
+            <p className="text-xs font-bold mb-1" style={{ color: '#5B6660' }}>Monto (ARS)</p>
             <MoneyInput
               value={parseMoney(amount)}
               onChange={(n) => setAmount(n ? String(n) : '')}
               className="w-full px-4 py-3 rounded-2xl text-sm border outline-none"
-              style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+              style={{ borderColor: '#E5EBE8', color: '#18211D' }}
             />
           </div>
           <div>
-            <p className="text-xs font-bold mb-1" style={{ color: '#6B6459' }}>Fecha</p>
+            <p className="text-xs font-bold mb-1" style={{ color: '#5B6660' }}>Fecha</p>
             <input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
               className="w-full px-4 py-3 rounded-2xl text-sm border outline-none"
-              style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+              style={{ borderColor: '#E5EBE8', color: '#18211D' }}
             />
           </div>
           <div>
-            <p className="text-xs font-bold mb-1" style={{ color: '#6B6459' }}>Categoría</p>
+            <p className="text-xs font-bold mb-1" style={{ color: '#5B6660' }}>Categoría</p>
             <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto">
               {categories.filter((c) => c.kind === 'expense').map((cat) => (
                 <button
                   key={cat.id}
                   onClick={() => setCategoryId(cat.id)}
-                  className="px-3 py-1.5 rounded-full text-xs font-bold border"
+                  className="px-3.5 py-2 rounded-full text-xs font-bold border transition-all"
                   style={{
-                    background: categoryId === cat.id ? '#2D2D2D' : 'transparent',
-                    borderColor: categoryId === cat.id ? '#2D2D2D' : '#ECE5DC',
-                    color: categoryId === cat.id ? '#FFFFFF' : '#6B6459',
+                    background: categoryId === cat.id ? '#18211D' : 'transparent',
+                    borderColor: categoryId === cat.id ? '#18211D' : '#E5EBE8',
+                    color: categoryId === cat.id ? '#FFFFFF' : '#5B6660',
+                    boxShadow: categoryId === cat.id ? 'var(--shadow-soft)' : 'none',
                   }}
                 >
                   {cat.icon} {cat.name}
@@ -153,7 +154,7 @@ function EditDraftModal({
         <button
           onClick={save}
           className="w-full mt-5 py-4 rounded-2xl text-sm font-black"
-          style={{ background: '#7EC8A4', color: '#FFFFFF' }}
+          style={{ background: 'linear-gradient(135deg, #34AD84 0%, #1F8A68 100%)', color: '#FFFFFF', boxShadow: 'var(--shadow-glow)' }}
         >
           Guardar
         </button>
@@ -210,7 +211,7 @@ function DraftCard({
     touchStartX.current = null;
   }
 
-  const swipeColor = swipeX > 40 ? '#7EC8A4' : swipeX < -40 ? '#FF7F6B' : '#FFFFFF';
+  const swipeColor = swipeX > 40 ? '#2FA37C' : swipeX < -40 ? '#FF6F61' : '#FFFFFF';
   const swipeLabel = swipeX > 40 ? '✓ Aceptar' : swipeX < -40 ? '✗ Rechazar' : '';
 
   return (
@@ -229,7 +230,7 @@ function DraftCard({
       <div
         className="relative rounded-3xl p-4"
         style={{
-          background: '#FFFFFF',
+          background: '#FFFFFF', boxShadow: 'var(--shadow-card)',
           transform: swiping ? `translateX(${swipeX}px)` : 'translateX(0)',
           transition: swiping ? 'none' : 'transform 0.2s ease',
         }}
@@ -241,29 +242,29 @@ function DraftCard({
           <span className="text-2xl mt-0.5">{cat?.icon ?? '🏷️'}</span>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-black truncate" style={{ color: '#2D2D2D' }}>
+              <p className="text-sm font-black truncate" style={{ color: '#18211D' }}>
                 {draft.payload.merchant}
               </p>
-              <p className="text-base font-black flex-shrink-0" style={{ color: '#FF7F6B' }}>
+              <p className="text-base font-black flex-shrink-0" style={{ color: '#FF6F61' }}>
                 −{formatARS(draft.payload.amount)}
               </p>
             </div>
             <div className="flex items-center gap-2 mt-0.5">
-              <p className="text-xs" style={{ color: '#6B6459' }}>
+              <p className="text-xs" style={{ color: '#5B6660' }}>
                 {new Date(draft.payload.date + 'T00:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}
               </p>
               {cat && (
-                <span className="text-xs px-1.5 py-0.5 rounded-md font-semibold" style={{ background: '#E4F2EA', color: '#5BA886' }}>
+                <span className="text-xs px-1.5 py-0.5 rounded-md font-semibold" style={{ background: '#DDF0E8', color: '#1F8A68' }}>
                   {cat.name}
                 </span>
               )}
               {highConf && (
-                <span className="text-xs px-1.5 py-0.5 rounded-md font-semibold" style={{ background: '#E4F2EA', color: '#5BA886' }}>
+                <span className="text-xs px-1.5 py-0.5 rounded-md font-semibold" style={{ background: '#DDF0E8', color: '#1F8A68' }}>
                   ✓ Alta confianza
                 </span>
               )}
             </div>
-            <p className="text-[11px] mt-1 truncate" style={{ color: '#6B6459' }}>
+            <p className="text-[11px] mt-1 truncate" style={{ color: '#5B6660' }}>
               {draft.payload.raw_description}
             </p>
           </div>
@@ -274,24 +275,24 @@ function DraftCard({
           <button
             onClick={onReject}
             disabled={pending}
-            className="flex-1 py-2 rounded-2xl text-xs font-bold disabled:opacity-50"
-            style={{ background: '#FFE7E2', color: '#FF7F6B' }}
+            className="flex-1 py-2.5 rounded-2xl text-xs font-bold disabled:opacity-50 transition-all"
+            style={{ background: '#FFE5E0', color: '#FF6F61', boxShadow: 'var(--shadow-soft)' }}
           >
             ✗ Rechazar
           </button>
           <button
             onClick={onEdit}
             disabled={pending}
-            className="py-2 px-4 rounded-2xl text-xs font-bold disabled:opacity-50"
-            style={{ background: '#ECE5DC', color: '#6B6459' }}
+            className="py-2.5 px-4 rounded-2xl text-xs font-bold disabled:opacity-50 transition-all"
+            style={{ background: '#E5EBE8', color: '#5B6660' }}
           >
             ✏️ Editar
           </button>
           <button
             onClick={onAccept}
             disabled={pending}
-            className="flex-1 py-2 rounded-2xl text-xs font-bold disabled:opacity-50"
-            style={{ background: '#E4F2EA', color: '#5BA886' }}
+            className="flex-1 py-2.5 rounded-2xl text-xs font-bold disabled:opacity-50 transition-all"
+            style={{ background: '#DDF0E8', color: '#1F8A68', boxShadow: 'var(--shadow-soft)' }}
           >
             {pending ? '…' : '✓ Aceptar'}
           </button>
@@ -523,13 +524,13 @@ export default function ReviewClient({
   const highConfCount = drafts.filter((d) => (d.payload.confidence ?? d.confidence ?? 0) >= 0.85).length;
 
   return (
-    <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
+    <div className="min-h-screen pb-24" style={{ background: '#F1F5F3' }}>
       {/* Header */}
       <header className="px-5 pt-14 pb-4 flex items-center gap-3">
         <button onClick={() => router.push('/extractos')} className="text-2xl">←</button>
         <div>
-          <h1 className="text-xl font-black" style={{ color: '#2D2D2D' }}>Revisar extracto</h1>
-          <p className="text-xs" style={{ color: '#6B6459' }}>
+          <h1 className="text-xl font-black" style={{ color: '#18211D' }}>Revisar extracto</h1>
+          <p className="text-xs" style={{ color: '#5B6660' }}>
             {new Date(statement.created_at).toLocaleDateString('es-AR', { day: 'numeric', month: 'long' })}
           </p>
         </div>
@@ -537,29 +538,29 @@ export default function ReviewClient({
 
       {/* Parsing spinner */}
       {isParsing && (
-        <div className="mx-4 mb-4 rounded-3xl p-5 flex items-center gap-3" style={{ background: '#E4F2EA' }}>
+        <div className="mx-4 mb-4 rounded-3xl p-5 flex items-center gap-3" style={{ background: '#DDF0E8', boxShadow: 'var(--shadow-soft)' }}>
           <span className="text-2xl animate-spin">⚙️</span>
           <div>
-            <p className="text-sm font-bold" style={{ color: '#5BA886' }}>Analizando con IA…</p>
-            <p className="text-xs" style={{ color: '#5BA886' }}>Esto puede tardar un minuto.</p>
+            <p className="text-sm font-bold" style={{ color: '#1F8A68' }}>Analizando con IA…</p>
+            <p className="text-xs" style={{ color: '#1F8A68' }}>Esto puede tardar un minuto.</p>
           </div>
         </div>
       )}
 
       {/* Bulk accept banner */}
       {!isParsing && highConfCount > 0 && (
-        <div className="mx-4 mb-4 rounded-3xl p-4 flex items-center justify-between gap-3" style={{ background: '#E4F2EA' }}>
+        <div className="mx-4 mb-4 rounded-3xl p-4 flex items-center justify-between gap-3" style={{ background: '#DDF0E8', boxShadow: 'var(--shadow-soft)' }}>
           <div>
-            <p className="text-sm font-bold" style={{ color: '#5BA886' }}>
+            <p className="text-sm font-bold" style={{ color: '#1F8A68' }}>
               {highConfCount} con alta confianza
             </p>
-            <p className="text-xs" style={{ color: '#5BA886' }}>Aceptalos todos de una vez</p>
+            <p className="text-xs" style={{ color: '#1F8A68' }}>Aceptalos todos de una vez</p>
           </div>
           <button
             onClick={handleBulkAccept}
             disabled={accepting}
-            className="px-4 py-2 rounded-2xl text-xs font-black"
-            style={{ background: '#7EC8A4', color: '#FFFFFF' }}
+            className="px-4 py-2.5 rounded-2xl text-xs font-black shrink-0"
+            style={{ background: 'linear-gradient(135deg, #34AD84 0%, #1F8A68 100%)', color: '#FFFFFF', boxShadow: 'var(--shadow-soft)' }}
           >
             {accepting ? '…' : `Aceptar ${highConfCount}`}
           </button>
@@ -570,10 +571,10 @@ export default function ReviewClient({
       {!isParsing && !isLoading && drafts.length === 0 && (
         <div className="text-center py-16 px-8">
           <p className="text-5xl mb-4">✅</p>
-          <p className="text-base font-bold" style={{ color: '#2D2D2D' }}>
+          <p className="text-base font-bold" style={{ color: '#18211D' }}>
             {statementStatus === 'failed' ? 'Error al analizar el resumen' : 'Todo revisado'}
           </p>
-          <p className="text-sm mt-2" style={{ color: '#6B6459' }}>
+          <p className="text-sm mt-2" style={{ color: '#5B6660' }}>
             {statementStatus === 'failed'
               ? 'Intentá con otro archivo o foto más nítida.'
               : 'Los movimientos aceptados ya aparecen en Movimientos.'}
@@ -581,7 +582,7 @@ export default function ReviewClient({
           <button
             onClick={() => router.push('/movimientos')}
             className="mt-5 px-6 py-3 rounded-2xl text-sm font-bold"
-            style={{ background: '#7EC8A4', color: '#FFFFFF' }}
+            style={{ background: 'linear-gradient(135deg, #34AD84 0%, #1F8A68 100%)', color: '#FFFFFF', boxShadow: 'var(--shadow-glow)' }}
           >
             Ver movimientos
           </button>
@@ -591,7 +592,7 @@ export default function ReviewClient({
       {/* Draft cards */}
       {!isParsing && drafts.length > 0 && (
         <div className="px-4">
-          <p className="text-xs font-bold mb-3" style={{ color: '#6B6459' }}>
+          <p className="text-xs font-bold mb-3" style={{ color: '#5B6660' }}>
             {drafts.length} movimiento{drafts.length !== 1 ? 's' : ''} para revisar · Deslizá → aceptar · ← rechazar
           </p>
           {drafts.map((draft) => (

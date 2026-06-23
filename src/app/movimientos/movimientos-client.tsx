@@ -428,12 +428,12 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   const catColorById = new Map(categories.map((c) => [c.id, (c.color as string | null) ?? null]));
 
   return (
-    <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
+    <div className="min-h-screen pb-24" style={{ background: '#F1F5F3' }}>
       {/* Header */}
       <header className="px-5 pt-14 pb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Movimientos</h1>
-          <p className="text-xs mt-0.5" style={{ color: '#6B6459' }}>
+          <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>Movimientos</h1>
+          <p className="text-xs mt-0.5" style={{ color: '#5B6660' }}>
             {searchActive ? 'Buscando en todo el histórico' : filterRange === 'week' ? `Semana · Lun ${shortDM(week.start)} – Dom ${shortDM(week.end)}` : filterRange === 'month' ? 'Este mes' : 'Histórico'}
           </p>
         </div>
@@ -441,14 +441,14 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
           <button
             onClick={handleExport}
             className="text-xs font-bold px-3 py-1.5 rounded-full border"
-            style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
+            style={{ borderColor: '#E5EBE8', color: '#5B6660' }}
           >
             Exportar CSV
           </button>
           <button
             onClick={toggle}
             className="text-xs font-bold px-3 py-1.5 rounded-full border"
-            style={{ borderColor: '#7EC8A4', color: '#7EC8A4' }}
+            style={{ borderColor: '#2FA37C', color: '#2FA37C' }}
           >
             {showUSD ? 'USD' : 'ARS'}
           </button>
@@ -457,17 +457,24 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
 
       {/* Month summary — always current-month numbers, so say so explicitly
           (the Semana/Histórico filters don't change this card). */}
-      <div className="mx-4 mb-4 rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-        <div className="flex justify-between">
-          <div>
-            <p className="text-xs font-semibold" style={{ color: '#6B6459' }}>Gastos · este mes</p>
-            <p className="text-xl font-black" style={{ color: '#FF7F6B' }}>{format(monthSummary.expenses)}</p>
-            <p className="text-xs" style={{ color: '#6B6459' }}>{secondary(monthSummary.expenses)}</p>
+      <div className="mx-4 mb-4 rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+        <div className="flex items-stretch">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="w-7 h-7 rounded-full flex items-center justify-center text-sm shrink-0" style={{ background: '#FFE5E0' }}>💸</span>
+              <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: '#8C968F' }}>Gastos · mes</p>
+            </div>
+            <p className="text-xl font-black tabular-nums mt-2 truncate" style={{ color: '#FF6F61' }}>{format(monthSummary.expenses)}</p>
+            <p className="text-[11px]" style={{ color: '#8C968F' }}>{secondary(monthSummary.expenses)}</p>
           </div>
-          <div className="text-right">
-            <p className="text-xs font-semibold" style={{ color: '#6B6459' }}>Ingresos · este mes</p>
-            <p className="text-xl font-black" style={{ color: '#7EC8A4' }}>{format(monthSummary.income)}</p>
-            <p className="text-xs" style={{ color: '#6B6459' }}>{secondary(monthSummary.income)}</p>
+          <div className="w-px mx-3 self-stretch" style={{ background: '#EAF0ED' }} />
+          <div className="flex-1 min-w-0 text-right">
+            <div className="flex items-center justify-end gap-2">
+              <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: '#8C968F' }}>Ingresos · mes</p>
+              <span className="w-7 h-7 rounded-full flex items-center justify-center text-sm shrink-0" style={{ background: '#DDF0E8' }}>💰</span>
+            </div>
+            <p className="text-xl font-black tabular-nums mt-2 truncate" style={{ color: '#2FA37C' }}>{format(monthSummary.income)}</p>
+            <p className="text-[11px]" style={{ color: '#8C968F' }}>{secondary(monthSummary.income)}</p>
           </div>
         </div>
       </div>
@@ -476,11 +483,12 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       <div className="px-4 mb-3">
         <button
           onClick={() => setShowChart((v) => !v)}
-          className="text-xs font-bold px-4 py-2 rounded-full border"
+          className="text-xs font-bold px-4 py-2 rounded-full border transition-all"
           style={{
-            background: showChart ? '#2D2D2D' : '#FFFFFF',
-            borderColor: showChart ? '#2D2D2D' : '#ECE5DC',
-            color: showChart ? '#FFFFFF' : '#6B6459',
+            background: showChart ? '#18211D' : '#FFFFFF',
+            borderColor: showChart ? '#18211D' : '#E5EBE8',
+            color: showChart ? '#FFFFFF' : '#5B6660',
+            boxShadow: 'var(--shadow-soft)',
           }}
         >
           📊 Comparar meses
@@ -489,19 +497,19 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
 
       {/* Chart section */}
       {showChart && (
-        <div className="mx-4 mb-4 rounded-3xl p-4" style={{ background: '#FFFFFF' }}>
-          <p className="text-sm font-black mb-3" style={{ color: '#2D2D2D' }}>Top 5 categorías</p>
+        <div className="mx-4 mb-4 rounded-3xl p-4" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+          <p className="text-sm font-black mb-3" style={{ color: '#18211D' }}>Top 5 categorías</p>
           {chartData.length === 0 ? (
-            <p className="text-sm text-center py-4" style={{ color: '#6B6459' }}>Sin datos de gastos este mes.</p>
+            <p className="text-sm text-center py-4" style={{ color: '#5B6660' }}>Sin datos de gastos este mes.</p>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={chartData} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
-                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#6B6459' }} />
-                <YAxis tickFormatter={(v) => formatARS(v)} tick={{ fontSize: 9, fill: '#6B6459' }} width={70} />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#5B6660' }} />
+                <YAxis tickFormatter={(v) => formatARS(v)} tick={{ fontSize: 9, fill: '#5B6660' }} width={70} />
                 <Tooltip formatter={(v) => formatARS(Number(v))} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="Este mes" fill="#7EC8A4" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Mes anterior" fill="#6B6459" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Este mes" fill="#2FA37C" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Mes anterior" fill="#5B6660" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -516,18 +524,19 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full px-4 py-2.5 rounded-2xl text-sm border bg-white outline-none"
-          style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+          style={{ borderColor: '#E5EBE8', color: '#18211D', boxShadow: 'var(--shadow-soft)' }}
         />
         <div className="flex gap-2 overflow-x-auto no-scrollbar">
           {(['all', 'personal', 'household'] as const).map((s) => (
             <button
               key={s}
               onClick={() => setFilterScope(s)}
-              className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border"
+              className="flex-shrink-0 px-3 py-2 rounded-full text-xs font-bold border transition-all"
               style={{
-                background: filterScope === s ? '#2D2D2D' : '#FFFFFF',
-                borderColor: filterScope === s ? '#2D2D2D' : '#ECE5DC',
-                color: filterScope === s ? '#FFFFFF' : '#6B6459',
+                background: filterScope === s ? '#18211D' : '#FFFFFF',
+                borderColor: filterScope === s ? '#18211D' : '#E5EBE8',
+                color: filterScope === s ? '#FFFFFF' : '#5B6660',
+                boxShadow: 'var(--shadow-soft)',
               }}
             >
               {s === 'all' ? 'Todos' : s === 'personal' ? 'Personal' : 'Hogar'}
@@ -535,11 +544,12 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
           ))}
           <button
             onClick={() => setFilterShared(filterShared === true ? null : true)}
-            className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border"
+            className="flex-shrink-0 px-3 py-2 rounded-full text-xs font-bold border transition-all"
             style={{
-              background: filterShared === true ? '#FFE7E2' : '#FFFFFF',
-              borderColor: filterShared === true ? '#FF7F6B' : '#ECE5DC',
-              color: filterShared === true ? '#FF7F6B' : '#6B6459',
+              background: filterShared === true ? '#FFE5E0' : '#FFFFFF',
+              borderColor: filterShared === true ? '#FF6F61' : '#E5EBE8',
+              color: filterShared === true ? '#FF6F61' : '#5B6660',
+              boxShadow: 'var(--shadow-soft)',
             }}
           >
             🤝 Compartidos
@@ -549,11 +559,12 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
             <button
               key={r}
               onClick={() => setFilterRange(r)}
-              className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border"
+              className="flex-shrink-0 px-3 py-2 rounded-full text-xs font-bold border transition-all"
               style={{
-                background: filterRange === r ? '#5BA886' : '#FFFFFF',
-                borderColor: filterRange === r ? '#5BA886' : '#ECE5DC',
-                color: filterRange === r ? '#FFFFFF' : '#6B6459',
+                background: filterRange === r ? '#1F8A68' : '#FFFFFF',
+                borderColor: filterRange === r ? '#1F8A68' : '#E5EBE8',
+                color: filterRange === r ? '#FFFFFF' : '#5B6660',
+                boxShadow: 'var(--shadow-soft)',
               }}
             >
               {r === 'all' ? 'Histórico' : r === 'week' ? '📆 Semana' : 'Mes'}
@@ -567,7 +578,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
             value={filterCategory}
             onChange={(e) => setFilterCategory(e.target.value)}
             className="flex-1 px-3 py-2 rounded-2xl text-xs font-bold border bg-white outline-none"
-            style={{ borderColor: filterCategory !== 'all' ? '#7EC8A4' : '#ECE5DC', color: filterCategory !== 'all' ? '#5BA886' : '#6B6459' }}
+            style={{ borderColor: filterCategory !== 'all' ? '#2FA37C' : '#E5EBE8', color: filterCategory !== 'all' ? '#1F8A68' : '#5B6660' }}
           >
             <option value="all">Todas las categorías</option>
             {categories.map((c) => (
@@ -575,7 +586,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
             ))}
           </select>
           {filterCategory !== 'all' && (
-            <span className="text-xs font-black whitespace-nowrap" style={{ color: '#FF7F6B' }}>
+            <span className="text-xs font-black whitespace-nowrap" style={{ color: '#FF6F61' }}>
               {format(filtered.filter((t) => t.type === 'expense').reduce((s, t) => s + toArs(t.amount, t.currency), 0))}
             </span>
           )}
@@ -585,34 +596,36 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowAdvanced((v) => !v)}
-            className="px-3 py-1.5 rounded-full text-xs font-bold border"
+            className="px-3 py-2 rounded-full text-xs font-bold border transition-all"
             style={{
-              background: filterAccount !== 'all' || filterMinAmount > 0 || filterFixed === true || !!filterFlag ? '#2D2D2D' : '#FFFFFF',
-              borderColor: '#ECE5DC',
-              color: filterAccount !== 'all' || filterMinAmount > 0 || filterFixed === true || !!filterFlag ? '#FFFFFF' : '#6B6459',
+              background: filterAccount !== 'all' || filterMinAmount > 0 || filterFixed === true || !!filterFlag ? '#18211D' : '#FFFFFF',
+              borderColor: '#E5EBE8',
+              color: filterAccount !== 'all' || filterMinAmount > 0 || filterFixed === true || !!filterFlag ? '#FFFFFF' : '#5B6660',
+              boxShadow: 'var(--shadow-soft)',
             }}
           >
             ⚙️ Filtros{filterAccount !== 'all' || filterMinAmount > 0 || filterFixed === true || !!filterFlag ? ' •' : ''}
           </button>
           <button
             onClick={() => { setSelectMode((v) => !v); setSelected(new Set()); }}
-            className="px-3 py-1.5 rounded-full text-xs font-bold border ml-auto"
+            className="px-3 py-2 rounded-full text-xs font-bold border ml-auto transition-all"
             style={{
-              background: selectMode ? '#5BA886' : '#FFFFFF',
-              borderColor: selectMode ? '#5BA886' : '#ECE5DC',
-              color: selectMode ? '#FFFFFF' : '#6B6459',
+              background: selectMode ? '#1F8A68' : '#FFFFFF',
+              borderColor: selectMode ? '#1F8A68' : '#E5EBE8',
+              color: selectMode ? '#FFFFFF' : '#5B6660',
+              boxShadow: 'var(--shadow-soft)',
             }}
           >
             {selectMode ? 'Cancelar' : '☑️ Seleccionar'}
           </button>
         </div>
         {showAdvanced && (
-          <div className="flex flex-col gap-2 p-3 rounded-2xl" style={{ background: '#F9F5F0' }}>
+          <div className="flex flex-col gap-2 p-3 rounded-2xl" style={{ background: '#F1F5F3' }}>
             <select
               value={filterAccount}
               onChange={(e) => setFilterAccount(e.target.value)}
               className="px-3 py-2 rounded-xl text-xs font-bold border bg-white outline-none"
-              style={{ borderColor: filterAccount !== 'all' ? '#7EC8A4' : '#ECE5DC', color: '#2D2D2D' }}
+              style={{ borderColor: filterAccount !== 'all' ? '#2FA37C' : '#E5EBE8', color: '#18211D' }}
             >
               <option value="all">Todas las cuentas</option>
               {accounts.map((a) => (
@@ -627,25 +640,25 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                 value={filterMinAmount || ''}
                 onChange={(e) => setFilterMinAmount(Number(e.target.value) || 0)}
                 className="flex-1 px-3 py-2 rounded-xl text-xs border bg-white outline-none"
-                style={{ borderColor: filterMinAmount > 0 ? '#7EC8A4' : '#ECE5DC', color: '#2D2D2D' }}
+                style={{ borderColor: filterMinAmount > 0 ? '#2FA37C' : '#E5EBE8', color: '#18211D' }}
               />
               <button
                 onClick={() => setFilterFixed(filterFixed === true ? null : true)}
                 className="px-3 py-2 rounded-xl text-xs font-bold border whitespace-nowrap"
                 style={{
                   background: filterFixed === true ? '#FBF1D8' : '#FFFFFF',
-                  borderColor: filterFixed === true ? '#F5A623' : '#ECE5DC',
-                  color: filterFixed === true ? '#C79A2B' : '#6B6459',
+                  borderColor: filterFixed === true ? '#F5A623' : '#E5EBE8',
+                  color: filterFixed === true ? '#C79A2B' : '#5B6660',
                 }}
               >
                 📌 Solo fijos
               </button>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold" style={{ color: '#6B6459' }}>Flag</span>
-              <button onClick={() => setFilterFlag(null)} className="w-6 h-6 rounded-full border flex items-center justify-center text-[10px]" style={{ borderColor: filterFlag === null ? '#2D2D2D' : '#ECE5DC', color: '#6B6459' }}>○</button>
+              <span className="text-[11px] font-bold" style={{ color: '#5B6660' }}>Flag</span>
+              <button onClick={() => setFilterFlag(null)} className="w-6 h-6 rounded-full border flex items-center justify-center text-[10px]" style={{ borderColor: filterFlag === null ? '#18211D' : '#E5EBE8', color: '#5B6660' }}>○</button>
               {FLAG_COLORS.map((f) => (
-                <button key={f.key} onClick={() => setFilterFlag(filterFlag === f.key ? null : f.key)} title={f.label} className="w-6 h-6 rounded-full" style={{ background: f.hex, outline: filterFlag === f.key ? '2px solid #2D2D2D' : 'none', outlineOffset: '1px' }} />
+                <button key={f.key} onClick={() => setFilterFlag(filterFlag === f.key ? null : f.key)} title={f.label} className="w-6 h-6 rounded-full" style={{ background: f.hex, outline: filterFlag === f.key ? '2px solid #18211D' : 'none', outlineOffset: '1px' }} />
               ))}
             </div>
           </div>
@@ -654,15 +667,15 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
 
       {/* Reconcile banner (single account) */}
       {selectedAccount && clearedBalance != null && (
-        <div className="mx-4 mb-3 rounded-2xl p-4 flex items-center justify-between gap-3" style={{ background: '#FFFFFF' }}>
+        <div className="mx-4 mb-3 rounded-2xl p-4 flex items-center justify-between gap-3" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
           <div className="min-w-0">
-            <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Saldo conciliado · {selectedAccount.name}</p>
-            <p className="text-lg font-black tabular-nums" style={{ color: '#2D2D2D' }}>{formatARS(clearedBalance)}</p>
+            <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>Saldo conciliado · {selectedAccount.name}</p>
+            <p className="text-lg font-black tabular-nums" style={{ color: '#18211D' }}>{formatARS(clearedBalance)}</p>
             {selectedAccount.last_reconciled_at && (
-              <p className="text-[10px]" style={{ color: '#A89E90' }}>Última conciliación: {new Date(selectedAccount.last_reconciled_at).toLocaleDateString('es-AR')}</p>
+              <p className="text-[10px]" style={{ color: '#8C968F' }}>Última conciliación: {new Date(selectedAccount.last_reconciled_at).toLocaleDateString('es-AR')}</p>
             )}
           </div>
-          <button onClick={() => { setBankBal(String(clearedBalance)); setReconcileOpen(true); }} className="shrink-0 px-3 py-2 rounded-xl text-xs font-bold" style={{ background: '#E4F2EA', color: '#5BA886' }}>
+          <button onClick={() => { setBankBal(String(clearedBalance)); setReconcileOpen(true); }} className="shrink-0 px-3 py-2 rounded-xl text-xs font-bold" style={{ background: '#DDF0E8', color: '#1F8A68' }}>
             Conciliar
           </button>
         </div>
@@ -679,10 +692,10 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
         )}
         {grouped.map(([date, txs]) => (
           <div key={date}>
-            <p className="text-xs font-bold mb-2 capitalize" style={{ color: '#6B6459' }}>
+            <p className="text-xs font-bold mb-2 capitalize" style={{ color: '#5B6660' }}>
               {fmtDate(date)}
             </p>
-            <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
+            <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
               {txs.map((tx, i) => (
                 <SwipeAction
                   key={tx.id}
@@ -690,12 +703,12 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                   disabled={selectMode || isLocked(tx)}
                 >
                 <button
-                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left animate-in fade-in slide-in-from-bottom-2 duration-200"
+                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left animate-in fade-in slide-in-from-bottom-2 duration-200 transition-colors hover:bg-[#F4F8F6] active:bg-[#EEF3F1]"
                   style={{
-                    borderTop: i > 0 ? '1px solid #ECE5DC' : 'none',
+                    borderTop: i > 0 ? '1px solid #E5EBE8' : 'none',
                     borderLeft: flagHex(tx.flag) ? `4px solid ${flagHex(tx.flag)}` : undefined,
                     animationDelay: `${i * 30}ms`,
-                    background: selectMode && selected.has(tx.id) ? '#E4F2EA' : undefined,
+                    background: selectMode && selected.has(tx.id) ? '#DDF0E8' : undefined,
                   }}
                   onClick={() => {
                     if (selectMode) {
@@ -714,7 +727,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                   {selectMode && (
                     <span
                       className="shrink-0 w-5 h-5 rounded-md border flex items-center justify-center text-white text-xs"
-                      style={{ borderColor: selected.has(tx.id) ? '#5BA886' : '#D9CFC2', background: selected.has(tx.id) ? '#5BA886' : '#FFFFFF' }}
+                      style={{ borderColor: selected.has(tx.id) ? '#1F8A68' : '#CFD8D3', background: selected.has(tx.id) ? '#1F8A68' : '#FFFFFF' }}
                     >
                       {selected.has(tx.id) ? '✓' : ''}
                     </span>
@@ -724,7 +737,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                       onClick={(e) => { e.stopPropagation(); if (!isLocked(tx)) void toggleCleared(tx); }}
                       title={isLocked(tx) ? 'Conciliado (bloqueado)' : tx.cleared ? 'Conciliado' : 'Marcar como conciliado'}
                       className="shrink-0 w-5 h-5 rounded-full border flex items-center justify-center text-white text-[11px]"
-                      style={{ borderColor: tx.cleared ? '#5BA886' : '#D9CFC2', background: tx.cleared ? '#5BA886' : '#FFFFFF', cursor: isLocked(tx) ? 'default' : 'pointer' }}
+                      style={{ borderColor: tx.cleared ? '#1F8A68' : '#CFD8D3', background: tx.cleared ? '#1F8A68' : '#FFFFFF', cursor: isLocked(tx) ? 'default' : 'pointer' }}
                     >
                       {isLocked(tx) ? '🔒' : tx.cleared ? '✓' : ''}
                     </span>
@@ -736,27 +749,27 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                     {tx.type === 'transfer' ? '🔄' : (tx.categories?.icon ?? '🏷️')}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>
+                    <p className="text-sm font-semibold truncate" style={{ color: '#18211D' }}>
                       {tx.type === 'transfer'
                         ? `${acctName(tx.account_id)} → ${acctName(tx.transfer_account_id)}`
                         : tx.merchant || tx.categories?.name || 'Sin categoría'}
                     </p>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       {tx.categories?.name && tx.merchant && (
-                        <span className="text-xs font-semibold" style={{ color: catColorById.get(tx.category_id ?? '') ?? '#6B6459' }}>{tx.categories.name}</span>
+                        <span className="text-xs font-semibold" style={{ color: catColorById.get(tx.category_id ?? '') ?? '#5B6660' }}>{tx.categories.name}</span>
                       )}
                       {tx.is_shared && (
-                        <span className="text-xs px-1.5 py-0.5 rounded-md font-semibold" style={{ background: '#FFE7E2', color: '#FF7F6B' }}>
+                        <span className="text-xs px-1.5 py-0.5 rounded-md font-semibold" style={{ background: '#FFE5E0', color: '#FF6F61' }}>
                           Compartido
                         </span>
                       )}
                       {tx.scope === 'household' && (
-                        <span className="text-xs px-1.5 py-0.5 rounded-md font-semibold" style={{ background: '#E4F2EA', color: '#5BA886' }}>
+                        <span className="text-xs px-1.5 py-0.5 rounded-md font-semibold" style={{ background: '#DDF0E8', color: '#1F8A68' }}>
                           Hogar
                         </span>
                       )}
                       {tx.installment_total && tx.installment_total > 1 && (
-                        <span className="text-xs px-1.5 py-0.5 rounded-md font-semibold" style={{ background: '#ECE5DC', color: '#6B6459' }}>
+                        <span className="text-xs px-1.5 py-0.5 rounded-md font-semibold" style={{ background: '#E5EBE8', color: '#5B6660' }}>
                           Cuota {tx.installment_number}/{tx.installment_total}
                         </span>
                       )}
@@ -774,13 +787,13 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                   <div className="text-right flex-shrink-0">
                     <p
                       className="text-base font-black"
-                      style={{ color: tx.type === 'expense' ? '#FF7F6B' : tx.type === 'transfer' ? '#5B8DEF' : '#7EC8A4' }}
+                      style={{ color: tx.type === 'expense' ? '#FF6F61' : tx.type === 'transfer' ? '#4E84E0' : '#2FA37C' }}
                     >
                       {tx.type === 'expense' ? '-' : tx.type === 'transfer' ? '' : '+'}{format(toArs(tx.amount, tx.currency))}
                     </p>
-                    <p className="text-xs" style={{ color: '#6B6459' }}>{secondary(toArs(tx.amount, tx.currency))}</p>
+                    <p className="text-xs" style={{ color: '#5B6660' }}>{secondary(toArs(tx.amount, tx.currency))}</p>
                     {runningBalance && (
-                      <p className="text-[10px] tabular-nums" style={{ color: '#A89E90' }}>saldo {formatARS(runningBalance.get(tx.id) ?? 0)}</p>
+                      <p className="text-[10px] tabular-nums" style={{ color: '#8C968F' }}>saldo {formatARS(runningBalance.get(tx.id) ?? 0)}</p>
                     )}
                   </div>
                 </button>
@@ -807,27 +820,27 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       {/* Bulk action bar */}
       {selectMode && selected.size > 0 && (
         <div className="fixed left-0 right-0 z-40 px-4" style={{ bottom: 'calc(76px + env(safe-area-inset-bottom))' }}>
-          <div className="rounded-2xl shadow-lg flex items-center gap-2 p-2" style={{ background: '#2D2D2D' }}>
+          <div className="rounded-2xl shadow-lg flex items-center gap-2 p-2" style={{ background: '#18211D' }}>
             <span className="text-xs font-bold px-1.5 shrink-0" style={{ color: '#FFFFFF' }}>{selected.size} sel.</span>
-            <button onClick={() => setBulkCatOpen(true)} className="flex-1 px-3 py-2 rounded-xl text-xs font-bold" style={{ background: '#5BA886', color: '#FFFFFF' }}>Categorizar</button>
+            <button onClick={() => setBulkCatOpen(true)} className="flex-1 px-3 py-2 rounded-xl text-xs font-bold" style={{ background: '#1F8A68', color: '#FFFFFF' }}>Categorizar</button>
             <button onClick={() => bulkUpdate({ is_fixed: true }, 'marcados como fijos')} className="px-3 py-2 rounded-xl text-xs font-bold" style={{ background: '#F5A623', color: '#FFFFFF' }}>📌 Fijo</button>
-            <button onClick={bulkDelete} className="px-3 py-2 rounded-xl text-xs font-bold" style={{ background: '#FF7F6B', color: '#FFFFFF' }}>🗑️</button>
+            <button onClick={bulkDelete} className="px-3 py-2 rounded-xl text-xs font-bold" style={{ background: '#FF6F61', color: '#FFFFFF' }}>🗑️</button>
           </div>
         </div>
       )}
 
       {/* Bulk categorize picker */}
       {bulkCatOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={() => setBulkCatOpen(false)}>
-          <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 max-h-[70vh] overflow-y-auto" style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
-            <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
-            <h2 className="text-lg font-black mb-1" style={{ color: '#2D2D2D' }}>Asignar categoría</h2>
-            <p className="text-xs mb-4" style={{ color: '#6B6459' }}>A {selected.size} movimiento(s) seleccionados.</p>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(20,28,24,0.45)' }} onClick={() => setBulkCatOpen(false)}>
+          <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 max-h-[70vh] overflow-y-auto" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
+            <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#E5EBE8' }} />
+            <h2 className="text-lg font-black mb-1" style={{ color: '#18211D' }}>Asignar categoría</h2>
+            <p className="text-xs mb-4" style={{ color: '#5B6660' }}>A {selected.size} movimiento(s) seleccionados.</p>
             <div className="flex flex-col gap-1">
               {categories.filter((c) => c.kind === 'expense').map((c) => (
-                <button key={c.id} onClick={() => bulkUpdate({ category_id: c.id }, `movidos a ${c.name}`)} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-left" style={{ background: '#F9F5F0' }}>
+                <button key={c.id} onClick={() => bulkUpdate({ category_id: c.id }, `movidos a ${c.name}`)} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-left" style={{ background: '#F1F5F3' }}>
                   <span className="text-xl">{c.icon}</span>
-                  <span className="text-sm font-semibold" style={{ color: '#2D2D2D' }}>{c.name}</span>
+                  <span className="text-sm font-semibold" style={{ color: '#18211D' }}>{c.name}</span>
                 </button>
               ))}
             </div>
@@ -837,31 +850,31 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
 
       {/* Reconcile sheet */}
       {reconcileOpen && selectedAccount && clearedBalance != null && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={() => setReconcileOpen(false)}>
-          <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6" style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
-            <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
-            <h2 className="text-lg font-black mb-1" style={{ color: '#2D2D2D' }}>Conciliar {selectedAccount.name}</h2>
-            <p className="text-xs mb-4" style={{ color: '#6B6459' }}>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(20,28,24,0.45)' }} onClick={() => setReconcileOpen(false)}>
+          <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
+            <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#E5EBE8' }} />
+            <h2 className="text-lg font-black mb-1" style={{ color: '#18211D' }}>Conciliar {selectedAccount.name}</h2>
+            <p className="text-xs mb-4" style={{ color: '#5B6660' }}>
               Saldo de los movimientos marcados ✓: <b>{formatARS(clearedBalance)}</b>. Ingresá el saldo real que muestra el banco hoy; si hay diferencia, creamos un ajuste.
             </p>
-            <label className="text-[11px] font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Saldo real del banco</label>
+            <label className="text-[11px] font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>Saldo real del banco</label>
             <input
               type="number"
               inputMode="numeric"
               value={bankBal}
               onChange={(e) => setBankBal(e.target.value)}
               className="w-full mt-1 mb-3 px-4 py-3 rounded-2xl text-base font-bold border-2 outline-none"
-              style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: '#ECE5DC' }}
+              style={{ background: '#F1F5F3', color: '#18211D', borderColor: '#E5EBE8' }}
             />
             {bankBal.trim() !== '' && Number.isFinite(Number(bankBal)) && (() => {
               const diff = Math.round(Number(bankBal) - clearedBalance);
               return (
-                <p className="text-xs mb-3" style={{ color: diff === 0 ? '#5BA886' : '#C79A2B' }}>
+                <p className="text-xs mb-3" style={{ color: diff === 0 ? '#1F8A68' : '#C79A2B' }}>
                   {diff === 0 ? '✓ Coincide, no hace falta ajuste.' : `Se creará un ajuste de ${formatARS(Math.abs(diff))} (${diff > 0 ? 'ingreso' : 'gasto'}).`}
                 </p>
               );
             })()}
-            <button onClick={doReconcile} className="w-full py-3 rounded-2xl text-sm font-bold text-white" style={{ background: '#5BA886' }}>
+            <button onClick={doReconcile} className="w-full py-3 rounded-2xl text-sm font-bold text-white" style={{ background: '#1F8A68' }}>
               Conciliar
             </button>
           </div>
@@ -926,30 +939,30 @@ function CategorySummary({
 
   return (
     <div className="mx-4 mt-6 mb-2">
-      <p className="text-sm font-black mb-3" style={{ color: '#2D2D2D' }}>Por categoría (este mes)</p>
-      <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
+      <p className="text-sm font-black mb-3" style={{ color: '#18211D' }}>Por categoría (este mes)</p>
+      <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
         {byCategory.map((row, i) => (
           <div
             key={row.id}
             className="flex items-center gap-3 px-4 py-3"
-            style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}
+            style={{ borderTop: i > 0 ? '1px solid #E5EBE8' : 'none' }}
           >
             <span className="text-xl">{row.cat?.icon ?? '🏷️'}</span>
             <div className="flex-1 min-w-0">
               <div className="flex justify-between items-baseline mb-1">
-                <p className="text-sm font-semibold" style={{ color: '#2D2D2D' }}>
+                <p className="text-sm font-semibold" style={{ color: '#18211D' }}>
                   {row.cat?.name ?? 'Sin categoría'}
                 </p>
-                <p className="text-sm font-black" style={{ color: '#FF7F6B' }}>{format(row.amount)}</p>
+                <p className="text-sm font-black" style={{ color: '#FF6F61' }}>{format(row.amount)}</p>
               </div>
-              <div className="h-1.5 rounded-full" style={{ background: '#ECE5DC' }}>
+              <div className="h-1.5 rounded-full" style={{ background: '#E5EBE8' }}>
                 <div
                   className="h-1.5 rounded-full"
-                  style={{ width: `${row.pct}%`, background: '#FF7F6B' }}
+                  style={{ width: `${row.pct}%`, background: '#FF6F61' }}
                 />
               </div>
             </div>
-            <span className="text-xs font-bold w-8 text-right" style={{ color: '#6B6459' }}>{row.pct}%</span>
+            <span className="text-xs font-bold w-8 text-right" style={{ color: '#5B6660' }}>{row.pct}%</span>
           </div>
         ))}
       </div>

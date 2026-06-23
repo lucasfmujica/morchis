@@ -20,9 +20,9 @@ interface Insight {
 }
 
 const SEVERITY_STYLE: Record<string, { bg: string; border: string; color: string; icon: string; label: string }> = {
-  positive: { bg: '#E4F2EA', border: '#7EC8A4', color: '#5BA886', icon: '✨', label: 'Positivo' },
-  warning:  { bg: '#FFE7E2', border: '#FF7F6B', color: '#E5604C', icon: '⚠️', label: 'Atención' },
-  info:     { bg: '#F0EDE8', border: '#C4B9AE', color: '#6B6459', icon: '💡', label: 'Info' },
+  positive: { bg: '#DDF0E8', border: '#2FA37C', color: '#1F8A68', icon: '✨', label: 'Positivo' },
+  warning:  { bg: '#FFE5E0', border: '#FF6F61', color: '#E25749', icon: '⚠️', label: 'Atención' },
+  info:     { bg: '#EAF0ED', border: '#B0BAB4', color: '#5B6660', icon: '💡', label: 'Info' },
 };
 
 export default function InsightsClient({ householdId, profileId }: { householdId: string; profileId: string }) {
@@ -92,14 +92,18 @@ export default function InsightsClient({ householdId, profileId }: { householdId
   }
 
   return (
-    <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
+    <div className="min-h-screen pb-24" style={{ background: '#F1F5F3' }}>
       <header className="flex items-center justify-between px-5 pt-14 pb-4">
-        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Insights ✨</h1>
+        <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>Insights ✨</h1>
         <button
           onClick={handleRefresh}
           disabled={refreshing}
-          className="text-sm font-bold px-3 py-1.5 rounded-full"
-          style={{ background: refreshing ? '#ECE5DC' : '#7EC8A4', color: refreshing ? '#6B6459' : '#FFFFFF' }}
+          className="text-sm font-black px-4 py-2 rounded-full transition-all"
+          style={{
+            background: refreshing ? '#E5EBE8' : 'linear-gradient(135deg, #34AD84 0%, #1F8A68 100%)',
+            color: refreshing ? '#5B6660' : '#FFFFFF',
+            boxShadow: refreshing ? 'none' : 'var(--shadow-glow)',
+          }}
         >
           {refreshing ? 'Analizando…' : 'Actualizar'}
         </button>
@@ -107,14 +111,14 @@ export default function InsightsClient({ householdId, profileId }: { householdId
 
       <div className="px-4 space-y-3">
         {isLoading && (
-          <div className="rounded-3xl p-5 animate-pulse" style={{ background: '#ECE5DC', height: 80 }} />
+          <div className="rounded-3xl p-5 animate-pulse" style={{ background: '#E5EBE8', height: 80 }} />
         )}
 
         {!isLoading && insights.length === 0 && (
-          <div className="rounded-3xl p-6 text-center" style={{ background: '#FFFFFF' }}>
+          <div className="rounded-3xl p-6 text-center" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
             <p className="text-4xl mb-3">🤔</p>
-            <p className="font-bold" style={{ color: '#2D2D2D' }}>Todavía no hay insights</p>
-            <p className="text-sm mt-1" style={{ color: '#6B6459' }}>Tocá «Actualizar» para que la IA analice tus gastos.</p>
+            <p className="font-bold" style={{ color: '#18211D' }}>Todavía no hay insights</p>
+            <p className="text-sm mt-1" style={{ color: '#5B6660' }}>Tocá «Actualizar» para que la IA analice tus gastos.</p>
           </div>
         )}
 
@@ -124,15 +128,15 @@ export default function InsightsClient({ householdId, profileId }: { householdId
             <Link
               key={insight.id}
               href={`/insights/${insight.id}`}
-              className="block rounded-3xl p-5"
-              style={{ background: s.bg, border: `1px solid ${s.border}` }}
+              className="block rounded-3xl p-5 transition-transform hover:-translate-y-0.5"
+              style={{ background: s.bg, border: `1px solid ${s.border}`, boxShadow: 'var(--shadow-card)' }}
             >
               <div className="flex items-start gap-3">
                 <span className="text-2xl shrink-0 mt-0.5">{s.icon}</span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <span
-                      className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                      className="text-[10px] font-black uppercase tracking-wide px-2 py-0.5 rounded-full"
                       style={{ background: `${s.color}22`, color: s.color }}
                     >
                       {s.label}

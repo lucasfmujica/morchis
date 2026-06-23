@@ -127,49 +127,49 @@ function AccountMovementsSheet({
     currency === 'USD' ? formatUSD(amount) : formatARS(amount);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(20,28,24,0.45)' }} onClick={onClose}>
       <div
         className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 flex flex-col"
-        style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))', maxHeight: '80vh' }}
+        style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', paddingBottom: 'max(24px, env(safe-area-inset-bottom))', maxHeight: '80vh' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="w-10 h-1 rounded-full mx-auto mb-5 shrink-0" style={{ background: '#ECE5DC' }} />
+        <div className="w-10 h-1 rounded-full mx-auto mb-5 shrink-0" style={{ background: '#E5EBE8' }} />
         <div className="flex items-center gap-2 mb-1 shrink-0 min-w-0">
           <span className="text-2xl">{icon}</span>
-          <h2 className="text-lg font-black truncate" style={{ color: '#2D2D2D' }}>{title}</h2>
+          <h2 className="text-lg font-black truncate" style={{ color: '#18211D' }}>{title}</h2>
         </div>
-        <p className="text-xs mb-3 shrink-0" style={{ color: '#6B6459' }}>
+        <p className="text-xs mb-3 shrink-0" style={{ color: '#5B6660' }}>
           {rows.length} {rows.length === 1 ? 'movimiento' : 'movimientos'} · tocá para editar
         </p>
         <Link
           href={`/movimientos?account=${accountId}`}
           className="shrink-0 mb-4 text-center text-xs font-bold py-2.5 rounded-xl"
-          style={{ background: '#E4F2EA', color: '#5BA886' }}
+          style={{ background: '#DDF0E8', color: '#1F8A68' }}
         >
           📋 Register completo: saldo corriente + conciliar →
         </Link>
 
         {rows.length === 0 ? (
-          <p className="text-sm py-8 text-center" style={{ color: '#6B6459' }}>
+          <p className="text-sm py-8 text-center" style={{ color: '#5B6660' }}>
             Esta cuenta todavía no tiene movimientos.
           </p>
         ) : (
-          <div className="rounded-2xl overflow-y-auto" style={{ background: '#F9F5F0' }}>
+          <div className="rounded-2xl overflow-y-auto" style={{ background: '#F1F5F3' }}>
             {rows.map((r, i) => (
               <button
                 key={r.tx.id}
                 onClick={() => onSelect(r.tx)}
-                className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
-                style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}
+                className="w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-[#F4F8F6] active:bg-[#EEF3F1]"
+                style={{ borderTop: i > 0 ? '1px solid #E5EBE8' : 'none' }}
               >
                 <span className="text-xl shrink-0">{r.icon}</span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{r.label}</p>
-                  <p className="text-xs" style={{ color: '#6B6459' }}>{fmtMovementDate(r.tx.occurred_on)}</p>
+                  <p className="text-sm font-semibold truncate" style={{ color: '#18211D' }}>{r.label}</p>
+                  <p className="text-xs" style={{ color: '#5B6660' }}>{fmtMovementDate(r.tx.occurred_on)}</p>
                 </div>
                 <p
                   className="text-base font-black shrink-0"
-                  style={{ color: r.amount < 0 ? '#FF7F6B' : '#5BA886', fontVariantNumeric: 'tabular-nums' }}
+                  style={{ color: r.amount < 0 ? '#FF6F61' : '#1F8A68', fontVariantNumeric: 'tabular-nums' }}
                 >
                   {r.amount < 0 ? '-' : '+'}{fmt(Math.abs(r.amount), r.tx.currency)}
                 </p>
@@ -430,39 +430,44 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
   }
 
   return (
-    <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
+    <div className="min-h-screen pb-24" style={{ background: '#F1F5F3' }}>
       <header className="px-5 pt-14 pb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Cuentas</h1>
+        <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>Cuentas</h1>
         <button
           onClick={openNew}
           className="text-sm font-bold px-4 py-2 rounded-2xl text-white"
-          style={{ background: '#7EC8A4' }}
+          style={{ background: '#2FA37C' }}
         >
           + Nueva
         </button>
       </header>
 
       {/* On-budget vs tracking split */}
-      <div className="mx-4 mb-4 grid grid-cols-2 gap-3">
-        <div className="rounded-3xl p-4" style={{ background: '#E4F2EA' }}>
-          <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#5BA886' }}>💵 En presupuesto</p>
-          <p className="text-xl font-black" style={{ color: '#2D2D2D', fontVariantNumeric: 'tabular-nums' }}>{formatARS(Math.round(onBudgetTotal))}</p>
-          <p className="text-[10px]" style={{ color: '#6B6459' }}>alimenta “Para asignar”</p>
+      <div className="mx-4 mb-4 rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-pop)' }}>
+        <div className="relative px-5 pt-5 pb-5 overflow-hidden" style={{ background: 'linear-gradient(135deg, #34AD84 0%, #1F8A68 100%)' }}>
+          <div className="absolute -top-10 -right-8 w-40 h-40 rounded-full pointer-events-none" style={{ background: 'rgba(255,255,255,0.14)' }} />
+          <div className="relative flex items-center justify-between">
+            <p className="text-[11px] font-black uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.82)' }}>💵 En presupuesto</p>
+          </div>
+          <p className="relative text-[2.4rem] leading-none font-black mt-2 tracking-tight" style={{ color: '#FFFFFF', fontVariantNumeric: 'tabular-nums' }}>{formatARS(Math.round(onBudgetTotal))}</p>
+          <p className="relative text-[11px] mt-2" style={{ color: 'rgba(255,255,255,0.85)' }}>alimenta “Para asignar”</p>
         </div>
-        <div className="rounded-3xl p-4" style={{ background: '#FFFFFF' }}>
-          <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>👁️ Seguimiento</p>
-          <p className="text-xl font-black" style={{ color: '#2D2D2D', fontVariantNumeric: 'tabular-nums' }}>{formatARS(Math.round(trackingTotal))}</p>
-          <p className="text-[10px]" style={{ color: '#6B6459' }}>fuera del presupuesto</p>
+        <div className="px-4 py-4">
+          <div className="rounded-2xl px-4 py-3" style={{ background: '#F1F5F3' }}>
+            <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>👁️ Seguimiento</p>
+            <p className="text-xl font-black" style={{ color: '#18211D', fontVariantNumeric: 'tabular-nums' }}>{formatARS(Math.round(trackingTotal))}</p>
+            <p className="text-[10px]" style={{ color: '#5B6660' }}>fuera del presupuesto</p>
+          </div>
         </div>
       </div>
-      <p className="mx-4 -mt-1 mb-4 text-[11px] leading-snug" style={{ color: '#6B6459' }}>
+      <p className="mx-4 -mt-1 mb-4 text-[11px] leading-snug" style={{ color: '#5B6660' }}>
         <b>En presupuesto</b>: el saldo es plata que repartís en sobres y suma a “Para asignar” (banco, efectivo).{' '}
         <b>Seguimiento</b>: ahorros o inversiones que no presupuestás (no suman a “Para asignar”). Cambialo con el chip de cada cuenta.
       </p>
 
       {showForm && (
-        <div className="mx-4 mb-4 rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-          <p className="text-base font-black mb-4" style={{ color: '#2D2D2D' }}>
+        <div className="mx-4 mb-4 rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+          <p className="text-base font-black mb-4" style={{ color: '#18211D' }}>
             {editId ? 'Editar cuenta' : 'Nueva cuenta'}
           </p>
           <div className="flex flex-col gap-3">
@@ -472,13 +477,13 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="px-4 py-3 rounded-2xl border text-sm outline-none"
-              style={{ borderColor: '#ECE5DC' }}
+              style={{ borderColor: '#E5EBE8' }}
             />
             <select
               value={type}
               onChange={(e) => setType(e.target.value)}
               className="px-4 py-3 rounded-2xl border text-sm bg-white"
-              style={{ borderColor: '#ECE5DC' }}
+              style={{ borderColor: '#E5EBE8' }}
             >
               {ACCOUNT_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
@@ -488,7 +493,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
               className="px-4 py-3 rounded-2xl border text-sm bg-white"
-              style={{ borderColor: '#ECE5DC' }}
+              style={{ borderColor: '#E5EBE8' }}
             >
               <option value="ARS">ARS (Pesos)</option>
               <option value="USD">USD (Dólares)</option>
@@ -496,47 +501,47 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
             {type === 'credit' ? (
               <div className="flex flex-col gap-3">
                 <div>
-                  <p className="text-xs font-semibold mb-1.5 px-1" style={{ color: '#6B6459' }}>Total del resumen</p>
+                  <p className="text-xs font-semibold mb-1.5 px-1" style={{ color: '#5B6660' }}>Total del resumen</p>
                   <div className="flex gap-2">
                     <MoneyInput
                       placeholder="Total ARS"
                       value={parseMoney(statementArs)}
                       onChange={(n) => setStatementArs(n ? String(n) : '')}
                       className="flex-1 w-full px-4 py-3 rounded-2xl border text-sm outline-none"
-                      style={{ borderColor: '#ECE5DC' }}
+                      style={{ borderColor: '#E5EBE8' }}
                     />
                     <MoneyInput
                       placeholder="Total USD"
                       value={parseMoney(statementUsd)}
                       onChange={(n) => setStatementUsd(n ? String(n) : '')}
                       className="flex-1 w-full px-4 py-3 rounded-2xl border text-sm outline-none"
-                      style={{ borderColor: '#ECE5DC' }}
+                      style={{ borderColor: '#E5EBE8' }}
                     />
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <label className="flex-1">
-                    <span className="text-xs font-semibold mb-1 px-1 block" style={{ color: '#6B6459' }}>Cierre</span>
+                    <span className="text-xs font-semibold mb-1 px-1 block" style={{ color: '#5B6660' }}>Cierre</span>
                     <input
                       type="date"
                       value={closingDate}
                       onChange={(e) => setClosingDate(e.target.value)}
                       className="w-full px-3 py-3 rounded-2xl border text-sm outline-none bg-white"
-                      style={{ borderColor: '#ECE5DC' }}
+                      style={{ borderColor: '#E5EBE8' }}
                     />
                   </label>
                   <label className="flex-1">
-                    <span className="text-xs font-semibold mb-1 px-1 block" style={{ color: '#6B6459' }}>Vencimiento</span>
+                    <span className="text-xs font-semibold mb-1 px-1 block" style={{ color: '#5B6660' }}>Vencimiento</span>
                     <input
                       type="date"
                       value={dueDate}
                       onChange={(e) => setDueDate(e.target.value)}
                       className="w-full px-3 py-3 rounded-2xl border text-sm outline-none bg-white"
-                      style={{ borderColor: '#ECE5DC' }}
+                      style={{ borderColor: '#E5EBE8' }}
                     />
                   </label>
                 </div>
-                <p className="text-xs px-1" style={{ color: '#6B6459' }}>
+                <p className="text-xs px-1" style={{ color: '#5B6660' }}>
                   Guardamos el total y las fechas del resumen actual. Editá la tarjeta cada mes al nuevo cierre.
                 </p>
               </div>
@@ -547,9 +552,9 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
                   value={parseMoney(initialBalance)}
                   onChange={(n) => setInitialBalance(n ? String(n) : '')}
                   className="w-full px-4 py-3 rounded-2xl border text-sm outline-none"
-                  style={{ borderColor: '#ECE5DC' }}
+                  style={{ borderColor: '#E5EBE8' }}
                 />
-                <p className="text-xs mt-1.5 px-1" style={{ color: '#6B6459' }}>
+                <p className="text-xs mt-1.5 px-1" style={{ color: '#5B6660' }}>
                   El saldo se actualiza solo con tus ingresos y gastos.
                 </p>
               </div>
@@ -586,13 +591,13 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
             onClick={() => setDetailAccountId(a.id)}
             role="button"
             tabIndex={0}
-            className="rounded-3xl px-5 py-4 flex items-center gap-3 cursor-pointer"
-            style={{ background: '#FFFFFF', opacity: a.archived ? 0.5 : 1 }}
+            className="rounded-3xl px-5 py-4 flex items-center gap-3 cursor-pointer transition-colors hover:bg-[#F4F8F6] active:bg-[#EEF3F1]"
+            style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', opacity: a.archived ? 0.5 : 1 }}
           >
             <span className="text-2xl">{a.type === 'cash' ? '💵' : a.type === 'credit' ? '💳' : '🏦'}</span>
             <div className="flex-1 min-w-0">
-              <p className="font-bold" style={{ color: '#2D2D2D' }}>{a.name}</p>
-              <p className="text-xs" style={{ color: '#6B6459' }}>
+              <p className="font-bold" style={{ color: '#18211D' }}>{a.name}</p>
+              <p className="text-xs" style={{ color: '#5B6660' }}>
                 {ACCOUNT_TYPES.find((t) => t.value === a.type)?.label} · {a.currency}
                 {a.archived && ' · Archivada'}
               </p>
@@ -600,7 +605,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
                 <button
                   onClick={(e) => { e.stopPropagation(); toggleBudget(a.id, a.on_budget); }}
                   className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full"
-                  style={a.on_budget ? { background: '#E4F2EA', color: '#5BA886' } : { background: '#ECE5DC', color: '#6B6459' }}
+                  style={a.on_budget ? { background: '#DDF0E8', color: '#1F8A68' } : { background: '#E5EBE8', color: '#5B6660' }}
                 >
                   {a.on_budget ? '💵 En presupuesto' : '👁️ Seguimiento'}
                 </button>
@@ -613,23 +618,23 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
                   return (
                     <div className="mt-1">
                       {hasStatement && (
-                        <p className="text-sm font-black" style={{ color: '#FF7F6B' }}>
+                        <p className="text-sm font-black" style={{ color: '#FF6F61' }}>
                           {[
                             a.statement_ars ? formatARS(a.statement_ars) : null,
                             a.statement_usd ? formatUSD(a.statement_usd) : null,
                           ].filter(Boolean).join(' + ')}
-                          <span className="text-xs font-semibold" style={{ color: '#6B6459' }}> resumen</span>
+                          <span className="text-xs font-semibold" style={{ color: '#5B6660' }}> resumen</span>
                         </p>
                       )}
                       {/* New charges accruing toward the next statement (net of payments). */}
-                      <p className={hasStatement ? 'text-xs font-semibold' : 'text-sm font-black'} style={{ color: hasStatement ? '#6B6459' : '#FF7F6B' }}>
+                      <p className={hasStatement ? 'text-xs font-semibold' : 'text-sm font-black'} style={{ color: hasStatement ? '#5B6660' : '#FF6F61' }}>
                         {formatARS(cycleSpend)}
-                        <span className="text-xs font-semibold" style={{ color: '#6B6459' }}>
+                        <span className="text-xs font-semibold" style={{ color: '#5B6660' }}>
                           {a.closing_date ? ' del ciclo actual' : ' gastado este mes'}
                         </span>
                       </p>
                       {nextDue && (
-                        <p className="text-xs font-bold mt-0.5" style={{ color: daysUntil(nextDue) <= 3 ? '#E5604C' : '#6B6459' }}>
+                        <p className="text-xs font-bold mt-0.5" style={{ color: daysUntil(nextDue) <= 3 ? '#E25749' : '#5B6660' }}>
                           {dueLabel(nextDue)}
                           {a.closing_date ? ` · cierre ${rollMonthlyForward(a.closing_date).slice(8, 10)}/${rollMonthlyForward(a.closing_date).slice(5, 7)}` : ''}
                         </p>
@@ -641,9 +646,9 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
                 (() => {
                   const bal = assetBalance(a.id, a.initial_balance ?? 0);
                   return (
-                    <p className="text-sm font-black mt-1" style={{ color: bal < 0 ? '#FF7F6B' : '#5BA886' }}>
+                    <p className="text-sm font-black mt-1" style={{ color: bal < 0 ? '#FF6F61' : '#1F8A68' }}>
                       {a.currency === 'USD' ? formatUSD(bal) : formatARS(bal)}
-                      <span className="text-xs font-semibold" style={{ color: '#6B6459' }}> saldo actual</span>
+                      <span className="text-xs font-semibold" style={{ color: '#5B6660' }}> saldo actual</span>
                     </p>
                   );
                 })()
@@ -654,7 +659,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
                 <button
                   onClick={(e) => { e.stopPropagation(); openEdit(a); }}
                   className="text-xs font-bold px-3 py-1.5 rounded-xl border"
-                  style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
+                  style={{ borderColor: '#E5EBE8', color: '#5B6660' }}
                 >
                   Editar
                 </button>
@@ -662,7 +667,7 @@ export default function CuentasClient({ profile }: { profile: Profile }) {
               <button
                 onClick={(e) => { e.stopPropagation(); handleArchive(a.id, a.archived); }}
                 className="text-xs font-bold px-3 py-1.5 rounded-xl border"
-                style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
+                style={{ borderColor: '#E5EBE8', color: '#5B6660' }}
               >
                 {a.archived ? 'Restaurar' : 'Archivar'}
               </button>

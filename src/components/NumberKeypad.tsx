@@ -89,9 +89,9 @@ export function NumberKeypad({ onDigit, onBackspace, onConfirm, onOperator }: Nu
               }}
               className="h-16 rounded-2xl text-2xl font-bold flex items-center justify-center active:scale-95 transition-transform select-none"
               style={{
-                background: isDel ? '#FFE7E2' : isOp ? '#EAF1FE' : '#FFFFFF',
-                color: isDel ? '#FF7F6B' : isOp ? '#5B8DEF' : '#2D2D2D',
-                boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                background: isDel ? '#FFE5E0' : isOp ? '#E9F1FD' : '#FFFFFF',
+                color: isDel ? '#FF6F61' : isOp ? '#4E84E0' : '#18211D',
+                boxShadow: '0 1px 4px rgba(20,28,24,0.06)',
               }}
             >
               {k}

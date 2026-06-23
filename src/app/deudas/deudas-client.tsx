@@ -88,19 +88,20 @@ function DebtForm({
   }
 
   return (
-    <div className="flex flex-col gap-4 p-5 rounded-3xl" style={{ background: '#FFFFFF' }}>
+    <div className="flex flex-col gap-4 p-5 rounded-3xl" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
       {/* Direction */}
-      <div className="flex rounded-2xl overflow-hidden" style={{ background: '#ECE5DC' }}>
+      <div className="flex rounded-2xl overflow-hidden" style={{ background: '#E5EBE8' }}>
         {(['owe', 'owed'] as const).map((d) => (
           <button
             key={d}
             type="button"
             onClick={() => setDirection(d)}
-            className="flex-1 py-2.5 text-sm font-bold transition-colors"
+            className="flex-1 py-2.5 text-sm font-black transition-all"
             style={{
-              background: direction === d ? (d === 'owe' ? '#FF7F6B' : '#7EC8A4') : 'transparent',
-              color: direction === d ? '#FFFFFF' : '#6B6459',
+              background: direction === d ? (d === 'owe' ? '#FF6F61' : '#2FA37C') : 'transparent',
+              color: direction === d ? '#FFFFFF' : '#5B6660',
               borderRadius: '14px',
+              boxShadow: direction === d ? 'var(--shadow-soft)' : 'none',
             }}
           >
             {d === 'owe' ? 'Yo debo' : 'Me deben'}
@@ -115,23 +116,24 @@ function DebtForm({
         value={counterparty}
         onChange={(e) => setCounterparty(e.target.value)}
         className="w-full px-4 py-3 rounded-2xl text-sm border outline-none"
-        style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+        style={{ borderColor: '#E5EBE8', color: '#18211D' }}
       />
 
       {/* Currency */}
       <div>
-        <p className="text-xs font-semibold mb-2" style={{ color: '#6B6459' }}>Moneda</p>
-        <div className="flex rounded-2xl overflow-hidden" style={{ background: '#ECE5DC' }}>
+        <p className="text-xs font-semibold mb-2" style={{ color: '#5B6660' }}>Moneda</p>
+        <div className="flex rounded-2xl overflow-hidden" style={{ background: '#E5EBE8' }}>
           {(['ARS', 'USD'] as const).map((c) => (
             <button
               key={c}
               type="button"
               onClick={() => setCurrency(c)}
-              className="flex-1 py-2.5 text-sm font-bold transition-colors"
+              className="flex-1 py-2.5 text-sm font-black transition-all"
               style={{
-                background: currency === c ? '#7EC8A4' : 'transparent',
-                color: currency === c ? '#FFFFFF' : '#6B6459',
+                background: currency === c ? '#2FA37C' : 'transparent',
+                color: currency === c ? '#FFFFFF' : '#5B6660',
                 borderRadius: '14px',
+                boxShadow: currency === c ? 'var(--shadow-soft)' : 'none',
               }}
             >
               {c === 'ARS' ? 'ARS (Pesos)' : 'USD (Dólares)'}
@@ -146,7 +148,7 @@ function DebtForm({
         value={parseMoney(amountStr)}
         onChange={(n) => setAmountStr(n ? String(n) : '')}
         className="w-full px-4 py-3 rounded-2xl text-sm border outline-none"
-        style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+        style={{ borderColor: '#E5EBE8', color: '#18211D' }}
       />
 
       {/* Note */}
@@ -156,21 +158,21 @@ function DebtForm({
         value={note}
         onChange={(e) => setNote(e.target.value)}
         className="w-full px-4 py-3 rounded-2xl text-sm border outline-none"
-        style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+        style={{ borderColor: '#E5EBE8', color: '#18211D' }}
       />
 
       {/* Link to an expense — only when someone repays you, so analytics can
           net what they return out of that gasto's real cost. */}
       {direction === 'owed' && expenses.length > 0 && (
         <div>
-          <p className="text-xs font-semibold mb-2" style={{ color: '#6B6459' }}>
+          <p className="text-xs font-semibold mb-2" style={{ color: '#5B6660' }}>
             ¿Es la devolución de un gasto tuyo? (opcional)
           </p>
           <select
             value={transactionId}
             onChange={(e) => setTransactionId(e.target.value)}
             className="w-full px-4 py-3 rounded-2xl text-sm border outline-none"
-            style={{ borderColor: transactionId ? '#7EC8A4' : '#ECE5DC', color: '#2D2D2D', background: '#FFFFFF' }}
+            style={{ borderColor: transactionId ? '#2FA37C' : '#E5EBE8', color: '#18211D', background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}
           >
             <option value="">Sin vincular</option>
             {expenses.map((e) => (
@@ -178,7 +180,7 @@ function DebtForm({
             ))}
           </select>
           {transactionId && (
-            <p className="text-[11px] mt-1.5" style={{ color: '#5BA886' }}>
+            <p className="text-[11px] mt-1.5" style={{ color: '#1F8A68' }}>
               ✓ El análisis va a descontar este monto de ese gasto.
             </p>
           )}
@@ -191,9 +193,9 @@ function DebtForm({
         onClick={() => setSettled((v) => !v)}
         className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border w-fit"
         style={{
-          background: settled ? '#E4F2EA' : '#FFFFFF',
-          borderColor: settled ? '#7EC8A4' : '#ECE5DC',
-          color: settled ? '#5BA886' : '#6B6459',
+          background: settled ? '#DDF0E8' : '#FFFFFF',
+          borderColor: settled ? '#2FA37C' : '#E5EBE8',
+          color: settled ? '#1F8A68' : '#5B6660',
         }}
       >
         {settled ? '✓ Saldada' : 'Pendiente'}
@@ -231,12 +233,12 @@ function PartialPaymentForm({
   const payment = parseMoney(payStr);
 
   return (
-    <div className="flex flex-col gap-4 p-5 rounded-3xl" style={{ background: '#FFFFFF' }}>
+    <div className="flex flex-col gap-4 p-5 rounded-3xl" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
       <div>
-        <p className="font-bold text-sm" style={{ color: '#2D2D2D' }}>
+        <p className="font-bold text-sm" style={{ color: '#18211D' }}>
           Pago parcial · {debt.direction === 'owe' ? `Le debo a ${debt.counterparty}` : `${debt.counterparty} me debe`}
         </p>
-        <p className="text-xs mt-1" style={{ color: '#6B6459' }}>
+        <p className="text-xs mt-1" style={{ color: '#5B6660' }}>
           Restan {fmtMoney(remaining, debt.currency)} de {fmtMoney(debt.amount, debt.currency)}
         </p>
       </div>
@@ -246,10 +248,10 @@ function PartialPaymentForm({
         // Cap at the remaining so paid_amount can never exceed the debt.
         onChange={(n) => setPayStr(n ? String(Math.min(n, remaining)) : '')}
         className="w-full px-4 py-3 rounded-2xl text-sm border outline-none"
-        style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+        style={{ borderColor: '#E5EBE8', color: '#18211D' }}
       />
       {payment > 0 && payment >= remaining && (
-        <p className="text-[11px]" style={{ color: '#5BA886' }}>
+        <p className="text-[11px]" style={{ color: '#1F8A68' }}>
           ✓ Con este pago la deuda queda saldada.
         </p>
       )}
@@ -289,28 +291,35 @@ function TotalsCard({ debts, viewerId, partnerName }: { debts: Debt[]; viewerId:
   }
 
   return (
-    <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-      <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>
-        Pendiente
-      </p>
-      <div className="flex gap-3">
-        <div className="flex-1 rounded-2xl px-3 py-3" style={{ background: '#FFE7E2' }}>
-          <p className="text-[11px] font-semibold" style={{ color: '#E5604C' }}>Yo debo</p>
-          <p className="text-lg font-black leading-tight" style={{ color: '#E5604C', fontVariantNumeric: 'tabular-nums' }}>
-            {amounts(owe)}
+    <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-pop)' }}>
+      <div className="relative px-5 pt-5 pb-5 overflow-hidden" style={{ background: 'linear-gradient(135deg, #34AD84 0%, #1F8A68 100%)' }}>
+        <div className="absolute -top-10 -right-8 w-40 h-40 rounded-full pointer-events-none" style={{ background: 'rgba(255,255,255,0.14)' }} />
+        <div className="relative flex items-center justify-between">
+          <p className="text-[11px] font-black uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.82)' }}>
+            Pendiente
           </p>
         </div>
-        <div className="flex-1 rounded-2xl px-3 py-3" style={{ background: '#E4F2EA' }}>
-          <p className="text-[11px] font-semibold" style={{ color: '#5BA886' }}>Me deben</p>
-          <p className="text-lg font-black leading-tight" style={{ color: '#5BA886', fontVariantNumeric: 'tabular-nums' }}>
-            {amounts(owed)}
-          </p>
+        <div className="relative flex gap-3 mt-3">
+          <div className="flex-1 rounded-2xl px-3 py-3" style={{ background: 'rgba(255,255,255,0.16)' }}>
+            <p className="text-[11px] font-bold" style={{ color: 'rgba(255,255,255,0.82)' }}>Yo debo</p>
+            <p className="text-lg font-black leading-tight" style={{ color: '#FFFFFF', fontVariantNumeric: 'tabular-nums' }}>
+              {amounts(owe)}
+            </p>
+          </div>
+          <div className="flex-1 rounded-2xl px-3 py-3" style={{ background: 'rgba(255,255,255,0.22)' }}>
+            <p className="text-[11px] font-bold" style={{ color: 'rgba(255,255,255,0.9)' }}>Me deben</p>
+            <p className="text-lg font-black leading-tight" style={{ color: '#FFFFFF', fontVariantNumeric: 'tabular-nums' }}>
+              {amounts(owed)}
+            </p>
+          </div>
         </div>
       </div>
       {hasPartner && (
-        <p className="text-xs mt-3" style={{ color: '#6B6459' }}>
-          {partnerName}: debe {amounts(pOwe)} · le deben {amounts(pOwed)}
-        </p>
+        <div className="px-4 py-4">
+          <p className="text-xs" style={{ color: '#5B6660' }}>
+            {partnerName}: debe {amounts(pOwe)} · le deben {amounts(pOwed)}
+          </p>
+        </div>
       )}
     </div>
   );
@@ -531,20 +540,20 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
     // otherwise it's the counterparty (or the partner) who paid.
     const paidVerb = isMine && debt.direction === 'owe' ? 'pagaste' : 'pagó';
     const paidPct = debt.amount > 0 ? Math.min(100, Math.round((debt.paid_amount / debt.amount) * 100)) : 0;
-    const accent = debt.direction === 'owe' ? '#FF7F6B' : '#7EC8A4';
+    const accent = debt.direction === 'owe' ? '#FF6F61' : '#2FA37C';
     return (
-      <div className="px-4 py-3.5" style={{ borderTop: '1px solid #ECE5DC', opacity: debt.settled ? 0.6 : 1 }}>
+      <div className="px-4 py-3.5" style={{ borderTop: '1px solid #E5EBE8', opacity: debt.settled ? 0.6 : 1 }}>
         {/* Top: who/what + the prominent amount */}
         <div className="flex items-center gap-3">
           <div
             className="w-9 h-9 rounded-full flex items-center justify-center text-lg shrink-0"
-            style={{ background: debt.direction === 'owe' ? '#FFE7E2' : '#E4F2EA' }}
+            style={{ background: debt.direction === 'owe' ? '#FFE5E0' : '#DDF0E8' }}
           >
             {debt.direction === 'owe' ? '💸' : '🤝'}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-bold text-sm truncate" style={{ color: '#2D2D2D' }}>{title}</p>
-            <p className="text-[11px] truncate" style={{ color: '#6B6459' }}>
+            <p className="font-bold text-sm truncate" style={{ color: '#18211D' }}>{title}</p>
+            <p className="text-[11px] truncate" style={{ color: '#5B6660' }}>
               {debt.settled ? 'Saldada' : 'Pendiente'}{debt.note ? ` · ${debt.note}` : ''}{debt.transaction_id ? ' · 🔗' : ''}
             </p>
           </div>
@@ -554,7 +563,7 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
               {fmtMoney(debt.settled ? debt.amount : remaining, debt.currency)}
             </p>
             {partiallyPaid && (
-              <p className="text-[10px] tabular-nums" style={{ color: '#A89B8C' }}>de {fmtMoney(debt.amount, debt.currency)}</p>
+              <p className="text-[10px] tabular-nums" style={{ color: '#8C968F' }}>de {fmtMoney(debt.amount, debt.currency)}</p>
             )}
           </div>
         </div>
@@ -562,21 +571,21 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
         {/* Partial-payment progress */}
         {partiallyPaid && (
           <div className="mt-2 ml-12">
-            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#F1ECE4' }}>
-              <div className="h-full rounded-full" style={{ width: `${paidPct}%`, background: '#7EC8A4' }} />
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#EAF0ED' }}>
+              <div className="h-full rounded-full" style={{ width: `${paidPct}%`, background: '#2FA37C' }} />
             </div>
-            <p className="text-[10px] mt-1 font-semibold" style={{ color: '#5BA886' }}>
+            <p className="text-[10px] mt-1 font-semibold" style={{ color: '#1F8A68' }}>
               {paidVerb} {fmtMoney(debt.paid_amount, debt.currency)} ({paidPct}%)
             </p>
           </div>
         )}
 
         {/* Actions get their own row so nothing crowds the amount */}
-        <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: '1px solid #F1ECE4' }}>
+        <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: '1px solid #EAF0ED' }}>
           <button
             onClick={() => toggleSettled.mutate(debt)}
             className="flex-1 text-xs font-bold py-2 rounded-xl"
-            style={{ background: debt.settled ? '#F9F5F0' : '#E4F2EA', color: debt.settled ? '#6B6459' : '#5BA886' }}
+            style={{ background: debt.settled ? '#F1F5F3' : '#DDF0E8', color: debt.settled ? '#5B6660' : '#1F8A68' }}
           >
             {debt.settled ? '↩️ Reabrir' : '✓ Saldar'}
           </button>
@@ -584,7 +593,7 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
             <button
               onClick={() => { setShowForm(false); setEditDebt(null); setPartialDebt(debt); }}
               className="flex-1 text-xs font-bold py-2 rounded-xl"
-              style={{ background: '#E7EFFB', color: '#5B8DEF' }}
+              style={{ background: '#E9F1FD', color: '#4E84E0' }}
             >
               💵 Pago
             </button>
@@ -593,7 +602,7 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
             onClick={() => { setPartialDebt(null); setEditDebt(debt); }}
             aria-label="Editar"
             className="px-3 py-2 text-xs rounded-xl border"
-            style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
+            style={{ borderColor: '#E5EBE8', color: '#5B6660' }}
           >
             ✏️
           </button>
@@ -601,7 +610,7 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
             onClick={() => setConfirmDelete(debt)}
             aria-label="Eliminar"
             className="px-3 py-2 text-xs rounded-xl border"
-            style={{ borderColor: '#FFE7E2', color: '#FF7F6B' }}
+            style={{ borderColor: '#FFE5E0', color: '#FF6F61' }}
           >
             🗑
           </button>
@@ -611,10 +620,10 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
   }
 
   return (
-    <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
+    <div className="min-h-screen pb-24" style={{ background: '#F1F5F3' }}>
       <header className="px-5 pt-14 pb-4 flex items-center gap-3">
         <Link href="/mas" className="text-2xl">←</Link>
-        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Deudas</h1>
+        <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>Deudas</h1>
       </header>
 
       <div className="px-4 flex flex-col gap-4">
@@ -650,17 +659,17 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
         {!showForm && !editDebt && !partialDebt && (
           <button
             onClick={() => setShowForm(true)}
-            className="w-full py-4 rounded-3xl text-sm font-bold text-white"
-            style={{ background: '#7EC8A4' }}
+            className="w-full py-4 rounded-3xl text-sm font-black text-white transition-all"
+            style={{ background: 'linear-gradient(135deg, #34AD84 0%, #1F8A68 100%)', boxShadow: 'var(--shadow-glow)' }}
           >
             + Nueva deuda
           </button>
         )}
 
         {pending.length > 0 && (
-          <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
-            <div className="px-5 py-3" style={{ borderBottom: '1px solid #ECE5DC' }}>
-              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#FF7F6B' }}>
+          <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+            <div className="px-5 py-3" style={{ borderBottom: '1px solid #E5EBE8' }}>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#FF6F61' }}>
                 Pendientes
               </p>
             </div>
@@ -669,9 +678,9 @@ export default function DeudasClient({ profile }: { profile: Profile }) {
         )}
 
         {settled.length > 0 && (
-          <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
-            <div className="px-5 py-3" style={{ borderBottom: '1px solid #ECE5DC' }}>
-              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5BA886' }}>
+          <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+            <div className="px-5 py-3" style={{ borderBottom: '1px solid #E5EBE8' }}>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#1F8A68' }}>
                 Saldadas
               </p>
             </div>

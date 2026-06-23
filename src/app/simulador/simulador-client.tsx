@@ -28,13 +28,13 @@ interface SimResult {
   is_negative_impact: boolean;
 }
 
-const CORAL = '#FF7F6B';
-const SAGE = '#7ABF8E';
+const CORAL = '#FF6F61';
+const SAGE = '#2FA37C';
 const SURFACE = '#FFFFFF';
-const CREAM = '#F9F5F0';
-const CHARCOAL = '#2D2D2D';
-const MUTED = '#6B6459';
-const BORDER = '#ECE5DC';
+const CREAM = '#F1F5F3';
+const CHARCOAL = '#18211D';
+const MUTED = '#5B6660';
+const BORDER = '#E5EBE8';
 
 const SUGGESTIONS = [
   'Quiero comprar un teléfono de $1.500.000 en 12 cuotas',
@@ -121,7 +121,7 @@ export default function SimuladorClient({ profile }: { profile: Profile }) {
 
       <div className="px-4 flex flex-col gap-4">
         {/* Input card */}
-        <div className="rounded-3xl p-5" style={{ background: SURFACE }}>
+        <div className="rounded-3xl p-5" style={{ background: SURFACE, boxShadow: 'var(--shadow-card)' }}>
           <p className="text-sm font-semibold mb-3" style={{ color: MUTED }}>
             ¿Qué querés comprar, {name}?
           </p>
@@ -148,8 +148,8 @@ export default function SimuladorClient({ profile }: { profile: Profile }) {
                 <button
                   key={s}
                   onClick={() => setText(s)}
-                  className="px-3 py-1.5 rounded-full text-xs font-medium border"
-                  style={{ borderColor: BORDER, color: MUTED, background: CREAM }}
+                  className="px-3.5 py-2 rounded-full text-xs font-semibold border transition-all"
+                  style={{ borderColor: BORDER, color: MUTED, background: CREAM, boxShadow: 'var(--shadow-soft)' }}
                 >
                   {s}
                 </button>
@@ -162,8 +162,9 @@ export default function SimuladorClient({ profile }: { profile: Profile }) {
             disabled={loading || !text.trim()}
             className="mt-4 w-full py-4 rounded-2xl text-base font-bold transition-opacity"
             style={{
-              background: CORAL,
+              background: 'linear-gradient(135deg, #FF8173 0%, #E25749 100%)',
               color: '#fff',
+              boxShadow: 'var(--shadow-glow)',
               opacity: loading || !text.trim() ? 0.6 : 1,
             }}
           >
@@ -177,25 +178,31 @@ export default function SimuladorClient({ profile }: { profile: Profile }) {
 
         {/* Result card */}
         {result && (
-          <div ref={resultRef} className="rounded-3xl overflow-hidden" style={{ background: SURFACE }}>
-            {/* Purchase summary */}
-            <div className="px-5 pt-5 pb-4" style={{ borderBottom: `1px solid ${BORDER}` }}>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: MUTED }}>Compra analizada</p>
-              <p className="text-lg font-black" style={{ color: CHARCOAL }}>
+          <div ref={resultRef} className="rounded-3xl overflow-hidden" style={{ background: SURFACE, boxShadow: 'var(--shadow-pop)' }}>
+            {/* Purchase summary — hero */}
+            <div
+              className="relative px-5 pt-5 pb-5 overflow-hidden"
+              style={{ background: result.is_negative_impact ? 'linear-gradient(135deg, #FF8173 0%, #E25749 100%)' : 'linear-gradient(135deg, #34AD84 0%, #1F8A68 100%)' }}
+            >
+              <div className="absolute -top-10 -right-8 w-40 h-40 rounded-full pointer-events-none" style={{ background: 'rgba(255,255,255,0.14)' }} />
+              <div className="relative flex items-center justify-between">
+                <p className="text-[11px] font-black uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.82)' }}>Compra analizada</p>
+              </div>
+              <p className="relative text-base font-bold mt-2" style={{ color: 'rgba(255,255,255,0.92)' }}>
                 {result.parsed.item}
               </p>
-              <p className="text-2xl font-black mt-1" style={{ color: result.is_negative_impact ? CORAL : CHARCOAL }}>
+              <p className="relative text-[2.4rem] leading-none font-black mt-1 tracking-tight" style={{ color: '#FFFFFF', fontVariantNumeric: 'tabular-nums' }}>
                 {format(result.parsed.amount_ars)}
               </p>
               {result.parsed.installments && (
-                <p className="text-sm mt-0.5" style={{ color: MUTED }}>
+                <p className="relative text-[11px] mt-2" style={{ color: 'rgba(255,255,255,0.85)' }}>
                   {result.parsed.installments} cuotas de{' '}
-                  <span className="font-semibold" style={{ color: CHARCOAL }}>{format(result.monthly_cost)}</span>
+                  <span className="font-black" style={{ color: '#FFFFFF' }}>{format(result.monthly_cost)}</span>
                   /mes
                 </p>
               )}
               {result.parsed.currency_input === 'USD' && (
-                <p className="text-xs mt-0.5" style={{ color: MUTED }}>
+                <p className="relative text-[11px] mt-1" style={{ color: 'rgba(255,255,255,0.85)' }}>
                   Convertido a {formatARS(result.parsed.amount_ars)} al dólar blue ({formatARS(Math.round(result.fx_rate))})
                 </p>
               )}
@@ -203,7 +210,7 @@ export default function SimuladorClient({ profile }: { profile: Profile }) {
 
             {/* Month-end projection */}
             <div className="px-5 py-4" style={{ borderBottom: `1px solid ${BORDER}` }}>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: MUTED }}>
+              <p className="text-[11px] font-black uppercase tracking-widest mb-3" style={{ color: '#8C968F' }}>
                 Proyección fin de mes
               </p>
               <div className="flex gap-4">
@@ -227,7 +234,7 @@ export default function SimuladorClient({ profile }: { profile: Profile }) {
 
             {/* Savings rate */}
             <div className="px-5 py-4" style={{ borderBottom: `1px solid ${BORDER}` }}>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: MUTED }}>
+              <p className="text-[11px] font-black uppercase tracking-widest mb-3" style={{ color: '#8C968F' }}>
                 Tasa de ahorro
               </p>
               <div className="flex items-center gap-3">
@@ -250,7 +257,7 @@ export default function SimuladorClient({ profile }: { profile: Profile }) {
             {/* Goal delays */}
             {result.goal_delays.length > 0 && (
               <div className="px-5 py-4" style={{ borderBottom: `1px solid ${BORDER}` }}>
-                <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: MUTED }}>
+                <p className="text-[11px] font-black uppercase tracking-widest mb-3" style={{ color: '#8C968F' }}>
                   Impacto en tus metas
                 </p>
                 <div className="flex flex-col gap-2">
@@ -262,7 +269,7 @@ export default function SimuladorClient({ profile }: { profile: Profile }) {
                       {g.slip_months === 0 ? (
                         <span className="text-sm font-semibold" style={{ color: SAGE }}>Sin impacto</span>
                       ) : (
-                        <span className="text-sm font-semibold px-2 py-0.5 rounded-full" style={{ background: '#FFF0ED', color: CORAL }}>
+                        <span className="text-sm font-semibold px-2 py-0.5 rounded-full" style={{ background: '#FFF0EE', color: CORAL }}>
                           ~{g.slip_months} mes{g.slip_months !== 1 ? 'es' : ''} de retraso
                         </span>
                       )}
@@ -275,7 +282,7 @@ export default function SimuladorClient({ profile }: { profile: Profile }) {
             {/* Budget overflows */}
             {result.budget_overflows.length > 0 && (
               <div className="px-5 py-4" style={{ borderBottom: `1px solid ${BORDER}` }}>
-                <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: MUTED }}>
+                <p className="text-[11px] font-black uppercase tracking-widest mb-3" style={{ color: '#8C968F' }}>
                   Presupuesto excedido
                 </p>
                 {result.budget_overflows.map((b, i) => (
@@ -301,7 +308,7 @@ export default function SimuladorClient({ profile }: { profile: Profile }) {
             {/* Summary verdict */}
             <div
               className="px-5 py-4"
-              style={{ background: result.is_negative_impact ? '#FFF0ED' : '#F0FAF3' }}
+              style={{ background: result.is_negative_impact ? '#FFF0EE' : '#EAF6F1' }}
             >
               <p className="text-sm font-bold" style={{ color: result.is_negative_impact ? CORAL : SAGE }}>
                 {result.is_negative_impact

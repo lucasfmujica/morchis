@@ -230,49 +230,49 @@ export function ReceiptItemsSheet({
       <SheetContent
         side="bottom"
         className="rounded-t-3xl p-0 overflow-hidden"
-        style={{ background: '#F9F5F0', maxHeight: '92dvh' }}
+        style={{ background: '#F1F5F3', maxHeight: '92dvh' }}
       >
         <div className="overflow-y-auto flex flex-col h-full">
           {/* drag handle */}
           <div className="flex justify-center pt-3 pb-2">
-            <div className="w-10 h-1 rounded-full" style={{ background: '#ECE5DC' }} />
+            <div className="w-10 h-1 rounded-full" style={{ background: '#E5EBE8' }} />
           </div>
 
           {/* Header: merchant + total */}
           <div className="px-5 pb-3">
-            <p className="text-lg font-black truncate" style={{ color: '#2D2D2D' }}>
+            <p className="text-lg font-black truncate" style={{ color: '#18211D' }}>
               🧾 {merchant || 'Compra'}
             </p>
-            <p className="text-xs" style={{ color: '#6B6459' }}>
+            <p className="text-xs" style={{ color: '#5B6660' }}>
               {new Date(occurredOn + 'T00:00:00').toLocaleDateString('es-AR', {
                 day: 'numeric',
                 month: 'long',
                 year: 'numeric',
               })}
             </p>
-            <p className="text-3xl font-black mt-1.5 tabular-nums" style={{ color: '#FF7F6B' }}>
+            <p className="text-3xl font-black mt-1.5 tabular-nums" style={{ color: '#FF6F61' }}>
               {fmt(total)}
             </p>
           </div>
 
           <div className="px-4 pb-6 flex flex-col gap-4" style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}>
             {isLoading ? (
-              <div className="rounded-3xl p-8 text-center" style={{ background: '#FFFFFF' }}>
+              <div className="rounded-3xl p-8 text-center" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
                 <p className="text-3xl mb-2 animate-pulse">🧾</p>
-                <p className="text-sm" style={{ color: '#6B6459' }}>Cargando productos…</p>
+                <p className="text-sm" style={{ color: '#5B6660' }}>Cargando productos…</p>
               </div>
             ) : items.length === 0 && !editing ? (
-              <div className="rounded-3xl p-6" style={{ background: '#FFFFFF' }}>
+              <div className="rounded-3xl p-6" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
                 <div className="text-center">
                   <p className="text-3xl mb-2">📭</p>
-                  <p className="font-bold mb-1" style={{ color: '#2D2D2D' }}>Sin detalle de productos</p>
-                  <p className="text-sm" style={{ color: '#6B6459' }}>
+                  <p className="font-bold mb-1" style={{ color: '#18211D' }}>Sin detalle de productos</p>
+                  <p className="text-sm" style={{ color: '#5B6660' }}>
                     Este gasto no tiene ítems cargados. Asignalo entero a un rubro, o cargá los productos uno por uno.
                   </p>
                 </div>
 
                 {/* Quick: whole purchase as one rubro */}
-                <p className="text-[11px] font-bold uppercase tracking-wide mt-5 mb-2" style={{ color: '#A89B8C' }}>
+                <p className="text-[11px] font-bold uppercase tracking-wide mt-5 mb-2" style={{ color: '#8C968F' }}>
                   Asignar toda la compra ({fmt(total)}) a un rubro
                 </p>
                 <div className="flex flex-wrap gap-2">
@@ -284,7 +284,7 @@ export function ReceiptItemsSheet({
                         disabled={saving || total <= 0}
                         onClick={() => assignWholeToGroup(g)}
                         className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-semibold border disabled:opacity-50"
-                        style={{ borderColor: '#ECE5DC', color: '#2D2D2D', background: '#F9F5F0' }}
+                        style={{ borderColor: '#E5EBE8', color: '#18211D', background: '#F1F5F3' }}
                       >
                         <span>{meta.icon}</span>
                         <span className="capitalize">{g}</span>
@@ -294,15 +294,15 @@ export function ReceiptItemsSheet({
                 </div>
 
                 <div className="flex items-center gap-3 my-4">
-                  <div className="flex-1 h-px" style={{ background: '#ECE5DC' }} />
-                  <span className="text-[11px]" style={{ color: '#A89B8C' }}>o</span>
-                  <div className="flex-1 h-px" style={{ background: '#ECE5DC' }} />
+                  <div className="flex-1 h-px" style={{ background: '#E5EBE8' }} />
+                  <span className="text-[11px]" style={{ color: '#8C968F' }}>o</span>
+                  <div className="flex-1 h-px" style={{ background: '#E5EBE8' }} />
                 </div>
 
                 <button
                   onClick={() => startEdit([{ key: tmpKey(), id: null, name: '', qty: 1, line_total: 0, group: 'otros' }])}
                   className="w-full py-2.5 rounded-2xl text-sm font-bold"
-                  style={{ background: '#E4F2EA', color: '#5BA886' }}
+                  style={{ background: '#DDF0E8', color: '#1F8A68' }}
                 >
                   ＋ Cargar productos uno por uno
                 </button>
@@ -311,8 +311,8 @@ export function ReceiptItemsSheet({
               <>
                 {/* Group breakdown — where the money went */}
                 {groupTotals.length > 0 && (
-                  <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-                    <p className="text-xs font-bold uppercase tracking-wide mb-4" style={{ color: '#6B6459' }}>
+                  <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+                    <p className="text-xs font-bold uppercase tracking-wide mb-4" style={{ color: '#5B6660' }}>
                       En qué se fue
                     </p>
                     <div className="flex flex-col gap-3.5">
@@ -323,11 +323,11 @@ export function ReceiptItemsSheet({
                           <div key={g}>
                             <div className="flex items-center gap-2 mb-1.5">
                               <span className="text-sm">{meta.icon}</span>
-                              <span className="text-sm capitalize flex-1 truncate" style={{ color: '#2D2D2D' }}>{g}</span>
-                              <span className="text-[11px] font-semibold tabular-nums" style={{ color: '#A89B8C' }}>{pct}%</span>
+                              <span className="text-sm capitalize flex-1 truncate" style={{ color: '#18211D' }}>{g}</span>
+                              <span className="text-[11px] font-semibold tabular-nums" style={{ color: '#8C968F' }}>{pct}%</span>
                               <span className="text-sm font-bold tabular-nums" style={{ color: meta.color }}>{fmt(gt)}</span>
                             </div>
-                            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#F1ECE4' }}>
+                            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#EAF0ED' }}>
                               <div className="h-full rounded-full" style={{ width: `${Math.max(pct, 3)}%`, background: meta.color }} />
                             </div>
                           </div>
@@ -344,16 +344,16 @@ export function ReceiptItemsSheet({
                 )}
 
                 {/* Items list */}
-                <div className="rounded-3xl p-3" style={{ background: '#FFFFFF' }}>
+                <div className="rounded-3xl p-3" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
                   <div className="flex items-center justify-between mb-2 px-2">
-                    <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>
+                    <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>
                       Productos ({items.length})
                     </p>
                     {!editing && (
                       <button
                         onClick={() => startEdit(baseItems)}
                         className="text-xs font-bold px-3 py-1 rounded-full border"
-                        style={{ borderColor: '#7EC8A4', color: '#5BA886' }}
+                        style={{ borderColor: '#2FA37C', color: '#1F8A68' }}
                       >
                         ✏️ Editar
                       </button>
@@ -366,20 +366,20 @@ export function ReceiptItemsSheet({
                           <div
                             key={it.key}
                             className="flex items-center gap-2 px-2 py-2"
-                            style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}
+                            style={{ borderTop: i > 0 ? '1px solid #E5EBE8' : 'none' }}
                           >
                             <input
                               value={it.name}
                               onChange={(e) => updateItem(it.key, { name: e.target.value })}
                               placeholder="Producto"
                               className="flex-1 min-w-0 text-sm outline-none bg-transparent"
-                              style={{ color: '#2D2D2D' }}
+                              style={{ color: '#18211D' }}
                             />
                             <select
                               value={it.group}
                               onChange={(e) => updateItem(it.key, { group: e.target.value })}
                               className="text-[11px] rounded-lg px-1.5 py-1 border bg-white outline-none"
-                              style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
+                              style={{ borderColor: '#E5EBE8', color: '#5B6660' }}
                             >
                               {ITEM_GROUPS.map((g) => (
                                 <option key={g} value={g}>{groupMeta(g).icon} {g}</option>
@@ -389,9 +389,9 @@ export function ReceiptItemsSheet({
                               value={it.line_total}
                               onChange={(n) => updateItem(it.key, { line_total: n })}
                               className="w-20 text-sm font-bold text-right outline-none bg-transparent"
-                              style={{ color: '#2D2D2D' }}
+                              style={{ color: '#18211D' }}
                             />
-                            <button onClick={() => removeItem(it.key)} className="text-xs px-1" style={{ color: '#FF7F6B' }}>✕</button>
+                            <button onClick={() => removeItem(it.key)} className="text-xs px-1" style={{ color: '#FF6F61' }}>✕</button>
                           </div>
                         ))
                       : items.map((it, i) => {
@@ -400,16 +400,16 @@ export function ReceiptItemsSheet({
                             <div
                               key={it.key}
                               className="flex items-center gap-3 px-2 py-2.5"
-                              style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}
+                              style={{ borderTop: i > 0 ? '1px solid #E5EBE8' : 'none' }}
                             >
                               <span className="text-base shrink-0">{meta.icon}</span>
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm truncate" style={{ color: '#2D2D2D' }}>
+                                <p className="text-sm truncate" style={{ color: '#18211D' }}>
                                   {it.qty && it.qty > 1 ? `${it.qty}× ` : ''}{it.name || 'Sin nombre'}
                                 </p>
-                                <p className="text-[11px] capitalize" style={{ color: '#A89B8C' }}>{it.group}</p>
+                                <p className="text-[11px] capitalize" style={{ color: '#8C968F' }}>{it.group}</p>
                               </div>
-                              <span className="text-sm font-bold tabular-nums shrink-0" style={{ color: '#2D2D2D' }}>
+                              <span className="text-sm font-bold tabular-nums shrink-0" style={{ color: '#18211D' }}>
                                 {fmt(it.line_total)}
                               </span>
                             </div>
@@ -421,7 +421,7 @@ export function ReceiptItemsSheet({
                     <button
                       onClick={addItem}
                       className="w-full mt-2 py-2.5 rounded-2xl text-sm font-bold border border-dashed"
-                      style={{ borderColor: '#7EC8A4', color: '#5BA886' }}
+                      style={{ borderColor: '#2FA37C', color: '#1F8A68' }}
                     >
                       ＋ Agregar producto
                     </button>
@@ -430,8 +430,8 @@ export function ReceiptItemsSheet({
 
                 {/* Items subtotal */}
                 <div className="flex items-center justify-between px-2">
-                  <span className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Suma de productos</span>
-                  <span className="text-sm font-black tabular-nums" style={{ color: '#2D2D2D' }}>{fmt(itemsSum)}</span>
+                  <span className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>Suma de productos</span>
+                  <span className="text-sm font-black tabular-nums" style={{ color: '#18211D' }}>{fmt(itemsSum)}</span>
                 </div>
 
                 {editing && (
@@ -442,7 +442,7 @@ export function ReceiptItemsSheet({
                     <button
                       onClick={() => setEditing(false)}
                       className="w-full py-2.5 rounded-2xl text-sm font-bold"
-                      style={{ color: '#6B6459' }}
+                      style={{ color: '#5B6660' }}
                     >
                       Cancelar
                     </button>

@@ -21,9 +21,9 @@ interface Insight {
 }
 
 const SEVERITY_STYLE: Record<string, { bg: string; border: string; color: string; icon: string; label: string }> = {
-  positive: { bg: '#E4F2EA', border: '#7EC8A4', color: '#5BA886', icon: '✨', label: 'Buena noticia' },
-  warning:  { bg: '#FFE7E2', border: '#FF7F6B', color: '#E5604C', icon: '⚠️', label: 'Atención' },
-  info:     { bg: '#F0EDE8', border: '#C4B9AE', color: '#6B6459', icon: '💡', label: 'Para tener en cuenta' },
+  positive: { bg: '#DDF0E8', border: '#2FA37C', color: '#1F8A68', icon: '✨', label: 'Buena noticia' },
+  warning:  { bg: '#FFE5E0', border: '#FF6F61', color: '#E25749', icon: '⚠️', label: 'Atención' },
+  info:     { bg: '#EAF0ED', border: '#B0BAB4', color: '#5B6660', icon: '💡', label: 'Para tener en cuenta' },
 };
 
 // What each insight kind means + where to go to act on it. Keeps the detail
@@ -126,18 +126,18 @@ export default function InsightDetailClient({
   });
 
   return (
-    <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
+    <div className="min-h-screen pb-24" style={{ background: '#F1F5F3' }}>
       <header className="px-5 pt-14 pb-4 flex items-center gap-3">
         <Link href="/insights" className="text-2xl">←</Link>
-        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Insight ✨</h1>
+        <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>Insight ✨</h1>
       </header>
 
       <div className="px-4 flex flex-col gap-4">
         {/* The insight itself */}
-        <div className="rounded-3xl p-6" style={{ background: s.bg, border: `1px solid ${s.border}` }}>
+        <div className="rounded-3xl p-6" style={{ background: s.bg, border: `1px solid ${s.border}`, boxShadow: 'var(--shadow-card)' }}>
           <div className="flex items-center gap-2 mb-3">
             <span className="text-3xl">{s.icon}</span>
-            <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: `${s.color}22`, color: s.color }}>
+            <span className="text-[11px] font-black uppercase tracking-wide px-2.5 py-1 rounded-full" style={{ background: `${s.color}22`, color: s.color }}>
               {s.label}
             </span>
             <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: '#FFFFFF99', color: s.color }}>
@@ -157,29 +157,29 @@ export default function InsightDetailClient({
         />
 
         {/* What this kind of insight means */}
-        <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-          <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>
+        <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#5B6660' }}>
             ¿Qué es esto?
           </p>
-          <p className="text-sm font-black mb-1" style={{ color: '#2D2D2D' }}>{kind.label}</p>
-          <p className="text-sm leading-relaxed" style={{ color: '#6B6459' }}>{kind.explain}</p>
+          <p className="text-sm font-black mb-1" style={{ color: '#18211D' }}>{kind.label}</p>
+          <p className="text-sm leading-relaxed" style={{ color: '#5B6660' }}>{kind.explain}</p>
         </div>
 
         {/* Context: who / when */}
-        <div className="rounded-3xl p-5 flex flex-col gap-2.5" style={{ background: '#FFFFFF' }}>
+        <div className="rounded-3xl p-5 flex flex-col gap-2.5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
           {period && (
             <div className="flex items-center justify-between">
-              <span className="text-sm" style={{ color: '#6B6459' }}>Período analizado</span>
-              <span className="text-sm font-bold capitalize" style={{ color: '#2D2D2D' }}>{period}</span>
+              <span className="text-sm" style={{ color: '#5B6660' }}>Período analizado</span>
+              <span className="text-sm font-bold capitalize" style={{ color: '#18211D' }}>{period}</span>
             </div>
           )}
           <div className="flex items-center justify-between">
-            <span className="text-sm" style={{ color: '#6B6459' }}>Generado el</span>
-            <span className="text-sm font-bold" style={{ color: '#2D2D2D' }}>{created}</span>
+            <span className="text-sm" style={{ color: '#5B6660' }}>Generado el</span>
+            <span className="text-sm font-bold" style={{ color: '#18211D' }}>{created}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-sm" style={{ color: '#6B6459' }}>Alcance</span>
-            <span className="text-sm font-bold" style={{ color: '#2D2D2D' }}>
+            <span className="text-sm" style={{ color: '#5B6660' }}>Alcance</span>
+            <span className="text-sm font-bold" style={{ color: '#18211D' }}>
               {isHousehold ? 'Gastos del hogar' : 'Tus gastos personales'}
             </span>
           </div>
@@ -188,14 +188,14 @@ export default function InsightDetailClient({
         {/* Concrete next step */}
         <Link
           href={kind.href}
-          className="rounded-3xl p-4 flex items-center justify-between"
-          style={{ background: '#7EC8A4' }}
+          className="rounded-3xl p-4 flex items-center justify-between transition-transform hover:-translate-y-0.5"
+          style={{ background: 'linear-gradient(135deg, #34AD84 0%, #1F8A68 100%)', boxShadow: 'var(--shadow-glow)' }}
         >
           <span className="text-sm font-black text-white">{kind.cta}</span>
           <span className="text-white text-lg">→</span>
         </Link>
 
-        <Link href="/insights" className="text-xs font-bold text-center pt-1" style={{ color: '#5BA886' }}>
+        <Link href="/insights" className="text-xs font-bold text-center pt-1" style={{ color: '#1F8A68' }}>
           Ver todos los insights
         </Link>
       </div>
@@ -327,10 +327,10 @@ function CategoryInsightSection({
   if (!matchedCat || matchedCat.kind !== 'expense') return null;
   if (proj.spentSoFar <= 0 && budget <= 0) return null;
 
-  const accent = matchedCat.color || '#FF7F6B';
+  const accent = matchedCat.color || '#FF6F61';
   const overBudget = budget > 0 && proj.projected > budget;
   const projPct = budget > 0 ? proj.projected / budget : 0;
-  const projColor = overBudget ? '#E5604C' : accent;
+  const projColor = overBudget ? '#E25749' : accent;
 
   function fmtDate(d: string) {
     return new Date(d + 'T00:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
@@ -339,12 +339,12 @@ function CategoryInsightSection({
   return (
     <>
       {/* Spend so far in this category */}
-      <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+      <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
         <div className="flex items-center justify-between mb-1">
-          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>
+          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>
             {matchedCat.icon} {matchedCat.name} · este mes
           </p>
-          <span className="text-[11px]" style={{ color: '#6B6459' }}>
+          <span className="text-[11px]" style={{ color: '#5B6660' }}>
             {proj.count} {proj.count === 1 ? 'movimiento' : 'movimientos'}
           </span>
         </div>
@@ -357,24 +357,24 @@ function CategoryInsightSection({
             {proj.recent.map((t) => (
               <div key={t.id} className="flex items-center gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{t.merchant || matchedCat.name}</p>
-                  <p className="text-[11px]" style={{ color: '#6B6459' }}>{fmtDate(t.occurred_on)}{t.is_shared ? ' · compartido' : ''}</p>
+                  <p className="text-sm font-semibold truncate" style={{ color: '#18211D' }}>{t.merchant || matchedCat.name}</p>
+                  <p className="text-[11px]" style={{ color: '#5B6660' }}>{fmtDate(t.occurred_on)}{t.is_shared ? ' · compartido' : ''}</p>
                 </div>
-                <p className="text-sm font-black" style={{ color: '#FF7F6B' }}>-{formatARS(shareArs(t))}</p>
+                <p className="text-sm font-black" style={{ color: '#FF6F61' }}>-{formatARS(shareArs(t))}</p>
               </div>
             ))}
           </div>
         )}
 
-        <Link href="/analisis" className="block text-xs font-bold mt-3" style={{ color: '#5BA886' }}>
+        <Link href="/analisis" className="block text-xs font-bold mt-3" style={{ color: '#1F8A68' }}>
           Ver todo el detalle de {matchedCat.name} →
         </Link>
       </div>
 
       {/* Month-end projection for this category — "si seguís así" */}
-      <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+      <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
         <div className="flex items-center justify-between mb-1">
-          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>
+          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>
             Si seguís así, fin de mes
           </p>
           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${projColor}22`, color: projColor }}>
@@ -408,7 +408,7 @@ function CategoryInsightSection({
         </div>
 
         {budget > 0 && (
-          <div className="mt-3 h-2 rounded-full overflow-hidden" style={{ background: '#ECE5DC' }}>
+          <div className="mt-3 h-2 rounded-full overflow-hidden" style={{ background: '#E5EBE8' }}>
             <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(projPct * 100, 100)}%`, background: projColor }} />
           </div>
         )}

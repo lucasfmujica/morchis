@@ -61,18 +61,18 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6" style={{ background: '#F9F5F0' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center px-6" style={{ background: '#F1F5F3' }}>
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-10">
           <div className="text-5xl mb-3">💚</div>
-          <h1 className="text-4xl font-black tracking-tight" style={{ color: '#2D2D2D' }}>Morchis</h1>
-          <p className="text-base mt-1" style={{ color: '#6B6459' }}>Nuestra plata, juntos</p>
+          <h1 className="text-4xl font-black tracking-tight" style={{ color: '#18211D' }}>Morchis</h1>
+          <p className="text-base mt-1" style={{ color: '#5B6660' }}>Nuestra plata, juntos</p>
         </div>
 
         {/* Mode toggle (only login/signup) */}
         {mode !== 'reset' && (
-          <div className="flex mb-6 rounded-2xl p-1" style={{ background: '#ECE5DC' }}>
+          <div className="flex mb-6 rounded-2xl p-1" style={{ background: '#E5EBE8' }}>
             {(['login', 'signup'] as const).map((m) => (
               <button
                 key={m}
@@ -80,7 +80,7 @@ export default function AuthPage() {
                 className="flex-1 py-2.5 text-sm font-bold rounded-xl transition-colors"
                 style={{
                   background: mode === m ? '#FFFFFF' : 'transparent',
-                  color: mode === m ? '#2D2D2D' : '#6B6459',
+                  color: mode === m ? '#18211D' : '#5B6660',
                 }}
               >
                 {m === 'login' ? 'Entrar' : 'Crear cuenta'}
@@ -89,12 +89,12 @@ export default function AuthPage() {
           </div>
         )}
         {mode === 'reset' && (
-          <p className="text-base font-bold mb-6" style={{ color: '#2D2D2D' }}>Recuperar contraseña</p>
+          <p className="text-base font-bold mb-6" style={{ color: '#18211D' }}>Recuperar contraseña</p>
         )}
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div>
-            <label className="block text-sm font-semibold mb-1.5" style={{ color: '#2D2D2D' }}>Email</label>
+            <label className="block text-sm font-semibold mb-1.5" style={{ color: '#18211D' }}>Email</label>
             <input
               type="email"
               value={email}
@@ -103,15 +103,15 @@ export default function AuthPage() {
               required
               autoComplete="email"
               className="w-full px-4 py-3 rounded-2xl text-base outline-none border"
-              style={{ background: '#FFFFFF', borderColor: '#ECE5DC', color: '#2D2D2D' }}
-              onFocus={(e) => (e.target.style.borderColor = '#7EC8A4')}
-              onBlur={(e) => (e.target.style.borderColor = '#ECE5DC')}
+              style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', borderColor: '#E5EBE8', color: '#18211D' }}
+              onFocus={(e) => (e.target.style.borderColor = '#2FA37C')}
+              onBlur={(e) => (e.target.style.borderColor = '#E5EBE8')}
             />
           </div>
 
           {mode !== 'reset' && (
             <div>
-              <label className="block text-sm font-semibold mb-1.5" style={{ color: '#2D2D2D' }}>Contraseña</label>
+              <label className="block text-sm font-semibold mb-1.5" style={{ color: '#18211D' }}>Contraseña</label>
               <input
                 type="password"
                 value={password}
@@ -120,9 +120,9 @@ export default function AuthPage() {
                 required
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 className="w-full px-4 py-3 rounded-2xl text-base outline-none border"
-                style={{ background: '#FFFFFF', borderColor: '#ECE5DC', color: '#2D2D2D' }}
-                onFocus={(e) => (e.target.style.borderColor = '#7EC8A4')}
-                onBlur={(e) => (e.target.style.borderColor = '#ECE5DC')}
+                style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', borderColor: '#E5EBE8', color: '#18211D' }}
+                onFocus={(e) => (e.target.style.borderColor = '#2FA37C')}
+                onBlur={(e) => (e.target.style.borderColor = '#E5EBE8')}
               />
             </div>
           )}
@@ -131,7 +131,7 @@ export default function AuthPage() {
             type="submit"
             disabled={loading || !email || (mode !== 'reset' && !password)}
             className="w-full py-4 rounded-2xl text-base font-bold text-white transition-opacity disabled:opacity-50 mt-2"
-            style={{ background: '#7EC8A4' }}
+            style={{ background: '#2FA37C' }}
           >
             {loading ? '…' : mode === 'login' ? 'Entrar' : mode === 'signup' ? 'Crear cuenta' : 'Enviar link'}
           </button>
@@ -141,7 +141,7 @@ export default function AuthPage() {
           <button
             onClick={() => setMode('reset')}
             className="block text-center text-xs mt-4 underline w-full"
-            style={{ color: '#6B6459' }}
+            style={{ color: '#5B6660' }}
           >
             Olvidé mi contraseña
           </button>
@@ -150,13 +150,13 @@ export default function AuthPage() {
           <button
             onClick={() => setMode('login')}
             className="block text-center text-xs mt-4 underline w-full"
-            style={{ color: '#6B6459' }}
+            style={{ color: '#5B6660' }}
           >
             ← Volver a entrar
           </button>
         )}
 
-        <p className="text-center text-xs mt-6" style={{ color: '#6B6459' }}>
+        <p className="text-center text-xs mt-6" style={{ color: '#5B6660' }}>
           Tu sesión se mantiene activa. No vas a tener que volver a entrar.
         </p>
       </div>

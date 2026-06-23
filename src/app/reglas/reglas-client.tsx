@@ -207,10 +207,10 @@ function UpcomingBills({ rules, availableByCat, onEdit }: { rules: Rule[]; avail
   }
 
   return (
-    <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+    <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
       <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Próximos vencimientos</p>
-        <span className="text-xs font-black" style={{ color: '#FF7F6B' }}>{formatARS(totalExpense)}</span>
+        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>Próximos vencimientos</p>
+        <span className="text-xs font-black" style={{ color: '#FF6F61' }}>{formatARS(totalExpense)}</span>
       </div>
       <div className="flex flex-col gap-2.5">
         {upcoming.map((r) => {
@@ -230,17 +230,17 @@ function UpcomingBills({ rules, availableByCat, onEdit }: { rules: Rule[]; avail
               key={r.id}
               onClick={() => onEdit(r)}
               aria-label={`Editar ${r.label}`}
-              className="flex items-center gap-3 w-full text-left active:scale-[0.99] transition-transform"
+              className="flex items-center gap-3 w-full text-left active:scale-[0.99] transition-all rounded-2xl -mx-2 px-2 py-1 hover:bg-[#F4F8F6] active:bg-[#EEF3F1]"
             >
               <div
                 className="w-9 h-9 rounded-full flex items-center justify-center text-sm flex-shrink-0"
-                style={{ background: r.direction === 'income' ? '#E4F2EA' : soon ? '#FFE7E2' : '#F0EDE8' }}
+                style={{ background: r.direction === 'income' ? '#DDF0E8' : soon ? '#FFE5E0' : '#EAF0ED' }}
               >
                 {r.direction === 'income' ? '💰' : '📤'}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <p className="text-sm font-bold truncate" style={{ color: '#2D2D2D' }}>{r.label}</p>
+                  <p className="text-sm font-bold truncate" style={{ color: '#18211D' }}>{r.label}</p>
                   {r.is_variable && (
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: '#FBF1D8', color: '#B8860B' }}>
                       recordatorio
@@ -248,19 +248,19 @@ function UpcomingBills({ rules, availableByCat, onEdit }: { rules: Rule[]; avail
                   )}
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <p className="text-xs font-semibold" style={{ color: soon ? '#E5604C' : '#6B6459' }}>{whenLabel(d)} · {shortDayMonth(r.next_run!)}</p>
+                  <p className="text-xs font-semibold" style={{ color: soon ? '#E25749' : '#5B6660' }}>{whenLabel(d)} · {shortDayMonth(r.next_run!)}</p>
                   {funded === true && (
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#E4F2EA', color: '#5BA886' }}>Fondeado ✓</span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#DDF0E8', color: '#1F8A68' }}>Fondeado ✓</span>
                   )}
                   {funded === false && (
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#FBF1D8', color: '#B8860B' }}>Falta {formatARS(shortfall)}</span>
                   )}
                 </div>
               </div>
-              <p className="text-sm font-black flex-shrink-0" style={{ color: r.direction === 'income' ? '#7EC8A4' : '#FF7F6B' }}>
+              <p className="text-sm font-black flex-shrink-0" style={{ color: r.direction === 'income' ? '#2FA37C' : '#FF6F61' }}>
                 {r.direction === 'income' ? '+' : '-'}{fmtMoney(r.amount, r.currency)}
               </p>
-              <span className="text-[11px] flex-shrink-0" style={{ color: '#C4B9AE' }}>✏️</span>
+              <span className="text-[11px] flex-shrink-0" style={{ color: '#B0BAB4' }}>✏️</span>
             </button>
           );
         })}
@@ -286,48 +286,50 @@ function FixedSummaryCard({ rules }: { rules: Rule[] }) {
   if (active.length === 0) return null;
 
   return (
-    <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-      <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>
-        Resumen mensual estimado
-      </p>
-      <div className="flex gap-3 mb-4">
-        <div className="flex-1 rounded-2xl px-3 py-3" style={{ background: '#E4F2EA' }}>
-          <p className="text-[11px] font-semibold" style={{ color: '#5BA886' }}>Ingresos fijos</p>
-          <p className="text-lg font-black leading-tight" style={{ color: '#5BA886', fontVariantNumeric: 'tabular-nums' }}>
-            {formatARS(Math.round(incomeMonthly))}
+    <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-pop)' }}>
+      <div
+        className="relative px-5 pt-5 pb-5 overflow-hidden"
+        style={{ background: marginPositive ? 'linear-gradient(135deg, #34AD84 0%, #1F8A68 100%)' : 'linear-gradient(135deg, #FF8173 0%, #E25749 100%)' }}
+      >
+        <div className="absolute -top-10 -right-8 w-40 h-40 rounded-full pointer-events-none" style={{ background: 'rgba(255,255,255,0.14)' }} />
+        <div className="relative flex items-center justify-between">
+          <p className="text-[11px] font-black uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.82)' }}>
+            Margen fijo / mes
           </p>
-        </div>
-        <div className="flex-1 rounded-2xl px-3 py-3" style={{ background: '#FFE7E2' }}>
-          <p className="text-[11px] font-semibold" style={{ color: '#E5604C' }}>Gastos fijos</p>
-          <p className="text-lg font-black leading-tight" style={{ color: '#E5604C', fontVariantNumeric: 'tabular-nums' }}>
-            {formatARS(Math.round(expenseMonthly))}
-          </p>
-        </div>
-      </div>
-      <div className="flex items-end justify-between pt-3" style={{ borderTop: '1px solid #ECE5DC' }}>
-        <div>
-          <p className="text-[11px] font-semibold" style={{ color: '#6B6459' }}>Margen fijo / mes</p>
-          <p
-            className="text-2xl font-black leading-none"
-            style={{ color: marginPositive ? '#5BA886' : '#E5604C', fontVariantNumeric: 'tabular-nums' }}
-          >
-            {!marginPositive && '−'}{formatARS(Math.abs(Math.round(margin)))}
-          </p>
-        </div>
-        {savingsRate != null && (
-          <div className="text-right">
-            <p className="text-[11px] font-semibold" style={{ color: '#6B6459' }}>Ahorro fijo</p>
-            <span
-              className="inline-block text-sm font-black px-2.5 py-1 rounded-full"
-              style={{
-                background: savingsRate >= 0.2 ? '#E4F2EA' : savingsRate >= 0 ? '#FBF1D8' : '#FFE7E2',
-                color: savingsRate >= 0.2 ? '#5BA886' : savingsRate >= 0 ? '#B8860B' : '#E5604C',
-              }}
-            >
-              {Math.round(savingsRate * 100)}%
+          {savingsRate != null && (
+            <span className="relative inline-flex items-center gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: 'rgba(255,255,255,0.7)' }}>Ahorro fijo</span>
+              <span
+                className="inline-block text-xs font-black px-2.5 py-1 rounded-full"
+                style={{ background: 'rgba(255,255,255,0.2)', color: '#FFFFFF' }}
+              >
+                {Math.round(savingsRate * 100)}%
+              </span>
             </span>
+          )}
+        </div>
+        <p className="relative text-[2.4rem] leading-none font-black mt-2 tracking-tight" style={{ color: '#FFFFFF', fontVariantNumeric: 'tabular-nums' }}>
+          {!marginPositive && '−'}{formatARS(Math.abs(Math.round(margin)))}
+        </p>
+        <p className="relative text-[11px] mt-2" style={{ color: 'rgba(255,255,255,0.85)' }}>
+          Resumen mensual estimado
+        </p>
+      </div>
+      <div className="px-4 py-4">
+        <div className="flex gap-3">
+          <div className="flex-1 rounded-2xl px-3 py-3" style={{ background: '#DDF0E8' }}>
+            <p className="text-[11px] font-semibold" style={{ color: '#1F8A68' }}>Ingresos fijos</p>
+            <p className="text-lg font-black leading-tight" style={{ color: '#1F8A68', fontVariantNumeric: 'tabular-nums' }}>
+              {formatARS(Math.round(incomeMonthly))}
+            </p>
           </div>
-        )}
+          <div className="flex-1 rounded-2xl px-3 py-3" style={{ background: '#FFE5E0' }}>
+            <p className="text-[11px] font-semibold" style={{ color: '#E25749' }}>Gastos fijos</p>
+            <p className="text-lg font-black leading-tight" style={{ color: '#E25749', fontVariantNumeric: 'tabular-nums' }}>
+              {formatARS(Math.round(expenseMonthly))}
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -512,22 +514,23 @@ function RuleForm({
   }
 
   return (
-    <div className="flex flex-col gap-4 p-5 rounded-3xl" style={{ background: '#FFFFFF' }}>
+    <div className="flex flex-col gap-4 p-5 rounded-3xl" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
       {/* Type: income / expense / savings. Locked while editing — you can't turn
           a rule into a savings target or vice versa (different underlying data). */}
-      <div className="flex rounded-2xl overflow-hidden" style={{ background: '#ECE5DC' }}>
+      <div className="flex rounded-2xl overflow-hidden" style={{ background: '#E5EBE8' }}>
         {(['income', 'expense', 'savings'] as const).map((m) => {
-          const activeColor = m === 'income' ? '#7EC8A4' : m === 'expense' ? '#FF7F6B' : '#5B9BD5';
+          const activeColor = m === 'income' ? '#2FA37C' : m === 'expense' ? '#FF6F61' : '#5B9BD5';
           return (
             <button
               key={m}
               onClick={() => !isEditing && setMode(m)}
               disabled={isEditing && mode !== m}
-              className="flex-1 py-2.5 text-sm font-bold transition-colors disabled:opacity-40"
+              className="flex-1 py-2.5 text-sm font-black transition-all disabled:opacity-40"
               style={{
                 background: mode === m ? activeColor : 'transparent',
-                color: mode === m ? '#FFFFFF' : '#6B6459',
+                color: mode === m ? '#FFFFFF' : '#5B6660',
                 borderRadius: '14px',
+                boxShadow: mode === m ? 'var(--shadow-soft)' : 'none',
               }}
             >
               {m === 'income' ? 'Ingreso' : m === 'expense' ? 'Gasto' : 'Ahorro'}
@@ -544,25 +547,26 @@ function RuleForm({
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           className="w-full px-4 py-3 rounded-2xl text-sm border outline-none"
-          style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+          style={{ borderColor: '#E5EBE8', color: '#18211D' }}
         />
       )}
 
       {/* Currency — savings targets are kept in ARS (like /presupuestos). */}
       {mode !== 'savings' && (
       <div>
-        <p className="text-xs font-semibold mb-2" style={{ color: '#6B6459' }}>Moneda</p>
-        <div className="flex rounded-2xl overflow-hidden" style={{ background: '#ECE5DC' }}>
+        <p className="text-xs font-semibold mb-2" style={{ color: '#5B6660' }}>Moneda</p>
+        <div className="flex rounded-2xl overflow-hidden" style={{ background: '#E5EBE8' }}>
           {(['ARS', 'USD'] as const).map((c) => (
             <button
               key={c}
               type="button"
               onClick={() => setCurrency(c)}
-              className="flex-1 py-2.5 text-sm font-bold transition-colors"
+              className="flex-1 py-2.5 text-sm font-black transition-all"
               style={{
-                background: currency === c ? '#7EC8A4' : 'transparent',
-                color: currency === c ? '#FFFFFF' : '#6B6459',
+                background: currency === c ? '#2FA37C' : 'transparent',
+                color: currency === c ? '#FFFFFF' : '#5B6660',
                 borderRadius: '14px',
+                boxShadow: currency === c ? 'var(--shadow-soft)' : 'none',
               }}
             >
               {c === 'ARS' ? 'ARS (Pesos)' : 'USD (Dólares)'}
@@ -578,13 +582,13 @@ function RuleForm({
         value={parseMoney(amountStr)}
         onChange={(n) => setAmountStr(n ? String(n) : '')}
         className="w-full px-4 py-3 rounded-2xl text-sm border outline-none"
-        style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+        style={{ borderColor: '#E5EBE8', color: '#18211D' }}
       />
 
       {/* Cadence — savings has no biweekly, and a by-date goal ignores it. */}
       {!(mode === 'savings' && savingsDate) && (
       <div>
-        <p className="text-xs font-semibold mb-2" style={{ color: '#6B6459' }}>
+        <p className="text-xs font-semibold mb-2" style={{ color: '#5B6660' }}>
           {mode === 'savings' ? 'Cada cuánto sumás' : 'Frecuencia'}
         </p>
         <div className="flex gap-2">
@@ -599,11 +603,12 @@ function RuleForm({
                 if (c === 'weekly' && (isNaN(n) || n > 6)) setAnchorDay('1');
                 if (c !== 'weekly' && (isNaN(n) || n < 1)) setAnchorDay('1');
               }}
-              className="flex-1 py-2 rounded-xl text-xs font-bold border transition-colors"
+              className="flex-1 py-2 rounded-xl text-xs font-bold border transition-all"
               style={{
-                background: cadence === c ? '#E4F2EA' : '#FFFFFF',
-                borderColor: cadence === c ? '#7EC8A4' : '#ECE5DC',
-                color: cadence === c ? '#5BA886' : '#6B6459',
+                background: cadence === c ? '#DDF0E8' : '#FFFFFF',
+                borderColor: cadence === c ? '#2FA37C' : '#E5EBE8',
+                color: cadence === c ? '#1F8A68' : '#5B6660',
+                boxShadow: cadence === c ? '0 4px 12px -4px rgba(47,163,124,0.55)' : 'var(--shadow-soft)',
               }}
             >
               {CADENCE_LABEL[c]}
@@ -618,15 +623,15 @@ function RuleForm({
           keep adding every month/week and let it accumulate. */}
       {mode === 'savings' && (
         <div>
-          <p className="text-xs font-semibold mb-1" style={{ color: '#6B6459' }}>Meta con fecha (opcional)</p>
+          <p className="text-xs font-semibold mb-1" style={{ color: '#5B6660' }}>Meta con fecha (opcional)</p>
           <input
             type="date"
             value={savingsDate}
             onChange={(e) => setSavingsDate(e.target.value)}
             className="w-full px-4 py-2.5 rounded-xl text-sm border outline-none bg-white"
-            style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+            style={{ borderColor: '#E5EBE8', color: '#18211D' }}
           />
-          <p className="text-[11px] mt-1.5" style={{ color: '#6B6459' }}>
+          <p className="text-[11px] mt-1.5" style={{ color: '#5B6660' }}>
             {savingsDate
               ? 'Te calculamos cuánto poner por mes para llegar a esa fecha.'
               : 'Sin fecha: sumás este monto cada período y se va acumulando.'}
@@ -637,7 +642,7 @@ function RuleForm({
       {/* Anchor day — only rules need a calendar day; savings targets don't. */}
       {mode !== 'savings' && (
       <div>
-        <p className="text-xs font-semibold mb-1" style={{ color: '#6B6459' }}>
+        <p className="text-xs font-semibold mb-1" style={{ color: '#5B6660' }}>
           {cadence === 'weekly' ? 'Día de la semana' : 'Día del mes'}
         </p>
         {cadence === 'weekly' ? (
@@ -645,7 +650,7 @@ function RuleForm({
             value={anchorDay}
             onChange={(e) => setAnchorDay(e.target.value)}
             className="w-full px-4 py-2 rounded-xl text-sm border outline-none bg-white"
-            style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+            style={{ borderColor: '#E5EBE8', color: '#18211D' }}
           >
             {WEEKDAYS.map((d, i) => (
               <option key={i} value={String(i)}>{d}</option>
@@ -660,16 +665,16 @@ function RuleForm({
               value={anchorDay}
               onChange={(e) => setAnchorDay(e.target.value)}
               className="w-24 px-4 py-2 rounded-xl text-sm border outline-none"
-              style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+              style={{ borderColor: '#E5EBE8', color: '#18211D' }}
             />
             <button
               type="button"
               onClick={() => setAnchorDay('31')}
               className="text-xs font-bold px-3 py-2 rounded-xl border"
               style={{
-                background: anchorDay === '31' ? '#E4F2EA' : '#FFFFFF',
-                borderColor: anchorDay === '31' ? '#7EC8A4' : '#ECE5DC',
-                color: anchorDay === '31' ? '#5BA886' : '#6B6459',
+                background: anchorDay === '31' ? '#DDF0E8' : '#FFFFFF',
+                borderColor: anchorDay === '31' ? '#2FA37C' : '#E5EBE8',
+                color: anchorDay === '31' ? '#1F8A68' : '#5B6660',
               }}
             >
               Último día
@@ -683,7 +688,7 @@ function RuleForm({
           it that many times and then auto-pauses the rule. */}
       {mode !== 'savings' && (
         <div>
-          <p className="text-xs font-semibold mb-1" style={{ color: '#6B6459' }}>Cuotas / repeticiones (opcional)</p>
+          <p className="text-xs font-semibold mb-1" style={{ color: '#5B6660' }}>Cuotas / repeticiones (opcional)</p>
           <input
             type="number"
             min={1}
@@ -692,9 +697,9 @@ function RuleForm({
             value={installmentsStr}
             onChange={(e) => setInstallmentsStr(e.target.value)}
             className="w-32 px-4 py-2 rounded-xl text-sm border outline-none"
-            style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+            style={{ borderColor: '#E5EBE8', color: '#18211D' }}
           />
-          <p className="text-[11px] mt-1.5" style={{ color: '#6B6459' }}>
+          <p className="text-[11px] mt-1.5" style={{ color: '#5B6660' }}>
             {installmentsStr && parseInt(installmentsStr, 10) > 0
               ? cadence === 'monthly'
                 ? `Se cobra por ${parseInt(installmentsStr, 10)} meses y se frena.`
@@ -706,14 +711,14 @@ function RuleForm({
 
       {/* Category — where the materialized transaction lands in the budget */}
       <div>
-        <p className="text-xs font-semibold mb-1" style={{ color: '#6B6459' }}>
+        <p className="text-xs font-semibold mb-1" style={{ color: '#5B6660' }}>
           {mode === 'savings' ? 'Categoría de ahorro' : 'Categoría'}
         </p>
         <select
           value={categoryId}
           onChange={(e) => setCategoryId(e.target.value)}
           className="w-full px-4 py-2.5 rounded-xl text-sm border outline-none bg-white"
-          style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+          style={{ borderColor: '#E5EBE8', color: '#18211D' }}
         >
           <option value="">{mode === 'savings' ? 'Elegí una categoría' : 'Sin categoría'}</option>
           {pickableCategories.map((c) => (
@@ -730,13 +735,13 @@ function RuleForm({
           onClick={() => setReserveInBudget((v) => !v)}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold border w-full text-left"
           style={{
-            background: reserveInBudget ? '#E4F2EA' : '#FFFFFF',
-            borderColor: reserveInBudget ? '#7EC8A4' : '#ECE5DC',
-            color: reserveInBudget ? '#5BA886' : '#6B6459',
+            background: reserveInBudget ? '#DDF0E8' : '#FFFFFF',
+            borderColor: reserveInBudget ? '#2FA37C' : '#E5EBE8',
+            color: reserveInBudget ? '#1F8A68' : '#5B6660',
           }}
         >
           {reserveInBudget ? '✓ ' : '○ '}Reservar en presupuesto
-          <span className="font-normal" style={{ color: '#6B6459' }}>· objetivo mensual en la categoría</span>
+          <span className="font-normal" style={{ color: '#5B6660' }}>· objetivo mensual en la categoría</span>
         </button>
       )}
 
@@ -745,18 +750,19 @@ function RuleForm({
           (Savings has none of these — it's just a budget target.) */}
       {mode !== 'savings' && (<>
       <div>
-        <p className="text-xs font-semibold mb-2" style={{ color: '#6B6459' }}>Tipo de monto</p>
-        <div className="flex rounded-2xl overflow-hidden" style={{ background: '#ECE5DC' }}>
+        <p className="text-xs font-semibold mb-2" style={{ color: '#5B6660' }}>Tipo de monto</p>
+        <div className="flex rounded-2xl overflow-hidden" style={{ background: '#E5EBE8' }}>
           {([['fijo', false], ['variable', true]] as const).map(([labelTxt, val]) => (
             <button
               key={labelTxt}
               type="button"
               onClick={() => setIsVariable(val)}
-              className="flex-1 py-2.5 text-sm font-bold transition-colors"
+              className="flex-1 py-2.5 text-sm font-black transition-all"
               style={{
-                background: isVariable === val ? '#7EC8A4' : 'transparent',
-                color: isVariable === val ? '#FFFFFF' : '#6B6459',
+                background: isVariable === val ? '#2FA37C' : 'transparent',
+                color: isVariable === val ? '#FFFFFF' : '#5B6660',
                 borderRadius: '14px',
+                boxShadow: isVariable === val ? 'var(--shadow-soft)' : 'none',
               }}
             >
               {val ? 'Variable' : 'Fijo'}
@@ -764,7 +770,7 @@ function RuleForm({
           ))}
         </div>
         {isVariable && (
-          <p className="text-[11px] mt-1.5" style={{ color: '#6B6459' }}>
+          <p className="text-[11px] mt-1.5" style={{ color: '#5B6660' }}>
             No se registra solo: aparece como recordatorio para que cargues el monto real.
           </p>
         )}
@@ -775,9 +781,9 @@ function RuleForm({
         onClick={() => setScope(scope === 'personal' ? 'household' : 'personal')}
         className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border w-fit"
         style={{
-          background: scope === 'household' ? '#E4F2EA' : '#FFFFFF',
-          borderColor: scope === 'household' ? '#7EC8A4' : '#ECE5DC',
-          color: scope === 'household' ? '#5BA886' : '#6B6459',
+          background: scope === 'household' ? '#DDF0E8' : '#FFFFFF',
+          borderColor: scope === 'household' ? '#2FA37C' : '#E5EBE8',
+          color: scope === 'household' ? '#1F8A68' : '#5B6660',
         }}
       >
         {scope === 'household' ? '🏠 Hogar' : '👤 Personal'}
@@ -785,14 +791,14 @@ function RuleForm({
 
       {/* Account — where this rule credits (income) or debits (expense) */}
       <div>
-        <p className="text-xs font-semibold mb-1" style={{ color: '#6B6459' }}>
+        <p className="text-xs font-semibold mb-1" style={{ color: '#5B6660' }}>
           {direction === 'income' ? 'Se acredita en' : 'Se debita de'}
         </p>
         <select
           value={accountId}
           onChange={(e) => setAccountId(e.target.value)}
           className="w-full px-4 py-2.5 rounded-xl text-sm border outline-none bg-white"
-          style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+          style={{ borderColor: '#E5EBE8', color: '#18211D' }}
         >
           <option value="">Sin cuenta</option>
           {accounts.map((a) => (
@@ -806,9 +812,9 @@ function RuleForm({
         onClick={() => setActive((v) => !v)}
         className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border w-fit"
         style={{
-          background: active ? '#E4F2EA' : '#FFFFFF',
-          borderColor: active ? '#7EC8A4' : '#ECE5DC',
-          color: active ? '#5BA886' : '#6B6459',
+          background: active ? '#DDF0E8' : '#FFFFFF',
+          borderColor: active ? '#2FA37C' : '#E5EBE8',
+          color: active ? '#1F8A68' : '#5B6660',
         }}
       >
         {active ? '✓ Activa' : '✗ Inactiva'}
@@ -842,7 +848,7 @@ function RuleForm({
             <button
               onClick={onDelete}
               className="flex-1 py-3 text-sm font-bold rounded-2xl border"
-              style={{ background: '#FFE7E2', borderColor: '#FFD4CC', color: '#E5604C' }}
+              style={{ background: '#FFE5E0', borderColor: '#FFD6CF', color: '#E25749' }}
             >
               🗑 Eliminar
             </button>
@@ -1212,8 +1218,8 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
     const schedule = scheduleBase + cuota;
     return (
       <div
-        className="flex items-center px-5 py-3.5"
-        style={{ borderTop: '1px solid #ECE5DC', opacity: rule.active ? 1 : 0.55 }}
+        className="flex items-center px-5 py-3.5 transition-colors hover:bg-[#F4F8F6] active:bg-[#EEF3F1]"
+        style={{ borderTop: '1px solid #E5EBE8', opacity: rule.active ? 1 : 0.55 }}
       >
         {/* The whole row is tap-to-edit; skip/delete live inside the edit sheet
             so the upcoming list and these lists behave identically. */}
@@ -1224,46 +1230,46 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
         >
           <div
             className="w-9 h-9 rounded-full flex items-center justify-center text-lg flex-shrink-0"
-            style={{ background: rule.direction === 'income' ? '#E4F2EA' : '#FFE7E2' }}
+            style={{ background: rule.direction === 'income' ? '#DDF0E8' : '#FFE5E0' }}
           >
             {rule.direction === 'income' ? '💰' : '📤'}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
-              <p className="font-bold text-sm truncate" style={{ color: '#2D2D2D' }}>{rule.label}</p>
+              <p className="font-bold text-sm truncate" style={{ color: '#18211D' }}>{rule.label}</p>
               {rule.is_variable && (
                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: '#FBF1D8', color: '#B8860B' }}>
                   estimado
                 </span>
               )}
               {!rule.active && (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: '#F0EDE8', color: '#6B6459' }}>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: '#EAF0ED', color: '#5B6660' }}>
                   inactiva
                 </span>
               )}
             </div>
-            <p className="text-xs truncate" style={{ color: '#6B6459' }}>
+            <p className="text-xs truncate" style={{ color: '#5B6660' }}>
               {schedule}
               {rule.active && rule.next_run ? ` · próx. ${shortDayMonth(rule.next_run)}` : ''}
             </p>
           </div>
           <p
             className="font-black text-sm flex-shrink-0 ml-1"
-            style={{ color: rule.direction === 'income' ? '#7EC8A4' : '#FF7F6B' }}
+            style={{ color: rule.direction === 'income' ? '#2FA37C' : '#FF6F61' }}
           >
             {rule.direction === 'income' ? '+' : '-'}{fmtMoney(rule.amount, rule.currency)}
           </p>
-          <span className="text-[11px] flex-shrink-0 ml-1" style={{ color: '#C4B9AE' }}>✏️</span>
+          <span className="text-[11px] flex-shrink-0 ml-1" style={{ color: '#B0BAB4' }}>✏️</span>
         </button>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
+    <div className="min-h-screen pb-24" style={{ background: '#F1F5F3' }}>
       <header className="px-5 pt-14 pb-4 flex items-center gap-3">
         <Link href="/presupuestos" className="text-2xl">←</Link>
-        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Ingresos y gastos fijos</h1>
+        <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>Ingresos y gastos fijos</h1>
       </header>
 
       <div className="px-4 flex flex-col gap-4">
@@ -1275,24 +1281,24 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
 
         {/* Price changes: an active rule's merchant now charges a different amount */}
         {!showForm && !editRule && !editSavings && priceChangeSuggestions.length > 0 && (
-          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#5B6660' }}>
               📈 Cambios de precio detectados
             </p>
             <div className="flex flex-col gap-2.5">
               {priceChangeSuggestions.map((s) => (
                 <div key={s.ruleId} className="flex items-center gap-3">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold truncate" style={{ color: '#2D2D2D' }}>{s.label}</p>
-                    <p className="text-xs" style={{ color: '#6B6459' }}>
-                      {fmtMoney(s.oldAmount, s.currency)} → <span className="font-bold" style={{ color: s.newAmount > s.oldAmount ? '#E5604C' : '#5BA886' }}>{fmtMoney(s.newAmount, s.currency)}</span>
+                    <p className="text-sm font-bold truncate" style={{ color: '#18211D' }}>{s.label}</p>
+                    <p className="text-xs" style={{ color: '#5B6660' }}>
+                      {fmtMoney(s.oldAmount, s.currency)} → <span className="font-bold" style={{ color: s.newAmount > s.oldAmount ? '#E25749' : '#1F8A68' }}>{fmtMoney(s.newAmount, s.currency)}</span>
                     </p>
                   </div>
                   <button
                     onClick={() => updateAmountMutation.mutate({ ruleId: s.ruleId, newAmount: s.newAmount, categoryId: s.categoryId, currency: s.currency, cadence: s.cadence, reserve: s.reserve })}
                     disabled={updateAmountMutation.isPending}
                     className="flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full text-white"
-                    style={{ background: '#7EC8A4' }}
+                    style={{ background: '#2FA37C' }}
                   >
                     Actualizar regla
                   </button>
@@ -1304,16 +1310,16 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
 
         {/* Likely subscriptions: repeating merchant expenses without a rule */}
         {!showForm && !editRule && !editSavings && subscriptionSuggestions.length > 0 && (
-          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#5B6660' }}>
               📡 Posibles suscripciones detectadas
             </p>
             <div className="flex flex-col gap-2.5">
               {subscriptionSuggestions.map((s) => (
                 <div key={s.key} className="flex items-center gap-3">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold truncate" style={{ color: '#2D2D2D' }}>{s.merchant}</p>
-                    <p className="text-xs" style={{ color: '#6B6459' }}>
+                    <p className="text-sm font-bold truncate" style={{ color: '#18211D' }}>{s.merchant}</p>
+                    <p className="text-xs" style={{ color: '#5B6660' }}>
                       Último cobro: {fmtMoney(s.amount, s.currency)}
                     </p>
                   </div>
@@ -1321,7 +1327,7 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
                     onClick={() => createFromSuggestionMutation.mutate(s)}
                     disabled={createFromSuggestionMutation.isPending}
                     className="flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full text-white"
-                    style={{ background: '#7EC8A4' }}
+                    style={{ background: '#2FA37C' }}
                   >
                     Crear regla fija
                   </button>
@@ -1329,7 +1335,7 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
                     onClick={() => dismissSuggestion(s.key)}
                     aria-label={`Descartar ${s.merchant}`}
                     className="flex-shrink-0 text-xs px-2 py-1 rounded-lg border"
-                    style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
+                    style={{ borderColor: '#E5EBE8', color: '#5B6660' }}
                   >
                     ✕
                   </button>
@@ -1382,8 +1388,8 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
         {!showForm && !editRule && !editSavings && (
           <button
             onClick={() => setShowForm(true)}
-            className="w-full py-4 rounded-3xl text-sm font-bold text-white"
-            style={{ background: '#7EC8A4' }}
+            className="w-full py-4 rounded-3xl text-sm font-black text-white transition-transform active:scale-[0.99]"
+            style={{ background: 'linear-gradient(135deg, #34AD84 0%, #1F8A68 100%)', boxShadow: 'var(--shadow-glow)' }}
           >
             + Nueva regla o ahorro
           </button>
@@ -1391,12 +1397,12 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
 
         {/* Savings targets (set from here or /presupuestos) */}
         {!showForm && !editRule && !editSavings && savingsList.length > 0 && (
-          <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
-            <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid #ECE5DC' }}>
+          <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+            <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid #E5EBE8' }}>
               <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5B9BD5' }}>
                 Ahorros
               </p>
-              <span className="text-xs font-bold" style={{ color: '#C4B9AE' }}>{savingsList.length}</span>
+              <span className="text-xs font-bold" style={{ color: '#B0BAB4' }}>{savingsList.length}</span>
             </div>
             {savingsList.map(({ category, info }) => {
               const cadenceLabel =
@@ -1418,20 +1424,20 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
                   key={category.id}
                   onClick={() => setEditSavings({ categoryId: category.id, name: category.name, draft })}
                   aria-label={`Editar ahorro ${category.name}`}
-                  className="flex items-center gap-3 w-full px-5 py-3.5 text-left active:scale-[0.99] transition-transform"
-                  style={{ borderTop: '1px solid #ECE5DC' }}
+                  className="flex items-center gap-3 w-full px-5 py-3.5 text-left active:scale-[0.99] transition-all hover:bg-[#F4F8F6] active:bg-[#EEF3F1]"
+                  style={{ borderTop: '1px solid #E5EBE8' }}
                 >
-                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-lg flex-shrink-0" style={{ background: '#E7F0FA' }}>
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-lg flex-shrink-0" style={{ background: '#E9F1FD' }}>
                     {category.icon || '🐷'}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-bold text-sm truncate" style={{ color: '#2D2D2D' }}>{category.name}</p>
-                    <p className="text-xs truncate" style={{ color: '#6B6459' }}>{cadenceLabel}</p>
+                    <p className="font-bold text-sm truncate" style={{ color: '#18211D' }}>{category.name}</p>
+                    <p className="text-xs truncate" style={{ color: '#5B6660' }}>{cadenceLabel}</p>
                   </div>
                   <p className="font-black text-sm flex-shrink-0" style={{ color: '#5B9BD5' }}>
                     +{formatARS(Math.round(info.totalArs))}
                   </p>
-                  <span className="text-[11px] flex-shrink-0 ml-1" style={{ color: '#C4B9AE' }}>✏️</span>
+                  <span className="text-[11px] flex-shrink-0 ml-1" style={{ color: '#B0BAB4' }}>✏️</span>
                 </button>
               );
             })}
@@ -1440,12 +1446,12 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
 
         {/* Income rules */}
         {income.length > 0 && (
-          <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
-            <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid #ECE5DC' }}>
-              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#7EC8A4' }}>
+          <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+            <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid #E5EBE8' }}>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#2FA37C' }}>
                 Ingresos fijos
               </p>
-              <span className="text-xs font-bold" style={{ color: '#C4B9AE' }}>{income.length}</span>
+              <span className="text-xs font-bold" style={{ color: '#B0BAB4' }}>{income.length}</span>
             </div>
             {income.map((r) => <RuleCard key={r.id} rule={r} />)}
           </div>
@@ -1453,12 +1459,12 @@ export default function ReglasClient({ profile }: { profile: Profile }) {
 
         {/* Expense rules */}
         {expenses.length > 0 && (
-          <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
-            <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid #ECE5DC' }}>
-              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#FF7F6B' }}>
+          <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+            <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid #E5EBE8' }}>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#FF6F61' }}>
                 Gastos fijos
               </p>
-              <span className="text-xs font-bold" style={{ color: '#C4B9AE' }}>{expenses.length}</span>
+              <span className="text-xs font-bold" style={{ color: '#B0BAB4' }}>{expenses.length}</span>
             </div>
             {expenses.map((r) => <RuleCard key={r.id} rule={r} />)}
           </div>

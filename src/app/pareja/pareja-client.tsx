@@ -159,18 +159,18 @@ function SettleUpSheet({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(20,28,24,0.42)' }} onClick={onClose}>
       <div
         className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6"
-        style={{ background: '#F9F5F0' }}
+        style={{ background: '#F1F5F3' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-center mb-4">
-          <div className="w-10 h-1 rounded-full" style={{ background: '#ECE5DC' }} />
+          <div className="w-10 h-1 rounded-full" style={{ background: '#E5EBE8' }} />
         </div>
 
-        <h2 className="text-xl font-black mb-1" style={{ color: '#2D2D2D' }}>Registrar pago</h2>
-        <p className="text-sm mb-4" style={{ color: '#6B6459' }}>
+        <h2 className="text-xl font-black mb-1" style={{ color: '#18211D' }}>Registrar pago</h2>
+        <p className="text-sm mb-4" style={{ color: '#5B6660' }}>
           {absNet < 1
             ? 'Están a mano.'
             : net > 0
@@ -179,8 +179,8 @@ function SettleUpSheet({
         </p>
 
         {/* Direction — either person can pay the other, regardless of who owes. */}
-        <p className="text-xs font-bold mb-1.5" style={{ color: '#6B6459' }}>¿Quién le paga a quién?</p>
-        <div className="flex rounded-2xl overflow-hidden p-1 gap-1 mb-4" style={{ background: '#ECE5DC' }}>
+        <p className="text-xs font-bold mb-1.5" style={{ color: '#5B6660' }}>¿Quién le paga a quién?</p>
+        <div className="flex rounded-2xl overflow-hidden p-1 gap-1 mb-4" style={{ background: '#E5EBE8' }}>
           {([
             { key: true, label: `👤 ${myName} → ${partnerName}` },
             { key: false, label: `👥 ${partnerName} → ${myName}` },
@@ -190,8 +190,8 @@ function SettleUpSheet({
               <button
                 key={String(o.key)}
                 onClick={() => setIPay(o.key)}
-                className="flex-1 py-2 text-xs font-bold rounded-xl transition-colors"
-                style={{ background: active ? '#FFFFFF' : 'transparent', color: active ? '#2D2D2D' : '#6B6459' }}
+                className="flex-1 py-2 text-xs font-black rounded-xl transition-all"
+                style={{ background: active ? '#FFFFFF' : 'transparent', color: active ? '#18211D' : '#5B6660', boxShadow: active ? 'var(--shadow-soft)' : 'none' }}
               >
                 {o.label}
               </button>
@@ -201,18 +201,18 @@ function SettleUpSheet({
 
         <div
           className="rounded-2xl p-4 mb-4 text-center"
-          style={{ background: iPay ? '#FFE7E2' : '#E4F2EA' }}
+          style={{ background: iPay ? '#FFE5E0' : '#DDF0E8' }}
         >
-          <p className="text-3xl font-black" style={{ color: iPay ? '#E5604C' : '#5BA886' }}>
+          <p className="text-3xl font-black" style={{ color: iPay ? '#E25749' : '#1F8A68' }}>
             {fmt(amount)}
           </p>
-          <p className="text-xs mt-1" style={{ color: iPay ? '#E5604C' : '#5BA886', opacity: 0.75 }}>
+          <p className="text-xs mt-1" style={{ color: iPay ? '#E25749' : '#1F8A68', opacity: 0.75 }}>
             {payerName} → {receiverName}
           </p>
         </div>
 
         {/* Amount — defaults to the current balance; type any amount you want. */}
-        <p className="text-xs font-bold mb-1.5" style={{ color: '#6B6459' }}>¿Cuánto paga? (ARS)</p>
+        <p className="text-xs font-bold mb-1.5" style={{ color: '#5B6660' }}>¿Cuánto paga? (ARS)</p>
         <div className="flex items-center gap-2 mb-2">
           {/* MoneyInput handles the es-AR convention ('.' thousands, ',' decimal),
               so typing "15.000" means fifteen thousand, not fifteen pesos. */}
@@ -221,20 +221,20 @@ function SettleUpSheet({
             onChange={setAmountVal}
             placeholder={absNet.toLocaleString('es-AR')}
             className="flex-1 px-4 py-3 rounded-2xl text-sm border bg-white outline-none"
-            style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+            style={{ borderColor: '#E5EBE8', color: '#18211D' }}
           />
           {absNet >= 1 && (
             <button
               onClick={() => setAmountVal(0)}
               className="px-3 py-3 rounded-2xl text-xs font-bold border"
-              style={{ borderColor: '#ECE5DC', color: '#6B6459', background: '#FFFFFF' }}
+              style={{ borderColor: '#E5EBE8', color: '#5B6660', background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}
             >
               Saldo
             </button>
           )}
         </div>
         {amount > 0 && (
-          <p className="text-xs mb-3" style={{ color: settledExactly ? '#5BA886' : '#6B6459' }}>
+          <p className="text-xs mb-3" style={{ color: settledExactly ? '#1F8A68' : '#5B6660' }}>
             {settledExactly
               ? 'Después de esto quedan a mano. 🤝'
               : newNet > 0
@@ -245,53 +245,53 @@ function SettleUpSheet({
 
         {/* Real money movement — record the transfer between accounts, not just
             the couple balance. Off = cash or settled outside the app. */}
-        <div className="rounded-2xl p-3 mb-3 border" style={{ background: '#FFFFFF', borderColor: '#ECE5DC' }}>
+        <div className="rounded-2xl p-3 mb-3 border" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', borderColor: '#E5EBE8' }}>
           <button
             onClick={() => setMoveMoney((v) => !v)}
             disabled={!canMoveMoney}
             className="w-full flex items-center justify-between disabled:opacity-50"
           >
-            <span className="text-xs font-bold" style={{ color: '#2D2D2D' }}>
+            <span className="text-xs font-bold" style={{ color: '#18211D' }}>
               💸 Mover plata entre cuentas
             </span>
             <span
               className="text-[11px] font-bold px-2 py-1 rounded-full"
               style={{
-                background: willMoveMoney ? '#E4F2EA' : '#ECE5DC',
-                color: willMoveMoney ? '#5BA886' : '#6B6459',
+                background: willMoveMoney ? '#DDF0E8' : '#E5EBE8',
+                color: willMoveMoney ? '#1F8A68' : '#5B6660',
               }}
             >
               {willMoveMoney ? 'Sí' : 'No'}
             </span>
           </button>
           {!canMoveMoney ? (
-            <p className="text-[11px] mt-2" style={{ color: '#6B6459' }}>
+            <p className="text-[11px] mt-2" style={{ color: '#5B6660' }}>
               Hace falta una cuenta en pesos (no tarjeta) de cada uno para registrar el movimiento.
             </p>
           ) : (
             willMoveMoney && (
               <div className="flex items-center gap-2 mt-2">
                 <div className="flex-1">
-                  <p className="text-[11px] font-bold mb-1" style={{ color: '#6B6459' }}>Desde · {payerName}</p>
+                  <p className="text-[11px] font-bold mb-1" style={{ color: '#5B6660' }}>Desde · {payerName}</p>
                   <select
                     value={effectiveFromId ?? ''}
                     onChange={(e) => setFromAccountId(e.target.value || null)}
                     className="w-full px-3 py-2 rounded-xl text-xs font-bold border bg-white"
-                    style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+                    style={{ borderColor: '#E5EBE8', color: '#18211D' }}
                   >
                     {fromAccounts.map((a) => (
                       <option key={a.id} value={a.id}>{a.name}</option>
                     ))}
                   </select>
                 </div>
-                <span className="text-lg mt-4" style={{ color: '#5B8DEF' }}>→</span>
+                <span className="text-lg mt-4" style={{ color: '#4E84E0' }}>→</span>
                 <div className="flex-1">
-                  <p className="text-[11px] font-bold mb-1" style={{ color: '#6B6459' }}>Hacia · {receiverName}</p>
+                  <p className="text-[11px] font-bold mb-1" style={{ color: '#5B6660' }}>Hacia · {receiverName}</p>
                   <select
                     value={effectiveToId ?? ''}
                     onChange={(e) => setToAccountId(e.target.value || null)}
                     className="w-full px-3 py-2 rounded-xl text-xs font-bold border bg-white"
-                    style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+                    style={{ borderColor: '#E5EBE8', color: '#18211D' }}
                   >
                     {toAccounts.map((a) => (
                       <option key={a.id} value={a.id}>{a.name}</option>
@@ -310,14 +310,14 @@ function SettleUpSheet({
             value={note}
             onChange={(e) => setNote(e.target.value)}
             className="flex-1 px-4 py-3 rounded-2xl text-sm border bg-white outline-none"
-            style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+            style={{ borderColor: '#E5EBE8', color: '#18211D' }}
           />
           <input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
             className="px-3 py-3 rounded-2xl text-xs font-bold border bg-white"
-            style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+            style={{ borderColor: '#E5EBE8', color: '#18211D' }}
           />
         </div>
 
@@ -325,7 +325,7 @@ function SettleUpSheet({
           onClick={handleSettle}
           disabled={saving || amount <= 0}
           className="w-full py-4 rounded-2xl text-lg font-black text-white disabled:opacity-40"
-          style={{ background: '#FF7F6B' }}
+          style={{ background: 'linear-gradient(135deg, #FF8173 0%, #E25749 100%)', boxShadow: 'var(--shadow-glow)' }}
         >
           {saving ? 'Guardando…' : settledExactly ? 'Saldar y quedar a mano' : 'Registrar pago'}
         </button>
@@ -501,111 +501,124 @@ export default function ParejaClient({
       : formatARS(n);
 
   return (
-    <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
+    <div className="min-h-screen pb-24" style={{ background: '#F1F5F3' }}>
       <header className="flex items-center gap-3 px-5 pt-14 pb-4">
-        <Link href="/mas" style={{ color: '#6B6459', fontSize: 22 }}>←</Link>
+        <Link href="/mas" style={{ color: '#5B6660', fontSize: 22 }}>←</Link>
         <div className="flex-1">
-          <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Vista de pareja</h1>
-          {partner && <p className="text-xs" style={{ color: '#6B6459' }}>{myName} & {partner.name}</p>}
+          <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>Vista de pareja</h1>
+          {partner && <p className="text-xs" style={{ color: '#5B6660' }}>{myName} & {partner.name}</p>}
         </div>
         <button
           onClick={toggle}
           className="text-sm font-bold px-3 py-1.5 rounded-full border"
-          style={{ borderColor: '#7EC8A4', color: '#7EC8A4' }}
+          style={{ borderColor: '#2FA37C', color: '#2FA37C' }}
         >
           {showUSD ? 'USD' : 'ARS'}
         </button>
       </header>
 
       {/* Combined summary */}
-      <div className="mx-4 rounded-3xl p-5 mb-4 shadow-sm" style={{ background: '#FFFFFF' }}>
-        <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>
+      <div className="mx-4 rounded-3xl p-5 mb-4 shadow-sm" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+        <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#5B6660' }}>
           Resumen del mes
         </p>
         <div className="flex gap-4">
-          <div className="flex-1 rounded-2xl p-3" style={{ background: '#E4F2EA' }}>
-            <p className="text-[10px] font-bold uppercase mb-1" style={{ color: '#5BA886' }}>Ingresos</p>
-            <p className="text-lg font-black" style={{ color: '#5BA886', fontVariantNumeric: 'tabular-nums' }}>{f(totalIncome)}</p>
+          <div className="flex-1 rounded-2xl p-3" style={{ background: '#DDF0E8' }}>
+            <p className="text-[10px] font-bold uppercase mb-1" style={{ color: '#1F8A68' }}>Ingresos</p>
+            <p className="text-lg font-black" style={{ color: '#1F8A68', fontVariantNumeric: 'tabular-nums' }}>{f(totalIncome)}</p>
           </div>
-          <div className="flex-1 rounded-2xl p-3" style={{ background: '#FFE7E2' }}>
-            <p className="text-[10px] font-bold uppercase mb-1" style={{ color: '#E5604C' }}>Gastos</p>
-            <p className="text-lg font-black" style={{ color: '#E5604C', fontVariantNumeric: 'tabular-nums' }}>{f(totalExpenses)}</p>
+          <div className="flex-1 rounded-2xl p-3" style={{ background: '#FFE5E0' }}>
+            <p className="text-[10px] font-bold uppercase mb-1" style={{ color: '#E25749' }}>Gastos</p>
+            <p className="text-lg font-black" style={{ color: '#E25749', fontVariantNumeric: 'tabular-nums' }}>{f(totalExpenses)}</p>
           </div>
         </div>
 
         {/* Household vs personal */}
-        <div className="mt-4 pt-4" style={{ borderTop: '1px solid #ECE5DC' }}>
+        <div className="mt-4 pt-4" style={{ borderTop: '1px solid #E5EBE8' }}>
           <div className="flex justify-between mb-2">
-            <p className="text-xs" style={{ color: '#6B6459' }}>🏠 Hogar</p>
-            <p className="text-xs font-bold" style={{ color: '#2D2D2D' }}>{f(householdExpenses)}</p>
+            <p className="text-xs" style={{ color: '#5B6660' }}>🏠 Hogar</p>
+            <p className="text-xs font-bold" style={{ color: '#18211D' }}>{f(householdExpenses)}</p>
           </div>
           <div className="flex justify-between">
-            <p className="text-xs" style={{ color: '#6B6459' }}>👤 Personal</p>
-            <p className="text-xs font-bold" style={{ color: '#2D2D2D' }}>{f(personalExpenses)}</p>
+            <p className="text-xs" style={{ color: '#5B6660' }}>👤 Personal</p>
+            <p className="text-xs font-bold" style={{ color: '#18211D' }}>{f(personalExpenses)}</p>
           </div>
         </div>
       </div>
 
       {/* Who owes whom */}
       {!partner ? (
-        <div className="mx-4 rounded-3xl p-5 mb-4 text-center" style={{ background: '#FFFFFF' }}>
+        <div className="mx-4 rounded-3xl p-5 mb-4 text-center" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
           <p className="text-3xl mb-2">👫</p>
-          <p className="text-sm font-bold" style={{ color: '#2D2D2D' }}>Todavía no hay pareja vinculada al hogar</p>
-          <p className="text-sm mt-1 mb-4" style={{ color: '#6B6459' }}>
+          <p className="text-sm font-bold" style={{ color: '#18211D' }}>Todavía no hay pareja vinculada al hogar</p>
+          <p className="text-sm mt-1 mb-4" style={{ color: '#5B6660' }}>
             Invitá a tu pareja para compartir esta vista y dividir gastos.
           </p>
           <button
             onClick={() => setInviteOpen(true)}
-            className="px-5 py-3 rounded-2xl text-sm font-black text-white"
-            style={{ background: '#7EC8A4' }}
+            className="px-5 py-3 rounded-2xl text-sm font-black text-white transition-transform hover:-translate-y-0.5"
+            style={{ background: 'linear-gradient(135deg, #34AD84 0%, #1F8A68 100%)', boxShadow: 'var(--shadow-glow)' }}
           >
             💌 Invitar a mi pareja
           </button>
         </div>
       ) : (
         <div
-          className="mx-4 rounded-3xl p-5 mb-4 shadow-sm"
-          style={{ background: balanced ? '#FFFFFF' : partnerOwesMe ? '#E4F2EA' : '#FFE7E2' }}
+          className="mx-4 rounded-3xl overflow-hidden mb-4"
+          style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-pop)' }}
         >
-          <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>
-            Quién le debe a quién
-          </p>
+          <div
+            className="relative px-5 pt-5 pb-5 overflow-hidden"
+            style={{
+              background: iOwePartner
+                ? 'linear-gradient(135deg, #FF8173 0%, #E25749 100%)'
+                : 'linear-gradient(135deg, #34AD84 0%, #1F8A68 100%)',
+            }}
+          >
+            <div className="absolute -top-10 -right-8 w-40 h-40 rounded-full pointer-events-none" style={{ background: 'rgba(255,255,255,0.14)' }} />
+            <p className="relative text-[11px] font-black uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.82)' }}>
+              Quién le debe a quién
+            </p>
 
-          {balanceLoading ? (
-            <p className="text-sm" style={{ color: '#6B6459' }}>Calculando…</p>
-          ) : balanced ? (
-            <div className="text-center py-2">
-              <p className="text-3xl mb-1">🤝</p>
-              <p className="text-base font-black" style={{ color: '#2D2D2D' }}>¡Estamos al día!</p>
-              <p className="text-xs mt-1" style={{ color: '#6B6459' }}>No hay deudas pendientes entre ustedes.</p>
-            </div>
-          ) : (
-            <div>
-              <div className="flex items-center gap-3 mb-3">
-                <div className="flex-1">
-                  <p className="text-xs mb-0.5" style={{ color: partnerOwesMe ? '#5BA886' : '#E5604C', opacity: 0.8 }}>
-                    {partnerOwesMe ? `${partner.name} te debe` : `Le debés a ${partner.name}`}
-                  </p>
-                  <p
-                    className="text-3xl font-black"
-                    style={{ color: partnerOwesMe ? '#5BA886' : '#E5604C', fontVariantNumeric: 'tabular-nums' }}
-                  >
-                    {f(absNet)}
-                  </p>
-                </div>
+            {balanceLoading ? (
+              <p className="relative text-sm mt-2" style={{ color: 'rgba(255,255,255,0.85)' }}>Calculando…</p>
+            ) : balanced ? (
+              <div className="relative mt-2">
+                <p className="text-3xl mb-1">🤝</p>
+                <p className="text-[2.4rem] leading-none font-black tracking-tight" style={{ color: '#FFFFFF' }}>¡Estamos al día!</p>
+                <p className="text-[11px] mt-2" style={{ color: 'rgba(255,255,255,0.85)' }}>No hay deudas pendientes entre ustedes.</p>
+              </div>
+            ) : (
+              <div className="relative mt-2">
+                <p className="text-[11px]" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                  {partnerOwesMe ? `${partner.name} te debe` : `Le debés a ${partner.name}`}
+                </p>
+                <p
+                  className="text-[2.4rem] leading-none font-black mt-1 tracking-tight"
+                  style={{ color: '#FFFFFF', fontVariantNumeric: 'tabular-nums' }}
+                >
+                  {f(absNet)}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {!balanceLoading && !balanced && (
+            <div className="px-4 py-4">
+              <div className="flex items-center gap-3">
+                <p className="flex-1 text-xs" style={{ color: partnerOwesMe ? '#1F8A68' : '#E25749' }}>
+                  {partnerOwesMe
+                    ? `Pagaste gastos compartidos que ${partner.name} aún no compensó.`
+                    : `${partner.name} pagó gastos compartidos que todavía no compensaste.`}
+                </p>
                 <button
                   onClick={() => setSettleOpen(true)}
-                  className="px-4 py-2.5 rounded-2xl text-sm font-black text-white"
-                  style={{ background: '#FF7F6B' }}
+                  className="px-4 py-2.5 rounded-2xl text-sm font-black text-white transition-transform hover:-translate-y-0.5"
+                  style={{ background: 'linear-gradient(135deg, #FF8173 0%, #E25749 100%)', boxShadow: 'var(--shadow-glow)' }}
                 >
                   Saldar
                 </button>
               </div>
-              <p className="text-xs" style={{ color: partnerOwesMe ? '#5BA886' : '#E5604C', opacity: 0.7 }}>
-                {partnerOwesMe
-                  ? `Pagaste gastos compartidos que ${partner.name} aún no compensó.`
-                  : `${partner.name} pagó gastos compartidos que todavía no compensaste.`}
-              </p>
             </div>
           )}
         </div>
@@ -613,11 +626,11 @@ export default function ParejaClient({
 
       {/* Default split for new household expenses */}
       {partner && (
-        <div className="mx-4 rounded-3xl p-5 mb-4 shadow-sm" style={{ background: '#FFFFFF' }}>
-          <p className="text-sm font-bold mb-3" style={{ color: '#2D2D2D' }}>
+        <div className="mx-4 rounded-3xl p-5 mb-4 shadow-sm" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+          <p className="text-sm font-bold mb-3" style={{ color: '#18211D' }}>
             ⚖️ ¿Cómo dividen los gastos del hogar?
           </p>
-          <div className="flex rounded-2xl overflow-hidden p-1 gap-1 mb-3" style={{ background: '#ECE5DC' }}>
+          <div className="flex rounded-2xl overflow-hidden p-1 gap-1 mb-3" style={{ background: '#E5EBE8' }}>
             {([
               { key: 'equal', label: '50/50' },
               { key: 'income', label: 'Según ingresos' },
@@ -629,8 +642,8 @@ export default function ParejaClient({
                   onClick={() => {
                     if (!active && !splitModeMutation.isPending) splitModeMutation.mutate(o.key);
                   }}
-                  className="flex-1 py-2 text-xs font-bold rounded-xl transition-colors"
-                  style={{ background: active ? '#FFFFFF' : 'transparent', color: active ? '#2D2D2D' : '#6B6459' }}
+                  className="flex-1 py-2 text-xs font-black rounded-xl transition-all"
+                  style={{ background: active ? '#FFFFFF' : 'transparent', color: active ? '#18211D' : '#5B6660', boxShadow: active ? 'var(--shadow-soft)' : 'none' }}
                 >
                   {o.label}
                 </button>
@@ -639,15 +652,15 @@ export default function ParejaClient({
           </div>
           {activeSplitMode === 'income' &&
             (totalPrevIncome > 0 ? (
-              <p className="text-xs font-bold mb-2" style={{ color: '#2D2D2D' }}>
+              <p className="text-xs font-bold mb-2" style={{ color: '#18211D' }}>
                 Este mes: {myName} {myIncomePct}% · {partner.name} {partnerIncomePct}%
               </p>
             ) : (
-              <p className="text-xs mb-2" style={{ color: '#6B6459', opacity: 0.7 }}>
+              <p className="text-xs mb-2" style={{ color: '#5B6660', opacity: 0.7 }}>
                 Sin ingresos el mes pasado — se usa 50/50
               </p>
             ))}
-          <p className="text-[11px]" style={{ color: '#6B6459' }}>
+          <p className="text-[11px]" style={{ color: '#5B6660' }}>
             Se aplica como división sugerida en los nuevos gastos del hogar y en los gastos fijos.
           </p>
         </div>
@@ -655,8 +668,8 @@ export default function ParejaClient({
 
       {/* Shared category breakdown */}
       {sharedCats.length > 0 && (
-        <div className="mx-4 rounded-3xl p-5 mb-4 shadow-sm" style={{ background: '#FFFFFF' }}>
-          <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>
+        <div className="mx-4 rounded-3xl p-5 mb-4 shadow-sm" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#5B6660' }}>
             Gastos compartidos por categoría
           </p>
           <div className="flex flex-col gap-2">
@@ -669,18 +682,18 @@ export default function ParejaClient({
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
                       <span>{cat.icon}</span>
-                      <p className="text-sm font-semibold" style={{ color: '#2D2D2D' }}>{cat.name}</p>
+                      <p className="text-sm font-semibold" style={{ color: '#18211D' }}>{cat.name}</p>
                     </div>
-                    <p className="text-sm font-bold" style={{ color: '#2D2D2D' }}>{f(cat.amount)}</p>
+                    <p className="text-sm font-bold" style={{ color: '#18211D' }}>{f(cat.amount)}</p>
                   </div>
-                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#ECE5DC' }}>
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#E5EBE8' }}>
                     <div
                       className="h-full rounded-full"
-                      style={{ background: '#7EC8A4', width: `${Math.min(pct * 100, 100)}%` }}
+                      style={{ background: '#2FA37C', width: `${Math.min(pct * 100, 100)}%` }}
                     />
                   </div>
                   {partner && Math.abs(net) >= 1 && (
-                    <p className="text-[11px] mt-1" style={{ color: net > 0 ? '#5BA886' : '#E5604C' }}>
+                    <p className="text-[11px] mt-1" style={{ color: net > 0 ? '#1F8A68' : '#E25749' }}>
                       {net > 0
                         ? `${partner.name} te debe ${f(net)} acá`
                         : `Le debés ${f(-net)} a ${partner.name} acá`}
@@ -690,7 +703,7 @@ export default function ParejaClient({
               );
             })}
           </div>
-          <p className="text-xs mt-3" style={{ color: '#6B6459' }}>
+          <p className="text-xs mt-3" style={{ color: '#5B6660' }}>
             Total compartido este mes: <strong>{f(sharedExpenses)}</strong>
           </p>
         </div>

@@ -513,7 +513,7 @@ export function AddTransactionSheet({
       : `≈ ${formatUSD(arsToUsd(arsAmount, arsPerUsd))}`;
 
   // Neutral blue accent for transfers; red for expense, green for income.
-  const accentColor = isTransfer ? '#5B8DEF' : txType === 'expense' ? '#FF7F6B' : '#7EC8A4';
+  const accentColor = isTransfer ? '#4E84E0' : txType === 'expense' ? '#FF6F61' : '#2FA37C';
   const transferInvalid =
     isTransfer && (!effectiveFromId || !effectiveToId || effectiveFromId === effectiveToId);
 
@@ -882,7 +882,7 @@ export function AddTransactionSheet({
         side="bottom"
         className="rounded-t-3xl sm:rounded-3xl p-0 gap-0 overflow-hidden flex flex-col"
         style={{
-          background: '#F9F5F0',
+          background: '#F1F5F3',
           maxHeight: '95dvh',
           transform: dragY ? `translateY(${dragY}px)` : undefined,
           transition: dragging ? 'none' : undefined,
@@ -891,7 +891,7 @@ export function AddTransactionSheet({
         {/* drag handle (mobile only — on desktop this renders as a centered
             dialog). Drag it down to dismiss. */}
         <div className="flex justify-center pt-3 pb-2 sm:hidden shrink-0 touch-none" {...handleProps}>
-          <div className="w-10 h-1 rounded-full" style={{ background: '#ECE5DC' }} />
+          <div className="w-10 h-1 rounded-full" style={{ background: '#E5EBE8' }} />
         </div>
         <div className="hidden sm:block pt-5 shrink-0" />
         <div className="overflow-y-auto flex flex-col flex-1 min-h-0">
@@ -902,7 +902,7 @@ export function AddTransactionSheet({
               {isTransfer ? (
                 <span
                   className="text-xs font-bold px-3 py-1 rounded-full border"
-                  style={{ borderColor: '#5B8DEF', color: '#5B8DEF' }}
+                  style={{ borderColor: '#4E84E0', color: '#4E84E0' }}
                 >
                   {txCurrency}
                 </span>
@@ -911,8 +911,8 @@ export function AddTransactionSheet({
                   onClick={() => setInputUSD((v) => !v)}
                   className="text-xs font-bold px-3 py-1 rounded-full border"
                   style={{
-                    borderColor: inputUSD ? '#FF7F6B' : '#7EC8A4',
-                    color: inputUSD ? '#FF7F6B' : '#7EC8A4',
+                    borderColor: inputUSD ? '#FF6F61' : '#2FA37C',
+                    color: inputUSD ? '#FF6F61' : '#2FA37C',
                   }}
                 >
                   {inputUSD ? 'USD' : 'ARS'}
@@ -925,7 +925,7 @@ export function AddTransactionSheet({
                     router.push('/ticket');
                   }}
                   className="text-xs font-bold px-3 py-1 rounded-full border flex items-center gap-1"
-                  style={{ borderColor: '#ECE5DC', color: '#6B6459', background: '#FFFFFF' }}
+                  style={{ borderColor: '#E5EBE8', color: '#5B6660', background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}
                 >
                   🧾 Escanear ticket
                 </button>
@@ -933,7 +933,7 @@ export function AddTransactionSheet({
                 <button
                   onClick={() => setConfirmDelete(true)}
                   className="text-xs font-bold px-3 py-1 rounded-full border flex items-center gap-1"
-                  style={{ borderColor: '#FF7F6B', color: '#FF7F6B', background: '#FFFFFF' }}
+                  style={{ borderColor: '#FF6F61', color: '#FF6F61', background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}
                 >
                   🗑️ Eliminar
                 </button>
@@ -945,17 +945,17 @@ export function AddTransactionSheet({
             >
               {displayAmount}
             </p>
-            <p className="text-sm mt-1" style={{ color: '#6B6459' }}>
+            <p className="text-sm mt-1" style={{ color: '#5B6660' }}>
               {secondaryAmount}
             </p>
           </div>
 
           {/* Gasto / Ingreso / Transferencia toggle */}
-          <div className="flex mx-6 mb-3 rounded-2xl overflow-hidden" style={{ background: '#ECE5DC' }}>
+          <div className="flex mx-6 mb-3 rounded-2xl overflow-hidden" style={{ background: '#E5EBE8' }}>
             {([
-              { t: 'expense' as const, label: 'Gasto', color: '#FF7F6B' },
-              { t: 'income' as const, label: 'Ingreso', color: '#7EC8A4' },
-              { t: 'transfer' as const, label: 'Transferencia', color: '#5B8DEF' },
+              { t: 'expense' as const, label: 'Gasto', color: '#FF6F61' },
+              { t: 'income' as const, label: 'Ingreso', color: '#2FA37C' },
+              { t: 'transfer' as const, label: 'Transferencia', color: '#4E84E0' },
             ]).map(({ t, label, color }) => (
               <button
                 key={t}
@@ -966,7 +966,7 @@ export function AddTransactionSheet({
                 className="flex-1 py-2.5 text-[13px] font-bold transition-colors"
                 style={{
                   background: txType === t ? color : 'transparent',
-                  color: txType === t ? '#FFFFFF' : '#6B6459',
+                  color: txType === t ? '#FFFFFF' : '#5B6660',
                   borderRadius: '14px',
                 }}
               >
@@ -985,9 +985,9 @@ export function AddTransactionSheet({
                   onClick={() => setCategoryId(categoryId === c.id ? null : c.id)}
                   className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-2xl text-sm font-semibold border transition-colors"
                   style={{
-                    background: categoryId === c.id ? '#E4F2EA' : '#FFFFFF',
-                    borderColor: categoryId === c.id ? '#7EC8A4' : '#ECE5DC',
-                    color: categoryId === c.id ? '#5BA886' : '#2D2D2D',
+                    background: categoryId === c.id ? '#DDF0E8' : '#FFFFFF',
+                    borderColor: categoryId === c.id ? '#2FA37C' : '#E5EBE8',
+                    color: categoryId === c.id ? '#1F8A68' : '#18211D',
                   }}
                 >
                   <span>{c.icon}</span>
@@ -999,9 +999,9 @@ export function AddTransactionSheet({
                 onClick={() => setCreatingCat((v) => !v)}
                 className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-2xl text-sm font-bold border border-dashed transition-colors"
                 style={{
-                  background: creatingCat ? '#E4F2EA' : '#FFFFFF',
-                  borderColor: '#7EC8A4',
-                  color: '#5BA886',
+                  background: creatingCat ? '#DDF0E8' : '#FFFFFF',
+                  borderColor: '#2FA37C',
+                  color: '#1F8A68',
                 }}
               >
                 <span>＋</span>
@@ -1011,7 +1011,7 @@ export function AddTransactionSheet({
 
             {/* Inline new-category form */}
             {creatingCat && (
-              <div className="mt-2 rounded-2xl p-3 border" style={{ background: '#FFFFFF', borderColor: '#ECE5DC' }}>
+              <div className="mt-2 rounded-2xl p-3 border" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', borderColor: '#E5EBE8' }}>
                 <div className="flex gap-2 items-center">
                   <input
                     type="text"
@@ -1021,13 +1021,13 @@ export function AddTransactionSheet({
                     onChange={(e) => setNewCatName(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') handleCreateCategory(); }}
                     className="flex-1 min-w-0 px-3 py-2 rounded-xl border text-sm outline-none"
-                    style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+                    style={{ borderColor: '#E5EBE8', color: '#18211D' }}
                   />
                   <button
                     onClick={handleCreateCategory}
                     disabled={!newCatName.trim() || savingCat}
                     className="flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-50"
-                    style={{ background: '#7EC8A4' }}
+                    style={{ background: '#2FA37C' }}
                   >
                     {savingCat ? '…' : 'Crear'}
                   </button>
@@ -1039,8 +1039,8 @@ export function AddTransactionSheet({
                       onClick={() => setNewCatIcon(ic)}
                       className="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
                       style={{
-                        background: newCatIcon === ic ? '#E4F2EA' : '#F9F5F0',
-                        border: newCatIcon === ic ? '2px solid #7EC8A4' : '2px solid transparent',
+                        background: newCatIcon === ic ? '#DDF0E8' : '#F1F5F3',
+                        border: newCatIcon === ic ? '2px solid #2FA37C' : '2px solid transparent',
                       }}
                     >
                       {ic}
@@ -1065,26 +1065,26 @@ export function AddTransactionSheet({
               ) : (
                 <div className="flex items-center gap-2">
                   <div className="flex-1">
-                    <p className="text-[11px] font-bold mb-1" style={{ color: '#6B6459' }}>Desde</p>
+                    <p className="text-[11px] font-bold mb-1" style={{ color: '#5B6660' }}>Desde</p>
                     <select
                       value={effectiveFromId ?? ''}
                       onChange={(e) => setAccountId(e.target.value || null)}
                       className="w-full px-3 py-2.5 rounded-xl text-xs font-bold border bg-white"
-                      style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+                      style={{ borderColor: '#E5EBE8', color: '#18211D' }}
                     >
                       {transferAccounts.map((a) => (
                         <option key={a.id} value={a.id}>{a.name}</option>
                       ))}
                     </select>
                   </div>
-                  <span className="text-xl mt-4" style={{ color: '#5B8DEF' }}>→</span>
+                  <span className="text-xl mt-4" style={{ color: '#4E84E0' }}>→</span>
                   <div className="flex-1">
-                    <p className="text-[11px] font-bold mb-1" style={{ color: '#6B6459' }}>Hacia</p>
+                    <p className="text-[11px] font-bold mb-1" style={{ color: '#5B6660' }}>Hacia</p>
                     <select
                       value={effectiveToId ?? ''}
                       onChange={(e) => setToAccountId(e.target.value || null)}
                       className="w-full px-3 py-2.5 rounded-xl text-xs font-bold border bg-white"
-                      style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+                      style={{ borderColor: '#E5EBE8', color: '#18211D' }}
                     >
                       {destAccounts.length === 0 && <option value="">Sin destino</option>}
                       {destAccounts.map((a) => (
@@ -1100,7 +1100,7 @@ export function AddTransactionSheet({
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 className="mt-3 px-3 py-2 rounded-xl text-xs font-bold border bg-white"
-                style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+                style={{ borderColor: '#E5EBE8', color: '#18211D' }}
               />
             </div>
           )}
@@ -1109,8 +1109,8 @@ export function AddTransactionSheet({
               movement is personal (solo mío) or del hogar (compartido). */}
           {!isTransfer && (
           <div className="px-4 mt-3">
-            <p className="text-xs font-bold mb-1.5" style={{ color: '#6B6459' }}>¿De quién es este movimiento?</p>
-            <div className="flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#ECE5DC' }}>
+            <p className="text-xs font-bold mb-1.5" style={{ color: '#5B6660' }}>¿De quién es este movimiento?</p>
+            <div className="flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#E5EBE8' }}>
               {([
                 { key: 'me' as const, label: '👤 Mío' },
                 ...(effectivePartnerId
@@ -1125,8 +1125,8 @@ export function AddTransactionSheet({
                     onClick={() => setOwner(o.key)}
                     className="flex-1 py-2 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1"
                     style={{
-                      background: active ? (o.key === 'household' ? '#7EC8A4' : '#FFFFFF') : 'transparent',
-                      color: active ? (o.key === 'household' ? '#FFFFFF' : '#2D2D2D') : '#6B6459',
+                      background: active ? (o.key === 'household' ? '#2FA37C' : '#FFFFFF') : 'transparent',
+                      color: active ? (o.key === 'household' ? '#FFFFFF' : '#18211D') : '#5B6660',
                     }}
                   >
                     {o.label}
@@ -1141,8 +1141,8 @@ export function AddTransactionSheet({
               have fronted the money. For "Mío"/partner it's implied. */}
           {owner === 'household' && effectivePartnerId && (
             <div className="px-4 mt-3">
-              <p className="text-xs font-bold mb-1.5" style={{ color: '#6B6459' }}>¿Quién pagó?</p>
-              <div className="flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#ECE5DC' }}>
+              <p className="text-xs font-bold mb-1.5" style={{ color: '#5B6660' }}>¿Quién pagó?</p>
+              <div className="flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#E5EBE8' }}>
                 {([
                   { key: 'me' as const, label: '👤 Yo' },
                   { key: 'partner' as const, label: `👥 ${effectivePartnerName}` },
@@ -1155,7 +1155,7 @@ export function AddTransactionSheet({
                       className="flex-1 py-2 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1"
                       style={{
                         background: active ? '#FFFFFF' : 'transparent',
-                        color: active ? '#2D2D2D' : '#6B6459',
+                        color: active ? '#18211D' : '#5B6660',
                       }}
                     >
                       {o.label}
@@ -1175,9 +1175,9 @@ export function AddTransactionSheet({
               onClick={() => setIsShared((v) => !v)}
               className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold border"
               style={{
-                background: isShared ? '#FFE7E2' : '#FFFFFF',
-                borderColor: isShared ? '#FF7F6B' : '#ECE5DC',
-                color: isShared ? '#FF7F6B' : '#6B6459',
+                background: isShared ? '#FFE5E0' : '#FFFFFF',
+                borderColor: isShared ? '#FF6F61' : '#E5EBE8',
+                color: isShared ? '#FF6F61' : '#5B6660',
               }}
             >
               {isShared ? '🤝 Compartido' : '🤝 Dividir'}
@@ -1190,9 +1190,9 @@ export function AddTransactionSheet({
               onClick={() => setIsFixed((v) => !v)}
               className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold border"
               style={{
-                background: isFixed ? '#E7EFFB' : '#FFFFFF',
-                borderColor: isFixed ? '#5B8DEF' : '#ECE5DC',
-                color: isFixed ? '#5B8DEF' : '#6B6459',
+                background: isFixed ? '#E9F1FD' : '#FFFFFF',
+                borderColor: isFixed ? '#4E84E0' : '#E5EBE8',
+                color: isFixed ? '#4E84E0' : '#5B6660',
               }}
             >
               {isFixed ? '📌 Gasto fijo' : '📌 Fijo'}
@@ -1205,7 +1205,7 @@ export function AddTransactionSheet({
                 value={effectiveAccountId ?? ''}
                 onChange={(e) => setAccountId(e.target.value || 'none')}
                 className="px-3 py-2 rounded-xl text-xs font-bold border bg-white"
-                style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+                style={{ borderColor: '#E5EBE8', color: '#18211D' }}
               >
                 <option value="">Sin cuenta</option>
                 {visibleAccounts.map((a) => (
@@ -1222,17 +1222,17 @@ export function AddTransactionSheet({
               value={date}
               onChange={(e) => setDate(e.target.value)}
               className="px-3 py-2 rounded-xl text-xs font-bold border bg-white"
-              style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+              style={{ borderColor: '#E5EBE8', color: '#18211D' }}
             />
 
             {/* Colour flag — discs stay small but each gets a ~36px tap target. */}
-            <div className="flex items-center gap-0.5 px-1 rounded-xl border" style={{ borderColor: '#ECE5DC' }}>
+            <div className="flex items-center gap-0.5 px-1 rounded-xl border" style={{ borderColor: '#E5EBE8' }}>
               <button type="button" onClick={() => setFlag(null)} title="Sin flag" aria-label="Sin flag" className="w-9 h-9 rounded-full flex items-center justify-center">
-                <span className="w-5 h-5 rounded-full border flex items-center justify-center text-[10px]" style={{ borderColor: flag === null ? '#2D2D2D' : '#ECE5DC', color: '#6B6459' }}>○</span>
+                <span className="w-5 h-5 rounded-full border flex items-center justify-center text-[10px]" style={{ borderColor: flag === null ? '#18211D' : '#E5EBE8', color: '#5B6660' }}>○</span>
               </button>
               {FLAG_COLORS.map((f) => (
                 <button key={f.key} type="button" onClick={() => setFlag(f.key)} title={f.label} aria-label={f.label} className="w-9 h-9 rounded-full flex items-center justify-center">
-                  <span className="w-5 h-5 rounded-full block" style={{ background: f.hex, outline: flag === f.key ? '2px solid #2D2D2D' : 'none', outlineOffset: '1px' }} />
+                  <span className="w-5 h-5 rounded-full block" style={{ background: f.hex, outline: flag === f.key ? '2px solid #18211D' : 'none', outlineOffset: '1px' }} />
                 </button>
               ))}
             </div>
@@ -1241,7 +1241,7 @@ export function AddTransactionSheet({
 
           {/* Hint for the fixed-expense toggle. */}
           {!isTransfer && txType === 'expense' && isFixed && (
-            <p className="px-4 mt-2 text-[11px]" style={{ color: '#6B6459' }}>
+            <p className="px-4 mt-2 text-[11px]" style={{ color: '#5B6660' }}>
               📌 Gasto fijo (recurrente, tipo alquiler o servicios).
             </p>
           )}
@@ -1250,9 +1250,9 @@ export function AddTransactionSheet({
           {txType === 'expense' && isShared && (
             <div className="px-4 mt-3">
               {effectivePartnerId ? (
-                <div className="rounded-2xl p-3 border" style={{ background: '#FFFFFF', borderColor: '#ECE5DC' }}>
+                <div className="rounded-2xl p-3 border" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', borderColor: '#E5EBE8' }}>
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-bold" style={{ color: '#6B6459' }}>¿Cómo lo dividen?</p>
+                    <p className="text-xs font-bold" style={{ color: '#5B6660' }}>¿Cómo lo dividen?</p>
                     <div className="flex gap-1">
                       {[
                         { label: '50/50', v: 50 },
@@ -1264,9 +1264,9 @@ export function AddTransactionSheet({
                           onClick={() => userSetShare(p.v)}
                           className="px-2 py-1 rounded-lg text-[11px] font-bold border"
                           style={{
-                            background: myShare === p.v ? '#FFE7E2' : '#FFFFFF',
-                            borderColor: myShare === p.v ? '#FF7F6B' : '#ECE5DC',
-                            color: myShare === p.v ? '#FF7F6B' : '#6B6459',
+                            background: myShare === p.v ? '#FFE5E0' : '#FFFFFF',
+                            borderColor: myShare === p.v ? '#FF6F61' : '#E5EBE8',
+                            color: myShare === p.v ? '#FF6F61' : '#5B6660',
                           }}
                         >
                           {p.label}
@@ -1282,16 +1282,16 @@ export function AddTransactionSheet({
                     value={myShare}
                     onChange={(e) => userSetShare(parseInt(e.target.value, 10))}
                     className="w-full"
-                    style={{ accentColor: '#FF7F6B' }}
+                    style={{ accentColor: '#FF6F61' }}
                   />
                   <div className="flex justify-between mt-1.5">
                     <div>
-                      <p className="text-[11px]" style={{ color: '#6B6459' }}>Yo ({myShare}%)</p>
-                      <p className="text-sm font-bold" style={{ color: '#2D2D2D' }}>{fmtNative(myShareNative)}</p>
+                      <p className="text-[11px]" style={{ color: '#5B6660' }}>Yo ({myShare}%)</p>
+                      <p className="text-sm font-bold" style={{ color: '#18211D' }}>{fmtNative(myShareNative)}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-[11px]" style={{ color: '#6B6459' }}>{effectivePartnerName} ({100 - myShare}%)</p>
-                      <p className="text-sm font-bold" style={{ color: '#2D2D2D' }}>{fmtNative(partnerShareNative)}</p>
+                      <p className="text-[11px]" style={{ color: '#5B6660' }}>{effectivePartnerName} ({100 - myShare}%)</p>
+                      <p className="text-sm font-bold" style={{ color: '#18211D' }}>{fmtNative(partnerShareNative)}</p>
                     </div>
                   </div>
                 </div>
@@ -1307,9 +1307,9 @@ export function AddTransactionSheet({
           {canInstallments && (
             <div className="px-4 mt-3">
               <div className="flex items-center justify-between mb-1.5">
-                <p className="text-xs font-bold" style={{ color: '#6B6459' }}>Cuotas</p>
+                <p className="text-xs font-bold" style={{ color: '#5B6660' }}>Cuotas</p>
                 {useInstallments && (
-                  <p className="text-xs font-bold" style={{ color: '#FF7F6B' }}>
+                  <p className="text-xs font-bold" style={{ color: '#FF6F61' }}>
                     {installments} × {formatARS(perInstallment)} por mes
                   </p>
                 )}
@@ -1321,9 +1321,9 @@ export function AddTransactionSheet({
                     onClick={() => setInstallments(n)}
                     className="flex-shrink-0 px-3.5 py-2 rounded-2xl text-sm font-bold border transition-colors"
                     style={{
-                      background: installments === n ? '#FFE7E2' : '#FFFFFF',
-                      borderColor: installments === n ? '#FF7F6B' : '#ECE5DC',
-                      color: installments === n ? '#FF7F6B' : '#6B6459',
+                      background: installments === n ? '#FFE5E0' : '#FFFFFF',
+                      borderColor: installments === n ? '#FF6F61' : '#E5EBE8',
+                      color: installments === n ? '#FF6F61' : '#5B6660',
                     }}
                   >
                     {n === 1 ? '1 pago' : `${n}`}
@@ -1341,7 +1341,7 @@ export function AddTransactionSheet({
               value={merchant}
               onChange={(e) => setMerchant(e.target.value)}
               className="w-full px-4 py-3 rounded-2xl text-sm border bg-white outline-none"
-              style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+              style={{ borderColor: '#E5EBE8', color: '#18211D' }}
             />
           </div>
 
@@ -1354,8 +1354,8 @@ export function AddTransactionSheet({
         <div
           className="shrink-0 px-4 pt-3"
           style={{
-            background: '#F9F5F0',
-            borderTop: '1px solid #ECE5DC',
+            background: '#F1F5F3',
+            borderTop: '1px solid #E5EBE8',
             paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))',
           }}
         >

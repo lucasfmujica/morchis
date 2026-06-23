@@ -214,12 +214,12 @@ export default function SuperClient({ profile }: { profile: Profile }) {
   const coveragePct = totalArs > 0 ? Math.round((scanned.amount / totalArs) * 100) : 0;
 
   return (
-    <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
+    <div className="min-h-screen pb-24" style={{ background: '#F1F5F3' }}>
       <header className="px-5 pt-14 pb-4 flex items-center gap-3">
         <Link href="/mas" className="text-2xl">←</Link>
         <div>
-          <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Compras de súper 🛒</h1>
-          <p className="text-xs mt-0.5" style={{ color: '#6B6459' }}>Todo lo de tu categoría de súper</p>
+          <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>Compras de súper 🛒</h1>
+          <p className="text-xs mt-0.5" style={{ color: '#5B6660' }}>Todo lo de tu categoría de súper</p>
         </div>
       </header>
 
@@ -229,11 +229,12 @@ export default function SuperClient({ profile }: { profile: Profile }) {
           <button
             key={r}
             onClick={() => setRange(r)}
-            className="px-3 py-1.5 rounded-full text-xs font-bold border"
+            className="px-3 py-2 rounded-full text-xs font-bold border transition-all"
             style={{
-              background: range === r ? '#5BA886' : '#FFFFFF',
-              borderColor: range === r ? '#5BA886' : '#ECE5DC',
-              color: range === r ? '#FFFFFF' : '#6B6459',
+              background: range === r ? '#1F8A68' : '#FFFFFF',
+              borderColor: range === r ? '#1F8A68' : '#E5EBE8',
+              color: range === r ? '#FFFFFF' : '#5B6660',
+              boxShadow: range === r ? '0 4px 12px -4px rgba(47,163,124,0.55)' : 'var(--shadow-soft)',
             }}
           >
             {r === 'month' ? 'Este mes' : r === 'prev' ? 'Mes pasado' : 'Histórico'}
@@ -243,9 +244,9 @@ export default function SuperClient({ profile }: { profile: Profile }) {
 
       <div className="px-4 flex flex-col gap-4">
         {isLoading ? (
-          <div className="rounded-3xl p-8 text-center" style={{ background: '#FFFFFF' }}>
+          <div className="rounded-3xl p-8 text-center" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
             <p className="text-3xl mb-2 animate-pulse">🛒</p>
-            <p className="text-sm" style={{ color: '#6B6459' }}>Cargando…</p>
+            <p className="text-sm" style={{ color: '#5B6660' }}>Cargando…</p>
           </div>
         ) : purchases.length === 0 ? (
           <EmptyState
@@ -256,21 +257,26 @@ export default function SuperClient({ profile }: { profile: Profile }) {
         ) : (
           <>
             {/* Total — ALL grocery spend (scanned + manual) */}
-            <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-              <p className="text-xs font-semibold" style={{ color: '#6B6459' }}>Total en súper · {rangeLabel}</p>
-              <p className="text-3xl font-black tabular-nums" style={{ color: '#FF7F6B' }}>{format(totalArs)}</p>
-              <p className="text-xs mt-0.5" style={{ color: '#6B6459' }}>
-                {purchases.length} compra{purchases.length !== 1 ? 's' : ''} · {scanned.count} con detalle
-              </p>
+            <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-pop)' }}>
+              <div className="relative px-5 pt-5 pb-5 overflow-hidden" style={{ background: 'linear-gradient(135deg, #FF8173 0%, #E25749 100%)' }}>
+                <div className="absolute -top-10 -right-8 w-40 h-40 rounded-full pointer-events-none" style={{ background: 'rgba(255,255,255,0.14)' }} />
+                <div className="relative flex items-center justify-between">
+                  <p className="text-[11px] font-black uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.82)' }}>Total en súper · {rangeLabel}</p>
+                </div>
+                <p className="relative text-[2.4rem] leading-none font-black mt-2 tracking-tight" style={{ color: '#FFFFFF', fontVariantNumeric: 'tabular-nums' }}>{format(totalArs)}</p>
+                <p className="relative text-[11px] mt-2" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                  {purchases.length} compra{purchases.length !== 1 ? 's' : ''} · {scanned.count} con detalle
+                </p>
+              </div>
             </div>
 
             {/* Group breakdown — scanned items only, with a coverage note */}
             {byGroup.groups.length > 0 ? (
-              <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>
+              <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>
                   En qué se va la plata
                 </p>
-                <p className="text-[11px] mb-4 mt-0.5" style={{ color: '#A89B8C' }}>
+                <p className="text-[11px] mb-4 mt-0.5" style={{ color: '#8C968F' }}>
                   Desglose de lo escaneado: {format(scanned.amount)} de {format(totalArs)} ({coveragePct}%).
                   {coveragePct < 100 && ' El resto son compras sin ticket escaneado.'}
                 </p>
@@ -280,27 +286,27 @@ export default function SuperClient({ profile }: { profile: Profile }) {
                     const pct = byGroup.sum > 0 ? Math.round((total / byGroup.sum) * 100) : 0;
                     const n = itemsByGroup.get(g)?.length ?? 0;
                     return (
-                      <button key={g} onClick={() => setDrillGroup(g)} className="text-left w-full">
+                      <button key={g} onClick={() => setDrillGroup(g)} className="text-left w-full -mx-2 px-2 py-1.5 rounded-2xl transition-colors hover:bg-[#F4F8F6] active:bg-[#EEF3F1]">
                         <div className="flex items-center gap-2 mb-1.5">
                           <span className="text-sm">{meta.icon}</span>
-                          <span className="text-sm capitalize flex-1 truncate" style={{ color: '#2D2D2D' }}>{g}</span>
-                          <span className="text-[11px] font-semibold tabular-nums" style={{ color: '#A89B8C' }}>{pct}%</span>
+                          <span className="text-sm capitalize flex-1 truncate" style={{ color: '#18211D' }}>{g}</span>
+                          <span className="text-[11px] font-semibold tabular-nums" style={{ color: '#8C968F' }}>{pct}%</span>
                           <span className="text-sm font-bold tabular-nums" style={{ color: meta.color }}>{format(total)}</span>
-                          <span className="text-xs" style={{ color: '#C4B9AE' }}>›</span>
+                          <span className="text-xs" style={{ color: '#B0BAB4' }}>›</span>
                         </div>
-                        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#F1ECE4' }}>
+                        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#EAF0ED' }}>
                           <div className="h-full rounded-full" style={{ width: `${Math.max(pct, 3)}%`, background: meta.color }} />
                         </div>
-                        <p className="text-[10px] mt-1" style={{ color: '#C4B9AE' }}>{n} producto{n !== 1 ? 's' : ''} · tocá para ver</p>
+                        <p className="text-[10px] mt-1" style={{ color: '#B0BAB4' }}>{n} producto{n !== 1 ? 's' : ''} · tocá para ver</p>
                       </button>
                     );
                   })}
                 </div>
               </div>
             ) : (
-              <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-                <p className="text-sm font-bold mb-1" style={{ color: '#2D2D2D' }}>Sin desglose por producto</p>
-                <p className="text-xs" style={{ color: '#6B6459' }}>
+              <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+                <p className="text-sm font-bold mb-1" style={{ color: '#18211D' }}>Sin desglose por producto</p>
+                <p className="text-xs" style={{ color: '#5B6660' }}>
                   Ninguna compra de este período tiene ticket escaneado. Escaneá tus tickets de súper para ver en qué se va la plata (carnes, verduras, etc.).
                 </p>
               </div>
@@ -308,34 +314,34 @@ export default function SuperClient({ profile }: { profile: Profile }) {
 
             {/* Purchases list — all of them; manual ones flagged "sin detalle" */}
             <div>
-              <p className="text-sm font-black mb-2 px-1" style={{ color: '#2D2D2D' }}>Compras</p>
-              <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
+              <p className="text-sm font-black mb-2 px-1" style={{ color: '#18211D' }}>Compras</p>
+              <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
                 {purchases.map(({ tx, count }, i) => (
                   <button
                     key={tx.id}
                     onClick={() => setOpenTx(tx)}
-                    className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
-                    style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}
+                    className="w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-[#F4F8F6] active:bg-[#EEF3F1]"
+                    style={{ borderTop: i > 0 ? '1px solid #E5EBE8' : 'none' }}
                   >
                     <span className="text-2xl shrink-0">🧾</span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>
+                      <p className="text-sm font-semibold truncate" style={{ color: '#18211D' }}>
                         {tx.merchant || 'Compra'}
                       </p>
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="text-xs" style={{ color: '#6B6459' }}>
+                        <span className="text-xs" style={{ color: '#5B6660' }}>
                           {new Date(tx.occurred_on + 'T00:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}
                         </span>
                         {count > 0 ? (
-                          <span className="text-xs" style={{ color: '#6B6459' }}>· {count} producto{count !== 1 ? 's' : ''}</span>
+                          <span className="text-xs" style={{ color: '#5B6660' }}>· {count} producto{count !== 1 ? 's' : ''}</span>
                         ) : (
-                          <span className="text-[11px] px-1.5 py-0.5 rounded-md font-semibold" style={{ background: '#F1ECE4', color: '#A89B8C' }}>
+                          <span className="text-[11px] px-1.5 py-0.5 rounded-md font-semibold" style={{ background: '#EAF0ED', color: '#8C968F' }}>
                             sin detalle
                           </span>
                         )}
                       </div>
                     </div>
-                    <span className="text-base font-black tabular-nums shrink-0" style={{ color: '#FF7F6B' }}>
+                    <span className="text-base font-black tabular-nums shrink-0" style={{ color: '#FF6F61' }}>
                       {format(toArs(tx.amount, tx.currency))}
                     </span>
                   </button>
@@ -352,19 +358,19 @@ export default function SuperClient({ profile }: { profile: Profile }) {
         const meta = groupMeta(drillGroup);
         const groupTotal = list.reduce((s, it) => s + it.ars, 0);
         return (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={() => setDrillGroup(null)}>
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(20,28,24,0.45)' }} onClick={() => setDrillGroup(null)}>
             <div
               className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 max-h-[78vh] overflow-y-auto"
-              style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
+              style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
+              <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#E5EBE8' }} />
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-xl">{meta.icon}</span>
-                <h2 className="text-lg font-black capitalize flex-1" style={{ color: '#2D2D2D' }}>{drillGroup}</h2>
+                <h2 className="text-lg font-black capitalize flex-1" style={{ color: '#18211D' }}>{drillGroup}</h2>
                 <span className="text-lg font-black tabular-nums" style={{ color: meta.color }}>{format(groupTotal)}</span>
               </div>
-              <p className="text-xs mb-4" style={{ color: '#6B6459' }}>
+              <p className="text-xs mb-4" style={{ color: '#5B6660' }}>
                 {list.length} producto{list.length !== 1 ? 's' : ''} · {rangeLabel}
               </p>
               <div className="flex flex-col">
@@ -372,17 +378,17 @@ export default function SuperClient({ profile }: { profile: Profile }) {
                   <div
                     key={it.id}
                     className="flex items-center gap-3 py-2.5"
-                    style={{ borderTop: i > 0 ? '1px solid #F1ECE4' : 'none' }}
+                    style={{ borderTop: i > 0 ? '1px solid #EAF0ED' : 'none' }}
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm truncate" style={{ color: '#2D2D2D' }}>
+                      <p className="text-sm truncate" style={{ color: '#18211D' }}>
                         {it.qty && it.qty > 1 ? `${it.qty}× ` : ''}{it.name || 'Sin nombre'}
                       </p>
-                      <p className="text-[11px] truncate" style={{ color: '#A89B8C' }}>
+                      <p className="text-[11px] truncate" style={{ color: '#8C968F' }}>
                         {it.merchant || 'Compra'} · {new Date(it.occurred_on + 'T00:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}
                       </p>
                     </div>
-                    <span className="text-sm font-bold tabular-nums shrink-0" style={{ color: '#2D2D2D' }}>{format(it.ars)}</span>
+                    <span className="text-sm font-bold tabular-nums shrink-0" style={{ color: '#18211D' }}>{format(it.ars)}</span>
                   </div>
                 ))}
               </div>

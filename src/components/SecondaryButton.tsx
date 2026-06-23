@@ -17,8 +17,8 @@ export function SecondaryButton({
     <button
       type={type}
       onClick={onClick}
-      className={`rounded-2xl font-bold transition-all duration-150 active:scale-[0.97] ${className}`}
-      style={{ background: '#F0EDE8', color: '#2D2D2D', border: '1px solid #E0D8CC' }}
+      className={`rounded-2xl font-bold transition-all duration-200 active:scale-[0.97] ${className}`}
+      style={{ background: '#FFFFFF', color: '#18211D', border: '1px solid #E5EBE8', boxShadow: 'var(--shadow-soft)' }}
     >
       {children}
     </button>

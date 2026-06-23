@@ -56,18 +56,18 @@ function fmtGoalDate(iso: string): string {
 //   green  = funded / on track
 //   grey   = zero with nothing pending
 function availColor(available: number, needed: number): string {
-  if (available < 0) return '#E5604C';
+  if (available < 0) return '#E25749';
   if (needed > 0) return '#C79A2B';
-  if (available > 0) return '#5BA886';
-  return '#A89B8C';
+  if (available > 0) return '#1F8A68';
+  return '#8C968F';
 }
 
 // The available "pill": a solid green capsule when funded (the happy state
 // pops), a soft tint for the warning/zero states.
 function availPill(available: number, needed: number): { bg: string; fg: string } {
   const c = availColor(available, needed);
-  if (c === '#5BA886') return { bg: '#5BA886', fg: '#FFFFFF' }; // funded → filled green
-  const bg = c === '#E5604C' ? '#FFE7E2' : c === '#C79A2B' ? '#FBF0D6' : '#ECE5DC';
+  if (c === '#1F8A68') return { bg: '#1F8A68', fg: '#FFFFFF' }; // funded → filled green
+  const bg = c === '#E25749' ? '#FFE5E0' : c === '#C79A2B' ? '#FBF0D6' : '#E5EBE8';
   return { bg, fg: c };
 }
 
@@ -168,35 +168,35 @@ function CategoryDetailSheet({
   const curLabel = monthLabel(month);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(20,28,24,0.45)' }} onClick={onClose}>
       <div
         className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 max-h-[88vh] overflow-y-auto"
-        style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
+        style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
+        <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#E5EBE8' }} />
         <div className="flex items-center gap-2 mb-4">
           <span className="text-2xl">{category.icon}</span>
-          <h2 className="text-lg font-black flex-1 min-w-0 truncate" style={{ color: '#2D2D2D' }}>{category.name}</h2>
+          <h2 className="text-lg font-black flex-1 min-w-0 truncate" style={{ color: '#18211D' }}>{category.name}</h2>
           {editable && (
-            <button onClick={() => { setCName(category.name); setCIcon(category.icon); setEditingName((v) => !v); }} className="text-xs font-bold px-2 py-1 rounded-lg shrink-0" style={{ background: '#F9F5F0', color: '#6B6459' }}>✏️ Editar</button>
+            <button onClick={() => { setCName(category.name); setCIcon(category.icon); setEditingName((v) => !v); }} className="text-xs font-bold px-2 py-1 rounded-lg shrink-0" style={{ background: '#F1F5F3', color: '#5B6660' }}>✏️ Editar</button>
           )}
         </div>
         {editingName && editable && (
           <div className="flex gap-2 mb-4">
-            <input value={cIcon} onChange={(e) => setCIcon(e.target.value)} maxLength={2} className="w-12 text-center rounded-xl border-2 outline-none py-2 text-lg" style={{ borderColor: '#ECE5DC', background: '#F9F5F0' }} />
-            <input value={cName} onChange={(e) => setCName(e.target.value)} placeholder="Nombre" className="flex-1 rounded-xl border-2 outline-none px-3 text-sm font-bold" style={{ borderColor: '#ECE5DC', background: '#F9F5F0', color: '#2D2D2D' }} />
-            <button onClick={() => { if (cName.trim()) { onRenameCategory(cName.trim(), cIcon || category.icon); setEditingName(false); } }} className="px-4 rounded-xl text-sm font-bold text-white" style={{ background: '#7EC8A4' }}>OK</button>
+            <input value={cIcon} onChange={(e) => setCIcon(e.target.value)} maxLength={2} className="w-12 text-center rounded-xl border-2 outline-none py-2 text-lg" style={{ borderColor: '#E5EBE8', background: '#F1F5F3' }} />
+            <input value={cName} onChange={(e) => setCName(e.target.value)} placeholder="Nombre" className="flex-1 rounded-xl border-2 outline-none px-3 text-sm font-bold" style={{ borderColor: '#E5EBE8', background: '#F1F5F3', color: '#18211D' }} />
+            <button onClick={() => { if (cName.trim()) { onRenameCategory(cName.trim(), cIcon || category.icon); setEditingName(false); } }} className="px-4 rounded-xl text-sm font-bold text-white" style={{ background: '#2FA37C' }}>OK</button>
           </div>
         )}
         {editingName && editable && groups.length > 0 && (
           <div className="flex items-center gap-2 mb-4">
-            <span className="text-xs font-bold shrink-0" style={{ color: '#6B6459' }}>Grupo</span>
+            <span className="text-xs font-bold shrink-0" style={{ color: '#5B6660' }}>Grupo</span>
             <select
               value={category.parent_id ?? ''}
               onChange={(e) => onMoveToGroup(e.target.value || null)}
               className="flex-1 rounded-xl border-2 outline-none px-3 py-2 text-sm font-bold bg-white"
-              style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+              style={{ borderColor: '#E5EBE8', color: '#18211D' }}
             >
               <option value="">Sin grupo</option>
               {groups.map((g) => (
@@ -207,43 +207,43 @@ function CategoryDetailSheet({
         )}
 
         {/* Balance breakdown (YNAB style) */}
-        <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: '#6B6459' }}>Balance</p>
-        <div className="rounded-2xl overflow-hidden mb-4" style={{ background: '#F9F5F0' }}>
+        <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: '#5B6660' }}>Balance</p>
+        <div className="rounded-2xl overflow-hidden mb-4" style={{ background: '#F1F5F3' }}>
           {[
             { l: `Desde ${prevLabel}`, v: format(carryover) },
             { l: `Asignado en ${curLabel}`, v: format(row.assigned) },
             { l: `Actividad en ${curLabel}`, v: format(-row.activity) },
           ].map((r, i) => (
-            <div key={i} className="flex items-center justify-between px-4 py-3" style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}>
-              <span className="text-sm" style={{ color: '#6B6459' }}>{r.l}</span>
-              <span className="text-sm font-bold tabular-nums" style={{ color: '#2D2D2D' }}>{r.v}</span>
+            <div key={i} className="flex items-center justify-between px-4 py-3" style={{ borderTop: i > 0 ? '1px solid #E5EBE8' : 'none' }}>
+              <span className="text-sm" style={{ color: '#5B6660' }}>{r.l}</span>
+              <span className="text-sm font-bold tabular-nums" style={{ color: '#18211D' }}>{r.v}</span>
             </div>
           ))}
-          <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: '1px solid #ECE5DC' }}>
-            <span className="text-sm font-bold" style={{ color: '#2D2D2D' }}>Disponible</span>
+          <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: '1px solid #E5EBE8' }}>
+            <span className="text-sm font-bold" style={{ color: '#18211D' }}>Disponible</span>
             <span className="text-sm font-black px-2.5 py-1 rounded-full tabular-nums" style={{ background: availPill(row.available, needed).bg, color: availPill(row.available, needed).fg }}>{format(row.available)}</span>
           </div>
         </div>
 
         {/* Goal/target status */}
         {targetInfo && (
-          <div className="rounded-2xl p-4 mb-4 text-center" style={{ background: targetInfo.neededThisMonth <= 0 ? '#E4F2EA' : '#F9F5F0' }}>
+          <div className="rounded-2xl p-4 mb-4 text-center" style={{ background: targetInfo.neededThisMonth <= 0 ? '#DDF0E8' : '#F1F5F3' }}>
             {targetInfo.cadence === 'by_date' ? (
               row.available >= targetInfo.totalArs && targetInfo.totalArs > 0 ? (
-                <p className="text-sm font-bold" style={{ color: '#5BA886' }}>✓ ¡Meta cumplida!</p>
+                <p className="text-sm font-bold" style={{ color: '#1F8A68' }}>✓ ¡Meta cumplida!</p>
               ) : (
-                <p className="text-sm" style={{ color: '#6B6459' }}>
+                <p className="text-sm" style={{ color: '#5B6660' }}>
                   Faltan <b>{format(targetInfo.totalArs - row.available)}</b>{targetInfo.targetDate ? ` para ${fmtGoalDate(targetInfo.targetDate)}` : ''} · necesitás <b style={{ color: '#C79A2B' }}>{format(targetInfo.neededThisMonth)}</b> este mes
                 </p>
               )
             ) : (
-              <p className="text-sm" style={{ color: '#6B6459' }}>
+              <p className="text-sm" style={{ color: '#5B6660' }}>
                 {targetInfo.targetType === 'set_aside'
                   ? (targetInfo.cadence === 'weekly' ? 'Presupuesto semanal ' : 'Presupuesto mensual ')
                   : (targetInfo.cadence === 'weekly' ? 'Saldo fijo semanal ' : 'Saldo fijo mensual ')}{format(targetInfo.totalArs)}
                 {targetInfo.neededThisMonth > 0
                   ? <> · {targetInfo.targetType === 'set_aside' ? 'falta asignar' : 'faltan'} <b style={{ color: '#C79A2B' }}>{format(targetInfo.neededThisMonth)}</b> este mes</>
-                  : <span style={{ color: '#5BA886' }}> · al día este mes ✓</span>}
+                  : <span style={{ color: '#1F8A68' }}> · al día este mes ✓</span>}
               </p>
             )}
           </div>
@@ -252,14 +252,14 @@ function CategoryDetailSheet({
         {editable && (
           <>
             {/* Assigned editor */}
-            <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: '#6B6459' }}>Asignado este mes</p>
+            <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: '#5B6660' }}>Asignado este mes</p>
             <MoneyField
               key={`a-${row.assigned}`}
               value={row.assigned}
               onCommit={onAssign}
               placeholder="0"
               className="w-full rounded-2xl px-4 py-3 text-lg font-bold mb-3 outline-none border-2"
-              style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: '#ECE5DC' }}
+              style={{ background: '#F1F5F3', color: '#18211D', borderColor: '#E5EBE8' }}
             />
 
             {/* Quick actions */}
@@ -268,7 +268,7 @@ function CategoryDetailSheet({
                 <button
                   onClick={() => onAssign(row.assigned - row.available)}
                   className="text-xs font-bold px-3 py-2 rounded-xl"
-                  style={{ background: '#FFE7E2', color: '#E5604C' }}
+                  style={{ background: '#FFE5E0', color: '#E25749' }}
                 >
                   Cubrir sobregiro (+{format(-row.available)})
                 </button>
@@ -286,7 +286,7 @@ function CategoryDetailSheet({
                 <button
                   onClick={() => onAssign(lastMonth.assigned)}
                   className="text-xs font-bold px-3 py-2 rounded-xl"
-                  style={{ background: '#F1F7F4', color: '#5BA886' }}
+                  style={{ background: '#EAF6F1', color: '#1F8A68' }}
                 >
                   Asignaste el mes pasado {format(lastMonth.assigned)}
                 </button>
@@ -295,7 +295,7 @@ function CategoryDetailSheet({
                 <button
                   onClick={() => onAssign(lastMonth.activity)}
                   className="text-xs font-bold px-3 py-2 rounded-xl"
-                  style={{ background: '#F9F5F0', color: '#6B6459' }}
+                  style={{ background: '#F1F5F3', color: '#5B6660' }}
                 >
                   Gastaste el mes pasado {format(lastMonth.activity)}
                 </button>
@@ -303,20 +303,20 @@ function CategoryDetailSheet({
             </div>
 
             {/* Target — monthly amount or a by-date savings goal */}
-            <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: '#6B6459' }}>Meta</p>
-            <div className="flex rounded-xl overflow-hidden mb-2 p-1 gap-1" style={{ background: '#ECE5DC' }}>
+            <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: '#5B6660' }}>Meta</p>
+            <div className="flex rounded-xl overflow-hidden mb-2 p-1 gap-1" style={{ background: '#E5EBE8' }}>
               {([{ k: 'monthly', l: 'Mensual' }, { k: 'weekly', l: 'Semanal' }, { k: 'by_date', l: 'Por fecha' }] as const).map((o) => (
-                <button key={o.k} onClick={() => setTMode(o.k)} className="flex-1 py-1.5 text-xs font-bold rounded-lg" style={{ background: tMode === o.k ? '#FFFFFF' : 'transparent', color: tMode === o.k ? '#2D2D2D' : '#6B6459' }}>{o.l}</button>
+                <button key={o.k} onClick={() => setTMode(o.k)} className="flex-1 py-1.5 text-xs font-bold rounded-lg" style={{ background: tMode === o.k ? '#FFFFFF' : 'transparent', color: tMode === o.k ? '#18211D' : '#5B6660' }}>{o.l}</button>
               ))}
             </div>
             {tMode !== 'by_date' && (
-              <div className="flex rounded-xl overflow-hidden mb-2 p-1 gap-1" style={{ background: '#ECE5DC' }}>
+              <div className="flex rounded-xl overflow-hidden mb-2 p-1 gap-1" style={{ background: '#E5EBE8' }}>
                 {([{ k: 'set_aside', l: 'Presupuesto del mes' }, { k: 'refill', l: 'Saldo fijo' }] as const).map((o) => (
-                  <button key={o.k} onClick={() => setTType(o.k)} className="flex-1 py-1.5 text-[11px] font-bold rounded-lg" style={{ background: tType === o.k ? '#FFFFFF' : 'transparent', color: tType === o.k ? '#2D2D2D' : '#6B6459' }}>{o.l}</button>
+                  <button key={o.k} onClick={() => setTType(o.k)} className="flex-1 py-1.5 text-[11px] font-bold rounded-lg" style={{ background: tType === o.k ? '#FFFFFF' : 'transparent', color: tType === o.k ? '#18211D' : '#5B6660' }}>{o.l}</button>
                 ))}
               </div>
             )}
-            <p className="text-[11px] mb-1.5" style={{ color: '#6B6459' }}>
+            <p className="text-[11px] mb-1.5" style={{ color: '#5B6660' }}>
               {tMode === 'by_date'
                 ? 'Total a juntar para una fecha (meta de ahorro).'
                 : tType === 'set_aside'
@@ -324,7 +324,7 @@ function CategoryDetailSheet({
                   : `Mantené siempre este monto disponible. Cuando gastás, lo reponés hasta volver a este monto (no se suma cada ${tMode === 'weekly' ? 'semana' : 'mes'}). Ideal para un colchón fijo.`}
             </p>
             {suggested > 0 && tMode === 'monthly' && (
-              <button onClick={() => setTAmt(suggested)} className="text-xs font-bold px-3 py-2 rounded-xl mb-2" style={{ background: '#E7EFFB', color: '#5B8DEF' }}>
+              <button onClick={() => setTAmt(suggested)} className="text-xs font-bold px-3 py-2 rounded-xl mb-2" style={{ background: '#E9F1FD', color: '#4E84E0' }}>
                 ✨ Sugerido {format(suggested)} (según tu gasto)
               </button>
             )}
@@ -333,7 +333,7 @@ function CategoryDetailSheet({
               onChange={setTAmt}
               placeholder="0"
               className="w-full rounded-2xl px-4 py-3 text-base font-bold mb-2 outline-none border-2"
-              style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: '#ECE5DC' }}
+              style={{ background: '#F1F5F3', color: '#18211D', borderColor: '#E5EBE8' }}
             />
             {tMode === 'by_date' && (
               <input
@@ -341,31 +341,31 @@ function CategoryDetailSheet({
                 value={tDate}
                 onChange={(e) => setTDate(e.target.value)}
                 className="w-full rounded-2xl px-4 py-3 text-base font-bold mb-2 outline-none border-2"
-                style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: '#ECE5DC' }}
+                style={{ background: '#F1F5F3', color: '#18211D', borderColor: '#E5EBE8' }}
               />
             )}
-            <button onClick={() => onSetTarget(tAmt, tMode, tMode === 'by_date' ? (tDate || null) : null, tType)} className="w-full py-2.5 rounded-xl text-sm font-bold text-white mb-4" style={{ background: '#7EC8A4' }}>
+            <button onClick={() => onSetTarget(tAmt, tMode, tMode === 'by_date' ? (tDate || null) : null, tType)} className="w-full py-2.5 rounded-xl text-sm font-bold text-white mb-4" style={{ background: '#2FA37C' }}>
               Guardar meta
             </button>
 
             {/* Feature this category as the Home goal */}
-            <button onClick={onToggleFeatured} className="w-full py-2.5 rounded-xl text-sm font-bold mb-3" style={{ background: isFeatured ? '#E4F2EA' : '#F9F5F0', color: isFeatured ? '#5BA886' : '#6B6459' }}>
+            <button onClick={onToggleFeatured} className="w-full py-2.5 rounded-xl text-sm font-bold mb-3" style={{ background: isFeatured ? '#DDF0E8' : '#F1F5F3', color: isFeatured ? '#1F8A68' : '#5B6660' }}>
               {isFeatured ? '📌 Destacada en Home' : '📌 Destacar en Home'}
             </button>
 
             {/* Hide this category from the list (one you won't assign to) */}
-            <button onClick={onToggleHidden} className="w-full py-2.5 rounded-xl text-sm font-bold mb-4" style={{ background: isHidden ? '#FBEAE7' : '#F9F5F0', color: isHidden ? '#E5604C' : '#6B6459' }}>
+            <button onClick={onToggleHidden} className="w-full py-2.5 rounded-xl text-sm font-bold mb-4" style={{ background: isHidden ? '#FCEBE8' : '#F1F5F3', color: isHidden ? '#E25749' : '#5B6660' }}>
               {isHidden ? '👁 Mostrar esta categoría' : '🙈 Ocultar esta categoría'}
             </button>
 
             {/* Move money to another category */}
-            <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: '#6B6459' }}>Mover plata a otra categoría</p>
+            <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: '#5B6660' }}>Mover plata a otra categoría</p>
             <div className="flex flex-col gap-2 mb-5">
               <select
                 value={moveTo}
                 onChange={(e) => setMoveTo(e.target.value)}
                 className="w-full min-w-0 rounded-xl px-3 py-2 text-sm outline-none border"
-                style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: '#ECE5DC' }}
+                style={{ background: '#F1F5F3', color: '#18211D', borderColor: '#E5EBE8' }}
               >
                 <option value="">Elegí una categoría…</option>
                 {otherCategories.map((c) => (
@@ -378,13 +378,13 @@ function CategoryDetailSheet({
                   onChange={setMoveAmt}
                   placeholder="Monto"
                   className="flex-1 min-w-0 rounded-xl px-3 py-2 text-sm font-bold outline-none border text-right"
-                  style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: '#ECE5DC' }}
+                  style={{ background: '#F1F5F3', color: '#18211D', borderColor: '#E5EBE8' }}
                 />
                 <button
                   onClick={() => { if (moveTo && moveAmt > 0) { onMove(moveTo, moveAmt); setMoveTo(''); setMoveAmt(0); } }}
                   disabled={!moveTo || moveAmt <= 0}
                   className="shrink-0 px-4 py-2 rounded-xl text-sm font-bold text-white"
-                  style={{ background: !moveTo || moveAmt <= 0 ? '#C4B9AE' : '#7EC8A4' }}
+                  style={{ background: !moveTo || moveAmt <= 0 ? '#B0BAB4' : '#2FA37C' }}
                 >
                   Mover
                 </button>
@@ -394,22 +394,22 @@ function CategoryDetailSheet({
         )}
 
         {/* This month's transactions */}
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#5B6660' }}>
           Movimientos del mes · {transactions.length}
         </p>
         {transactions.length === 0 ? (
-          <p className="text-sm py-4 text-center" style={{ color: '#6B6459' }}>Sin gastos este mes.</p>
+          <p className="text-sm py-4 text-center" style={{ color: '#5B6660' }}>Sin gastos este mes.</p>
         ) : (
-          <div className="rounded-2xl overflow-hidden" style={{ background: '#F9F5F0' }}>
+          <div className="rounded-2xl overflow-hidden" style={{ background: '#F1F5F3' }}>
             {transactions.map((t, i) => (
-              <div key={t.id} className="flex items-center gap-3 px-4 py-3" style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}>
+              <div key={t.id} className="flex items-center gap-3 px-4 py-3" style={{ borderTop: i > 0 ? '1px solid #E5EBE8' : 'none' }}>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{t.merchant || category.name}</p>
-                  <p className="text-xs" style={{ color: '#6B6459' }}>
+                  <p className="text-sm font-semibold truncate" style={{ color: '#18211D' }}>{t.merchant || category.name}</p>
+                  <p className="text-xs" style={{ color: '#5B6660' }}>
                     {fmtDate(t.occurred_on)}{t.shared ? ' · compartido' : ''}{t.fixed ? ' · 📌 fijo' : ''}
                   </p>
                 </div>
-                <p className="text-base font-black" style={{ color: '#FF7F6B', fontVariantNumeric: 'tabular-nums' }}>-{format(t.amountArs)}</p>
+                <p className="text-base font-black" style={{ color: '#FF6F61', fontVariantNumeric: 'tabular-nums' }}>-{format(t.amountArs)}</p>
               </div>
             ))}
           </div>
@@ -430,33 +430,33 @@ function NewCategorySheet({ groups, onClose, onCreate }: { groups: EnvelopeCateg
   const [isGroup, setIsGroup] = useState(false);
   const [parentId, setParentId] = useState('');
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(20,28,24,0.45)' }} onClick={onClose}>
       <div
         className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6"
-        style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
+        style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
-        <h2 className="text-lg font-black mb-4" style={{ color: '#2D2D2D' }}>Nueva categoría</h2>
+        <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#E5EBE8' }} />
+        <h2 className="text-lg font-black mb-4" style={{ color: '#18211D' }}>Nueva categoría</h2>
 
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Nombre</p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#5B6660' }}>Nombre</p>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Ej: Gimnasio"
           autoFocus
           className="w-full rounded-2xl px-4 py-3 text-base font-bold mb-4 outline-none border-2"
-          style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: name ? '#7EC8A4' : '#ECE5DC' }}
+          style={{ background: '#F1F5F3', color: '#18211D', borderColor: name ? '#2FA37C' : '#E5EBE8' }}
         />
 
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Ícono</p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#5B6660' }}>Ícono</p>
         <div className="flex flex-wrap gap-2 mb-5">
           {CATEGORY_ICONS.map((ic) => (
             <button
               key={ic}
               onClick={() => setIcon(ic)}
               className="w-10 h-10 rounded-xl text-xl flex items-center justify-center"
-              style={{ background: icon === ic ? '#7EC8A4' : '#F9F5F0', outline: icon === ic ? '2px solid #5BA886' : 'none' }}
+              style={{ background: icon === ic ? '#2FA37C' : '#F1F5F3', outline: icon === ic ? '2px solid #1F8A68' : 'none' }}
             >
               {ic}
             </button>
@@ -466,21 +466,21 @@ function NewCategorySheet({ groups, onClose, onCreate }: { groups: EnvelopeCateg
         <button
           onClick={() => setIsGroup((v) => !v)}
           className="w-full flex items-center justify-between px-4 py-3 rounded-2xl mb-4 border-2"
-          style={{ background: isGroup ? '#E4F2EA' : '#F9F5F0', borderColor: isGroup ? '#7EC8A4' : '#ECE5DC' }}
+          style={{ background: isGroup ? '#DDF0E8' : '#F1F5F3', borderColor: isGroup ? '#2FA37C' : '#E5EBE8' }}
         >
-          <span className="text-sm font-bold" style={{ color: '#2D2D2D' }}>📂 Es un grupo (encabezado)</span>
-          <span className="text-xs font-bold" style={{ color: isGroup ? '#5BA886' : '#6B6459' }}>{isGroup ? 'Sí' : 'No'}</span>
+          <span className="text-sm font-bold" style={{ color: '#18211D' }}>📂 Es un grupo (encabezado)</span>
+          <span className="text-xs font-bold" style={{ color: isGroup ? '#1F8A68' : '#5B6660' }}>{isGroup ? 'Sí' : 'No'}</span>
         </button>
-        <p className="text-[11px] mb-4 -mt-2" style={{ color: '#6B6459' }}>Un grupo agrupa categorías (no se le asigna plata).</p>
+        <p className="text-[11px] mb-4 -mt-2" style={{ color: '#5B6660' }}>Un grupo agrupa categorías (no se le asigna plata).</p>
 
         {!isGroup && groups.length > 0 && (
           <>
-            <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Grupo</p>
+            <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#5B6660' }}>Grupo</p>
             <select
               value={parentId}
               onChange={(e) => setParentId(e.target.value)}
               className="w-full rounded-2xl border-2 outline-none px-4 py-3 text-sm font-bold bg-white mb-5"
-              style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+              style={{ borderColor: '#E5EBE8', color: '#18211D' }}
             >
               <option value="">Sin grupo</option>
               {groups.map((g) => (
@@ -494,7 +494,7 @@ function NewCategorySheet({ groups, onClose, onCreate }: { groups: EnvelopeCateg
           onClick={() => { if (name.trim()) { onCreate(name.trim(), icon, isGroup, isGroup ? null : (parentId || null)); onClose(); } }}
           disabled={!name.trim()}
           className="w-full py-4 rounded-2xl font-bold text-white"
-          style={{ background: name.trim() ? '#7EC8A4' : '#C4B9AE' }}
+          style={{ background: name.trim() ? '#2FA37C' : '#B0BAB4' }}
         >
           {isGroup ? 'Crear grupo' : 'Crear categoría'}
         </button>
@@ -516,38 +516,38 @@ function NewViewSheet({
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const toggle = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
-      <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 max-h-[88vh] overflow-y-auto" style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
-        <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
-        <h2 className="text-lg font-black mb-4" style={{ color: '#2D2D2D' }}>Vistas guardadas</h2>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(20,28,24,0.45)' }} onClick={onClose}>
+      <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 max-h-[88vh] overflow-y-auto" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
+        <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#E5EBE8' }} />
+        <h2 className="text-lg font-black mb-4" style={{ color: '#18211D' }}>Vistas guardadas</h2>
 
         {savedViews.length > 0 && (
-          <div className="rounded-2xl overflow-hidden mb-5" style={{ background: '#F9F5F0' }}>
+          <div className="rounded-2xl overflow-hidden mb-5" style={{ background: '#F1F5F3' }}>
             {savedViews.map((v, i) => (
-              <div key={v.id} className="flex items-center gap-3 px-4 py-3" style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}>
-                <span className="flex-1 text-sm font-semibold" style={{ color: '#2D2D2D' }}>⭐ {v.name}</span>
-                <span className="text-[11px]" style={{ color: '#6B6459' }}>{v.category_ids.length} cat.</span>
-                <button onClick={() => onDelete(v.id)} className="text-xs font-bold px-2 py-1 rounded-lg" style={{ background: '#FFE7E2', color: '#E5604C' }}>Borrar</button>
+              <div key={v.id} className="flex items-center gap-3 px-4 py-3" style={{ borderTop: i > 0 ? '1px solid #E5EBE8' : 'none' }}>
+                <span className="flex-1 text-sm font-semibold" style={{ color: '#18211D' }}>⭐ {v.name}</span>
+                <span className="text-[11px]" style={{ color: '#5B6660' }}>{v.category_ids.length} cat.</span>
+                <button onClick={() => onDelete(v.id)} className="text-xs font-bold px-2 py-1 rounded-lg" style={{ background: '#FFE5E0', color: '#E25749' }}>Borrar</button>
               </div>
             ))}
           </div>
         )}
 
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Nueva vista</p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#5B6660' }}>Nueva vista</p>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Ej: Comida, Compartido con pareja…"
           className="w-full rounded-2xl px-4 py-3 text-base font-bold mb-4 outline-none border-2"
-          style={{ background: '#F9F5F0', color: '#2D2D2D', borderColor: name ? '#7EC8A4' : '#ECE5DC' }}
+          style={{ background: '#F1F5F3', color: '#18211D', borderColor: name ? '#2FA37C' : '#E5EBE8' }}
         />
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6B6459' }}>Categorías ({picked.size})</p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#5B6660' }}>Categorías ({picked.size})</p>
         <div className="flex flex-col gap-1 mb-5 max-h-64 overflow-y-auto">
           {categories.map((c) => (
-            <button key={c.id} onClick={() => toggle(c.id)} className="flex items-center gap-3 px-3 py-2 rounded-xl" style={{ background: picked.has(c.id) ? '#E4F2EA' : '#F9F5F0' }}>
-              <span className="w-4 h-4 rounded-full shrink-0 flex items-center justify-center text-[10px] text-white" style={{ background: picked.has(c.id) ? '#5BA886' : '#C4B9AE' }}>{picked.has(c.id) ? '✓' : ''}</span>
+            <button key={c.id} onClick={() => toggle(c.id)} className="flex items-center gap-3 px-3 py-2 rounded-xl" style={{ background: picked.has(c.id) ? '#DDF0E8' : '#F1F5F3' }}>
+              <span className="w-4 h-4 rounded-full shrink-0 flex items-center justify-center text-[10px] text-white" style={{ background: picked.has(c.id) ? '#1F8A68' : '#B0BAB4' }}>{picked.has(c.id) ? '✓' : ''}</span>
               <span className="text-lg">{c.icon}</span>
-              <span className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{c.name}</span>
+              <span className="text-sm font-semibold truncate" style={{ color: '#18211D' }}>{c.name}</span>
             </button>
           ))}
         </div>
@@ -555,7 +555,7 @@ function NewViewSheet({
           onClick={() => { if (name.trim() && picked.size) { onCreate(name.trim(), [...picked]); onClose(); } }}
           disabled={!name.trim() || picked.size === 0}
           className="w-full py-4 rounded-2xl font-bold text-white"
-          style={{ background: name.trim() && picked.size ? '#7EC8A4' : '#C4B9AE' }}
+          style={{ background: name.trim() && picked.size ? '#2FA37C' : '#B0BAB4' }}
         >
           Crear vista
         </button>
@@ -575,21 +575,21 @@ function PrioritiesSheet({
   const [picked, setPicked] = useState<Set<string>>(new Set(selected));
   const toggle = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={onClose}>
-      <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 max-h-[88vh] overflow-y-auto" style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
-        <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
-        <h2 className="text-lg font-black mb-1" style={{ color: '#2D2D2D' }}>Prioridades del mes</h2>
-        <p className="text-sm mb-4" style={{ color: '#6B6459' }}>¿Qué es lo importante este mes? Fijalo arriba para tenerlo a mano.</p>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(20,28,24,0.45)' }} onClick={onClose}>
+      <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 max-h-[88vh] overflow-y-auto" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
+        <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#E5EBE8' }} />
+        <h2 className="text-lg font-black mb-1" style={{ color: '#18211D' }}>Prioridades del mes</h2>
+        <p className="text-sm mb-4" style={{ color: '#5B6660' }}>¿Qué es lo importante este mes? Fijalo arriba para tenerlo a mano.</p>
         <div className="flex flex-col gap-1 mb-5">
           {categories.map((c) => (
-            <button key={c.id} onClick={() => toggle(c.id)} className="flex items-center gap-3 px-3 py-2.5 rounded-xl" style={{ background: picked.has(c.id) ? '#E4F2EA' : '#F9F5F0' }}>
-              <span className="w-5 h-5 rounded-full shrink-0 flex items-center justify-center text-[11px] text-white" style={{ background: picked.has(c.id) ? '#5BA886' : '#C4B9AE' }}>{picked.has(c.id) ? '✓' : ''}</span>
+            <button key={c.id} onClick={() => toggle(c.id)} className="flex items-center gap-3 px-3 py-2.5 rounded-xl" style={{ background: picked.has(c.id) ? '#DDF0E8' : '#F1F5F3' }}>
+              <span className="w-5 h-5 rounded-full shrink-0 flex items-center justify-center text-[11px] text-white" style={{ background: picked.has(c.id) ? '#1F8A68' : '#B0BAB4' }}>{picked.has(c.id) ? '✓' : ''}</span>
               <span className="text-lg">{c.icon}</span>
-              <span className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{c.name}</span>
+              <span className="text-sm font-semibold truncate" style={{ color: '#18211D' }}>{c.name}</span>
             </button>
           ))}
         </div>
-        <button onClick={() => { onSave([...picked]); onClose(); }} className="w-full py-4 rounded-2xl font-bold text-white" style={{ background: '#7EC8A4' }}>Listo</button>
+        <button onClick={() => { onSave([...picked]); onClose(); }} className="w-full py-4 rounded-2xl font-bold text-white" style={{ background: '#2FA37C' }}>Listo</button>
       </div>
     </div>
   );
@@ -640,9 +640,9 @@ function SpotlightView({
     const needed = env.neededByCategory.get(cat.id) ?? 0;
     const pill = availPill(available, needed);
     return (
-      <div className="flex items-center gap-3 rounded-2xl px-4 py-3" style={{ background: '#FFFFFF' }}>
+      <div className="flex items-center gap-3 rounded-2xl px-4 py-3" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
         <span className="text-lg">{cat.icon}</span>
-        <span className="flex-1 min-w-0 text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{cat.name}</span>
+        <span className="flex-1 min-w-0 text-sm font-semibold truncate" style={{ color: '#18211D' }}>{cat.name}</span>
         <span className="text-xs font-black px-2.5 py-1 rounded-full tabular-nums" style={{ background: pill.bg, color: pill.fg }}>{format(available)}</span>
       </div>
     );
@@ -653,51 +653,51 @@ function SpotlightView({
       {/* Top Priorities */}
       <section>
         <div className="flex items-center justify-between mb-2 px-1">
-          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Prioridades</p>
-          {editable && <button onClick={onAdjustPriorities} className="text-xs font-bold" style={{ color: '#5B8DEF' }}>Ajustar</button>}
+          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>Prioridades</p>
+          {editable && <button onClick={onAdjustPriorities} className="text-xs font-bold" style={{ color: '#4E84E0' }}>Ajustar</button>}
         </div>
         {priorities.length > 0 ? (
           <div className="flex flex-col gap-2">{priorities.map((c) => <PriorityRow key={c.id} cat={c} />)}</div>
         ) : (
-          <button onClick={editable ? onAdjustPriorities : undefined} className="w-full rounded-2xl p-4 text-center text-sm" style={{ background: '#FFFFFF', color: '#6B6459' }}>
+          <button onClick={editable ? onAdjustPriorities : undefined} className="w-full rounded-2xl p-4 text-center text-sm" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', color: '#5B6660' }}>
             Fijá tus categorías importantes para tenerlas a mano.
           </button>
         )}
       </section>
 
       {/* Cost to Be Me */}
-      <section className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Lo que cuesta un mes de vos</p>
-        <p className="text-3xl font-black mt-0.5" style={{ color: '#2D2D2D', fontVariantNumeric: 'tabular-nums' }}>{format(costToBeMe)}</p>
-        <p className="text-[11px] mb-3" style={{ color: '#6B6459' }}>Suma de todas tus metas del mes.</p>
-        <div className="h-2.5 rounded-full overflow-hidden mb-1" style={{ background: '#ECE5DC' }}>
-          <div className="h-full rounded-full" style={{ width: `${incomePct * 100}%`, background: incomePct >= 1 ? '#E5604C' : '#7EC8A4' }} />
+      <section className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>Lo que cuesta un mes de vos</p>
+        <p className="text-3xl font-black mt-0.5" style={{ color: '#18211D', fontVariantNumeric: 'tabular-nums' }}>{format(costToBeMe)}</p>
+        <p className="text-[11px] mb-3" style={{ color: '#5B6660' }}>Suma de todas tus metas del mes.</p>
+        <div className="h-2.5 rounded-full overflow-hidden mb-1" style={{ background: '#E5EBE8' }}>
+          <div className="h-full rounded-full" style={{ width: `${incomePct * 100}%`, background: incomePct >= 1 ? '#E25749' : '#2FA37C' }} />
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-[11px]" style={{ color: '#6B6459' }}>Ingreso esperado</span>
+          <span className="text-[11px]" style={{ color: '#5B6660' }}>Ingreso esperado</span>
           {editable ? (
             <MoneyField
               key={`inc-${expectedIncome}`}
               value={expectedIncome}
               onCommit={onSetExpectedIncome}
               placeholder="0"
-              className="w-28 bg-transparent text-right text-sm font-bold tabular-nums outline-none rounded px-1 border-b border-dashed border-[#D9CFC2] focus:border-[#7EC8A4]"
-              style={{ color: '#2D2D2D' }}
+              className="w-28 bg-transparent text-right text-sm font-bold tabular-nums outline-none rounded px-1 border-b border-dashed border-[#CFD8D3] focus:border-[#2FA37C]"
+              style={{ color: '#18211D' }}
             />
           ) : (
-            <span className="text-sm font-bold tabular-nums" style={{ color: '#2D2D2D' }}>{format(expectedIncome)}</span>
+            <span className="text-sm font-bold tabular-nums" style={{ color: '#18211D' }}>{format(expectedIncome)}</span>
           )}
         </div>
       </section>
 
       {/* Age of Money */}
       {env.ageOfMoney != null && (
-        <section className="rounded-3xl p-5 flex items-center gap-4" style={{ background: '#FFFFFF' }}>
+        <section className="rounded-3xl p-5 flex items-center gap-4" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
           <span className="text-3xl shrink-0">🕰️</span>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Antigüedad del dinero</p>
-            <p className="text-2xl font-black leading-tight" style={{ color: '#2D2D2D' }}>{env.ageOfMoney} días</p>
-            <p className="text-[11px]" style={{ color: '#6B6459' }}>
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>Antigüedad del dinero</p>
+            <p className="text-2xl font-black leading-tight" style={{ color: '#18211D' }}>{env.ageOfMoney} días</p>
+            <p className="text-[11px]" style={{ color: '#5B6660' }}>
               {env.ageOfMoney < 30
                 ? 'Vivís bastante al día — apuntá a 30+ días de colchón.'
                 : env.ageOfMoney < 60
@@ -711,22 +711,22 @@ function SpotlightView({
       {/* Savings goals (is_goal categories) with progress rings */}
       {savingsGoals.length > 0 && (
         <section>
-          <p className="text-xs font-bold uppercase tracking-wide mb-2 px-1" style={{ color: '#6B6459' }}>Metas de ahorro</p>
+          <p className="text-xs font-bold uppercase tracking-wide mb-2 px-1" style={{ color: '#5B6660' }}>Metas de ahorro</p>
           <div className="flex flex-col gap-2">
             {savingsGoals.map((g) => {
               const pct = g.info.pctComplete;
               return (
-                <div key={g.cat.id} className="rounded-3xl p-4 flex items-center gap-4" style={{ background: '#FFFFFF' }}>
+                <div key={g.cat.id} className="rounded-3xl p-4 flex items-center gap-4" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
                   <div className="relative w-14 h-14 shrink-0">
                     <svg viewBox="0 0 36 36" className="w-14 h-14 -rotate-90">
-                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#ECE5DC" strokeWidth="4" />
-                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#7EC8A4" strokeWidth="4" strokeDasharray={`${pct * 100} 100`} strokeLinecap="round" />
+                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#E5EBE8" strokeWidth="4" />
+                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#2FA37C" strokeWidth="4" strokeDasharray={`${pct * 100} 100`} strokeLinecap="round" />
                     </svg>
-                    <span className="absolute inset-0 flex items-center justify-center text-[11px] font-black" style={{ color: '#2D2D2D' }}>{Math.round(pct * 100)}%</span>
+                    <span className="absolute inset-0 flex items-center justify-center text-[11px] font-black" style={{ color: '#18211D' }}>{Math.round(pct * 100)}%</span>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-black truncate" style={{ color: '#2D2D2D' }}>{g.cat.icon} {g.cat.name}</p>
-                    <p className="text-xs tabular-nums" style={{ color: '#6B6459' }}>{format(g.available)} de {format(g.info.totalArs)}</p>
+                    <p className="text-sm font-black truncate" style={{ color: '#18211D' }}>{g.cat.icon} {g.cat.name}</p>
+                    <p className="text-xs tabular-nums" style={{ color: '#5B6660' }}>{format(g.available)} de {format(g.info.totalArs)}</p>
                   </div>
                 </div>
               );
@@ -737,16 +737,16 @@ function SpotlightView({
 
       {/* Monthly Summary */}
       <section>
-        <p className="text-xs font-bold uppercase tracking-wide mb-2 px-1" style={{ color: '#6B6459' }}>Resumen del mes</p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2 px-1" style={{ color: '#5B6660' }}>Resumen del mes</p>
         <div className="grid grid-cols-2 gap-3">
           {[
-            { label: 'Metas totales', value: s.totalTargets, color: '#2D2D2D' },
-            { label: 'Sin financiar', value: s.underfunded, color: s.underfunded > 0 ? '#C79A2B' : '#5BA886' },
-            { label: 'Asignado', value: s.assigned, color: '#2D2D2D' },
-            { label: 'Gastado', value: s.spent, color: '#FF7F6B' },
+            { label: 'Metas totales', value: s.totalTargets, color: '#18211D' },
+            { label: 'Sin financiar', value: s.underfunded, color: s.underfunded > 0 ? '#C79A2B' : '#1F8A68' },
+            { label: 'Asignado', value: s.assigned, color: '#18211D' },
+            { label: 'Gastado', value: s.spent, color: '#FF6F61' },
           ].map((c) => (
-            <div key={c.label} className="rounded-2xl p-4" style={{ background: '#FFFFFF' }}>
-              <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>{c.label}</p>
+            <div key={c.label} className="rounded-2xl p-4" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+              <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>{c.label}</p>
               <p className="text-lg font-black tabular-nums" style={{ color: c.color }}>{format(c.value)}</p>
             </div>
           ))}
@@ -755,26 +755,26 @@ function SpotlightView({
 
       {/* Assigned in Future Months */}
       <section>
-        <p className="text-xs font-bold uppercase tracking-wide mb-2 px-1" style={{ color: '#6B6459' }}>Asignado en meses futuros</p>
-        <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2 px-1" style={{ color: '#5B6660' }}>Asignado en meses futuros</p>
+        <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
           <div className="flex items-center gap-3 mb-3">
             <div className="relative w-14 h-14 shrink-0">
               <svg viewBox="0 0 36 36" className="w-14 h-14 -rotate-90">
-                <circle cx="18" cy="18" r="15.9" fill="none" stroke="#ECE5DC" strokeWidth="4" />
-                <circle cx="18" cy="18" r="15.9" fill="none" stroke="#7EC8A4" strokeWidth="4" strokeDasharray={`${nextFundedPct * 100} 100`} strokeLinecap="round" />
+                <circle cx="18" cy="18" r="15.9" fill="none" stroke="#E5EBE8" strokeWidth="4" />
+                <circle cx="18" cy="18" r="15.9" fill="none" stroke="#2FA37C" strokeWidth="4" strokeDasharray={`${nextFundedPct * 100} 100`} strokeLinecap="round" />
               </svg>
-              <span className="absolute inset-0 flex items-center justify-center text-[11px] font-black" style={{ color: '#2D2D2D' }}>{Math.round(nextFundedPct * 100)}%</span>
+              <span className="absolute inset-0 flex items-center justify-center text-[11px] font-black" style={{ color: '#18211D' }}>{Math.round(nextFundedPct * 100)}%</span>
             </div>
-            <p className="text-xs" style={{ color: '#6B6459' }}>El mes que viene está financiado al <b>{Math.round(nextFundedPct * 100)}%</b> de tus metas. Asigná hacia adelante para adelantarte un mes.</p>
+            <p className="text-xs" style={{ color: '#5B6660' }}>El mes que viene está financiado al <b>{Math.round(nextFundedPct * 100)}%</b> de tus metas. Asigná hacia adelante para adelantarte un mes.</p>
           </div>
           {env.assignedFutureByMonth.length === 0 ? (
-            <p className="text-sm text-center py-2" style={{ color: '#6B6459' }}>Todavía no asignaste a meses futuros.</p>
+            <p className="text-sm text-center py-2" style={{ color: '#5B6660' }}>Todavía no asignaste a meses futuros.</p>
           ) : (
             <div className="flex flex-col">
               {env.assignedFutureByMonth.map((m, i) => (
-                <button key={m.month} onClick={() => onGotoMonth(m.month)} className="flex items-center justify-between py-2.5" style={{ borderTop: i > 0 ? '1px solid #F1ECE4' : 'none' }}>
-                  <span className="text-sm font-semibold" style={{ color: '#2D2D2D' }}>{monthLabel(m.month)}</span>
-                  <span className="text-sm font-black tabular-nums" style={{ color: '#5BA886' }}>{format(m.assigned)} ›</span>
+                <button key={m.month} onClick={() => onGotoMonth(m.month)} className="flex items-center justify-between py-2.5" style={{ borderTop: i > 0 ? '1px solid #EAF0ED' : 'none' }}>
+                  <span className="text-sm font-semibold" style={{ color: '#18211D' }}>{monthLabel(m.month)}</span>
+                  <span className="text-sm font-black tabular-nums" style={{ color: '#1F8A68' }}>{format(m.assigned)} ›</span>
                 </button>
               ))}
             </div>
@@ -785,26 +785,26 @@ function SpotlightView({
       {/* Compromisos futuros — cuotas y cargos ya agendados para meses próximos */}
       {env.futureCommitmentsByMonth.length > 0 && (
         <section>
-          <p className="text-xs font-bold uppercase tracking-wide mb-2 px-1" style={{ color: '#6B6459' }}>Compromisos futuros</p>
-          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-            <p className="text-3xl font-black" style={{ color: '#2D2D2D', fontVariantNumeric: 'tabular-nums' }}>{format(env.futureCommitmentsTotal)}</p>
-            <p className="text-[11px] mb-3" style={{ color: '#6B6459' }}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-2 px-1" style={{ color: '#5B6660' }}>Compromisos futuros</p>
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+            <p className="text-3xl font-black" style={{ color: '#18211D', fontVariantNumeric: 'tabular-nums' }}>{format(env.futureCommitmentsTotal)}</p>
+            <p className="text-[11px] mb-3" style={{ color: '#5B6660' }}>
               Tu parte de cuotas y gastos fijos ya agendados para meses que vienen. No te bajan este mes, pero ya están prometidos.
             </p>
             <div className="flex flex-col">
               {env.futureCommitmentsByMonth.map((m, i) => {
                 const covered = m.assigned >= m.amountArs;
                 return (
-                  <button key={m.month} onClick={() => onGotoMonth(m.month)} className="flex items-center justify-between gap-3 py-2.5 text-left" style={{ borderTop: i > 0 ? '1px solid #F1ECE4' : 'none' }}>
+                  <button key={m.month} onClick={() => onGotoMonth(m.month)} className="flex items-center justify-between gap-3 py-2.5 text-left" style={{ borderTop: i > 0 ? '1px solid #EAF0ED' : 'none' }}>
                     <div className="min-w-0">
-                      <span className="text-sm font-semibold" style={{ color: '#2D2D2D' }}>{monthLabel(m.month)}</span>
-                      <span className="text-[11px] ml-2" style={{ color: '#A89B8C' }}>{m.count} {m.count === 1 ? 'movimiento' : 'movimientos'}</span>
+                      <span className="text-sm font-semibold" style={{ color: '#18211D' }}>{monthLabel(m.month)}</span>
+                      <span className="text-[11px] ml-2" style={{ color: '#8C968F' }}>{m.count} {m.count === 1 ? 'movimiento' : 'movimientos'}</span>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={covered ? { background: '#E4F2EA', color: '#5BA886' } : { background: '#FBF0D6', color: '#C79A2B' }}>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={covered ? { background: '#DDF0E8', color: '#1F8A68' } : { background: '#FBF0D6', color: '#C79A2B' }}>
                         {covered ? 'Cubierto' : 'A financiar'}
                       </span>
-                      <span className="text-sm font-black tabular-nums" style={{ color: '#2D2D2D' }}>{format(m.amountArs)} ›</span>
+                      <span className="text-sm font-black tabular-nums" style={{ color: '#18211D' }}>{format(m.amountArs)} ›</span>
                     </div>
                   </button>
                 );
@@ -817,13 +817,13 @@ function SpotlightView({
       {/* Prioritized alerts */}
       {alerts.length > 0 && (
         <section>
-          <p className="text-xs font-bold uppercase tracking-wide mb-2 px-1" style={{ color: '#6B6459' }}>Qué atacar primero</p>
-          <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-2 px-1" style={{ color: '#5B6660' }}>Qué atacar primero</p>
+          <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
             {alerts.map((a, i) => (
-              <div key={a.cat.id} className="flex items-center gap-3 px-4 py-3" style={{ borderTop: i > 0 ? '1px solid #F1ECE4' : 'none' }}>
+              <div key={a.cat.id} className="flex items-center gap-3 px-4 py-3" style={{ borderTop: i > 0 ? '1px solid #EAF0ED' : 'none' }}>
                 <span className="text-lg">{a.cat.icon}</span>
-                <span className="flex-1 min-w-0 text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{a.cat.name}</span>
-                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={a.over ? { background: '#FFE7E2', color: '#E5604C' } : { background: '#FBF0D6', color: '#C79A2B' }}>
+                <span className="flex-1 min-w-0 text-sm font-semibold truncate" style={{ color: '#18211D' }}>{a.cat.name}</span>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={a.over ? { background: '#FFE5E0', color: '#E25749' } : { background: '#FBF0D6', color: '#C79A2B' }}>
                   {a.over ? `Sobregiraste ${format(a.amount)}` : `Faltan ${format(a.amount)}`}
                 </span>
               </div>
@@ -1162,8 +1162,6 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   // "Para asignar" = tu efectivo on-budget − lo ya guardado en categorías (el
   // disponible positivo de tus sobres). Lo derivamos al revés para el desglose.
   const funded = env.cash - rta;
-  const rtaColor = rta > 0 ? '#5BA886' : rta < 0 ? '#E5604C' : '#6B6459';
-  const rtaBg = rta > 0 ? '#E4F2EA' : rta < 0 ? '#FFE7E2' : '#FFFFFF';
 
   function toggleGroup(key: string) {
     setCollapsed((prev) => {
@@ -1182,51 +1180,76 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
   const detailRow = detailCat ? env.rowByCategory.get(detailCat.id) : undefined;
 
   return (
-    <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
+    <div className="min-h-screen pb-24" style={{ background: '#F1F5F3' }}>
       <header className="px-5 pt-14 pb-3">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Presupuesto</h1>
+          <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>Presupuesto</h1>
           <div className="flex items-center gap-1">
-            <button onClick={() => setMonth((m) => shiftMonth(m, -1))} className="w-8 h-8 rounded-full text-lg flex items-center justify-center" style={{ background: '#FFFFFF', color: '#6B6459' }} aria-label="Mes anterior">‹</button>
-            <span className="text-sm font-bold min-w-[7.5rem] text-center" style={{ color: '#2D2D2D' }}>{monthLabel(month)}</span>
-            <button onClick={() => setMonth((m) => shiftMonth(m, 1))} className="w-8 h-8 rounded-full text-lg flex items-center justify-center" style={{ background: '#FFFFFF', color: '#6B6459' }} aria-label="Mes siguiente">›</button>
+            <button onClick={() => setMonth((m) => shiftMonth(m, -1))} className="w-8 h-8 rounded-full text-lg flex items-center justify-center" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', color: '#5B6660' }} aria-label="Mes anterior">‹</button>
+            <span className="text-sm font-bold min-w-[7.5rem] text-center" style={{ color: '#18211D' }}>{monthLabel(month)}</span>
+            <button onClick={() => setMonth((m) => shiftMonth(m, 1))} className="w-8 h-8 rounded-full text-lg flex items-center justify-center" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', color: '#5B6660' }} aria-label="Mes siguiente">›</button>
           </div>
         </div>
       </header>
 
       {partner && (
-        <div className="mx-4 mb-3 flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#ECE5DC' }}>
+        <div className="mx-4 mb-3 flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#E5EBE8' }}>
           {([{ k: 'mine', label: 'Mío' }, { k: 'partner', label: partner.nickname || 'Pareja' }] as const).map((t) => (
-            <button key={t.k} onClick={() => setView(t.k)} className="flex-1 py-1.5 text-xs font-bold rounded-xl transition-colors" style={{ background: view === t.k ? '#FFFFFF' : 'transparent', color: view === t.k ? '#2D2D2D' : '#6B6459' }}>{t.label}</button>
+            <button key={t.k} onClick={() => setView(t.k)} className="flex-1 py-2 text-xs font-black rounded-xl transition-all" style={{ background: view === t.k ? '#FFFFFF' : 'transparent', color: view === t.k ? '#18211D' : '#5B6660', boxShadow: view === t.k ? 'var(--shadow-soft)' : 'none' }}>{t.label}</button>
           ))}
         </div>
       )}
 
-      {/* "Para asignar" banner + quick actions (scrolls with the page) */}
-      <div className="mx-4 mb-4 rounded-3xl p-5" style={{ background: rtaBg, boxShadow: '0 6px 20px -12px rgba(45,45,45,0.5)' }}>
-        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>
-          {editable ? 'Para asignar' : `Para asignar · ${partner?.nickname || 'Pareja'}`}
-        </p>
-        <p className="text-3xl font-black mt-0.5" style={{ color: rtaColor, fontVariantNumeric: 'tabular-nums' }}>{format(rta)}</p>
-        <p className="text-[11px] mt-1" style={{ color: '#6B6459' }}>
-          {rta > 0 ? 'Plata en cuentas todavía sin un trabajo. Asignala a una categoría.' : rta < 0 ? 'Asignaste (o fronteaste) más de lo que tenés. Sacá de alguna categoría.' : 'Cada peso tiene un trabajo. 🎉'}
-        </p>
-        <p className="text-[11px] mt-1.5" style={{ color: '#A89B8C' }}>
-          {editable ? 'Tus cuentas' : 'Sus cuentas'} {format(env.cash)} − en categorías {format(funded)} = {format(rta)}
-        </p>
-        <p className="text-[11px] mt-0.5" style={{ color: '#A89B8C' }}>
-          Solo {editable ? 'tus' : 'sus'} cuentas on-budget · asignado este mes {format(env.assignedTotal)}
-        </p>
+      {/* "Para asignar" — premium two-zone hero: gradient headline + white details */}
+      <div className="mx-4 mb-4 rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-pop)' }}>
+        <div
+          className="relative px-5 pt-5 pb-5 overflow-hidden"
+          style={{
+            background: rta < 0
+              ? 'linear-gradient(135deg, #FF8173 0%, #E25749 100%)'
+              : 'linear-gradient(135deg, #34AD84 0%, #1F8A68 100%)',
+          }}
+        >
+          {/* soft light flare for depth */}
+          <div className="absolute -top-10 -right-8 w-40 h-40 rounded-full pointer-events-none" style={{ background: 'rgba(255,255,255,0.14)' }} />
+          <div className="relative flex items-center justify-between">
+            <p className="text-[11px] font-black uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.82)' }}>
+              {editable ? 'Para asignar' : `Para asignar · ${partner?.nickname || 'Pareja'}`}
+            </p>
+            <span className="text-base leading-none">{rta < 0 ? '⚠️' : rta > 0 ? '💸' : '🎉'}</span>
+          </div>
+          <p className="relative text-[2.6rem] leading-none font-black mt-2 tracking-tight" style={{ color: '#FFFFFF', fontVariantNumeric: 'tabular-nums' }}>{format(rta)}</p>
+          <p className="relative text-[11px] mt-2.5 leading-snug" style={{ color: 'rgba(255,255,255,0.9)' }}>
+            {rta > 0 ? 'Plata en cuentas todavía sin un trabajo. Asignala a una categoría.' : rta < 0 ? 'Asignaste (o fronteaste) más de lo que tenés. Sacá de alguna categoría.' : 'Cada peso tiene un trabajo. 🎉'}
+          </p>
+        </div>
+
+        <div className="px-4 py-4">
+          {/* breakdown: cash − funded = rta */}
+          <div className="flex items-stretch rounded-2xl overflow-hidden" style={{ background: '#F1F5F3' }}>
+            <div className="flex-1 px-3 py-2.5">
+              <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#8C968F' }}>{editable ? 'Tus cuentas' : 'Sus cuentas'}</p>
+              <p className="text-sm font-black tabular-nums" style={{ color: '#18211D' }}>{format(env.cash)}</p>
+            </div>
+            <div className="w-px my-2" style={{ background: '#E5EBE8' }} />
+            <div className="flex-1 px-3 py-2.5">
+              <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#8C968F' }}>En categorías</p>
+              <p className="text-sm font-black tabular-nums" style={{ color: '#18211D' }}>{format(funded)}</p>
+            </div>
+          </div>
+          <p className="text-[10px] mt-1.5 px-1" style={{ color: '#8C968F' }}>
+            Solo {editable ? 'tus' : 'sus'} cuentas on-budget · asignado este mes {format(env.assignedTotal)}
+          </p>
         {receivable > 0 && (
-          <div className="mt-2 flex items-center gap-2 rounded-2xl px-3 py-2" style={{ background: '#FFFFFF' }}>
+          <div className="mt-3 flex items-center gap-2 rounded-2xl px-3 py-2" style={{ background: '#DDF0E8' }}>
             <span className="text-base">💸</span>
-            <p className="text-[11px] leading-snug flex-1" style={{ color: '#6B6459' }}>
-              <b style={{ color: '#5BA886' }}>{partner?.nickname || 'Tu pareja'} te debe {format(receivable)}</b> — plata que fronteaste. Te baja “Para asignar” hasta que te la devuelva.
+            <p className="text-[11px] leading-snug flex-1" style={{ color: '#5B6660' }}>
+              <b style={{ color: '#1F8A68' }}>{partner?.nickname || 'Tu pareja'} te debe {format(receivable)}</b> — plata que fronteaste. Te baja “Para asignar” hasta que te la devuelva.
             </p>
           </div>
         )}
         {editable && overspentCount >= 4 && (
-          <p className="text-[11px] mt-2 leading-snug" style={{ color: '#6B6459' }}>
+          <p className="text-[11px] mt-3 leading-snug" style={{ color: '#5B6660' }}>
             Empezaste a presupuestar a mitad de mes. Tocá <b>Cubrir lo ya gastado</b> para asignar
             retroactivamente lo que ya saliste gastando y partir en cero (no te baja “Para asignar”).
           </p>
@@ -1235,7 +1258,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
           <div className="mt-3">
             <div className="flex flex-wrap gap-2">
               {overspentCount > 0 && (
-                <button onClick={coverOverspent} className="text-xs font-bold px-3 py-2 rounded-xl" style={{ background: '#FFE7E2', color: '#E5604C' }}>
+                <button onClick={coverOverspent} className="text-xs font-bold px-3 py-2 rounded-xl" style={{ background: '#FFE5E0', color: '#E25749' }}>
                   Cubrir lo ya gastado ({overspentCount})
                 </button>
               )}
@@ -1244,19 +1267,19 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
                   Asignar a metas ({underfundedCount})
                 </button>
               )}
-              <button onClick={() => setAutoMenuOpen((v) => !v)} className="text-xs font-bold px-3 py-2 rounded-xl" style={{ background: '#E4F2EA', color: '#5BA886' }}>
+              <button onClick={() => setAutoMenuOpen((v) => !v)} className="text-xs font-bold px-3 py-2 rounded-xl" style={{ background: '#DDF0E8', color: '#1F8A68' }}>
                 ⚡ Auto-asignar {autoMenuOpen ? '▴' : '▾'}
               </button>
             </div>
             {autoMenuOpen && (
-              <div className="mt-2 flex flex-col gap-1 rounded-2xl p-2" style={{ background: '#F9F5F0' }}>
+              <div className="mt-2 flex flex-col gap-1 rounded-2xl p-2" style={{ background: '#F1F5F3' }}>
                 {([
                   { k: 'last_assigned', label: 'Igual que el mes pasado (asignado)' },
                   { k: 'last_spent', label: 'Gastado el mes pasado' },
                   { k: 'avg3_spent', label: 'Promedio de gasto (3 meses)' },
                   { k: 'reset_available', label: 'Resetear disponible a 0' },
                 ] as const).map((o) => (
-                  <button key={o.k} onClick={() => applyAutoAssign(o.k)} className="text-left text-xs font-semibold px-3 py-2 rounded-xl" style={{ background: '#FFFFFF', color: '#2D2D2D' }}>
+                  <button key={o.k} onClick={() => applyAutoAssign(o.k)} className="text-left text-xs font-semibold px-3 py-2 rounded-xl" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', color: '#18211D' }}>
                     {o.label}
                   </button>
                 ))}
@@ -1264,12 +1287,13 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
             )}
           </div>
         )}
+        </div>
       </div>
 
       {/* Categorías | Spotlight toggle */}
-      <div className="mx-4 mb-3 flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#ECE5DC' }}>
+      <div className="mx-4 mb-3 flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#E5EBE8' }}>
         {([{ k: 'categories', label: 'Categorías' }, { k: 'spotlight', label: '✨ Spotlight' }] as const).map((t) => (
-          <button key={t.k} onClick={() => setTab(t.k)} className="flex-1 py-1.5 text-xs font-bold rounded-xl transition-colors" style={{ background: tab === t.k ? '#FFFFFF' : 'transparent', color: tab === t.k ? '#2D2D2D' : '#6B6459' }}>{t.label}</button>
+          <button key={t.k} onClick={() => setTab(t.k)} className="flex-1 py-2 text-xs font-black rounded-xl transition-all" style={{ background: tab === t.k ? '#FFFFFF' : 'transparent', color: tab === t.k ? '#18211D' : '#5B6660', boxShadow: tab === t.k ? 'var(--shadow-soft)' : 'none' }}>{t.label}</button>
         ))}
       </div>
 
@@ -1298,8 +1322,8 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
           <button
             key={chip.k}
             onClick={() => setFilter(chip.k)}
-            className="shrink-0 text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap"
-            style={{ background: filter === chip.k ? '#7EC8A4' : '#FFFFFF', color: filter === chip.k ? '#FFFFFF' : '#6B6459' }}
+            className="shrink-0 text-xs font-bold px-3.5 py-2 rounded-full whitespace-nowrap transition-all"
+            style={{ background: filter === chip.k ? '#2FA37C' : '#FFFFFF', color: filter === chip.k ? '#FFFFFF' : '#5B6660', boxShadow: filter === chip.k ? '0 4px 12px -4px rgba(47,163,124,0.55)' : 'var(--shadow-soft)' }}
           >
             {chip.label}{chip.n != null && chip.n > 0 ? ` ${chip.n}` : ''}
           </button>
@@ -1309,7 +1333,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
             key={v.id}
             onClick={() => setFilter(`view:${v.id}`)}
             className="shrink-0 text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap"
-            style={{ background: filter === `view:${v.id}` ? '#5B8DEF' : '#FFFFFF', color: filter === `view:${v.id}` ? '#FFFFFF' : '#6B6459' }}
+            style={{ background: filter === `view:${v.id}` ? '#4E84E0' : '#FFFFFF', color: filter === `view:${v.id}` ? '#FFFFFF' : '#5B6660' }}
           >
             ⭐ {v.name}
           </button>
@@ -1318,7 +1342,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
           <button
             onClick={() => setShowHidden((v) => !v)}
             className="shrink-0 text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap"
-            style={{ background: showHidden ? '#6B6459' : '#FFFFFF', color: showHidden ? '#FFFFFF' : '#6B6459' }}
+            style={{ background: showHidden ? '#5B6660' : '#FFFFFF', color: showHidden ? '#FFFFFF' : '#5B6660' }}
           >
             {showHidden ? '🙈 Ocultar ocultas' : `👁 Ocultas ${hiddenIds.size}`}
           </button>
@@ -1327,7 +1351,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
           <button
             onClick={() => setNewViewOpen(true)}
             className="shrink-0 text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap border-2 border-dashed"
-            style={{ borderColor: '#D9CFC2', color: '#6B6459', background: 'transparent' }}
+            style={{ borderColor: '#CFD8D3', color: '#5B6660', background: 'transparent' }}
           >
             + Vista
           </button>
@@ -1336,7 +1360,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
 
       <div className="px-4 flex flex-col gap-4">
         {env.isLoading ? (
-          <div className="rounded-3xl p-8 text-center text-sm" style={{ background: '#FFFFFF', color: '#6B6459' }}>Cargando…</div>
+          <div className="rounded-3xl p-8 text-center text-sm" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', color: '#5B6660' }}>Cargando…</div>
         ) : (
           groups.map((g) => {
             const cats = g.cats
@@ -1361,13 +1385,13 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
               <div key={g.key}>
                 {/* Group header = collapsible + subtotals */}
                 <button onClick={() => toggleGroup(g.key)} className="w-full flex items-center gap-2 px-3 mb-1.5">
-                  <span className="text-[10px]" style={{ color: '#6B6459' }}>{isCollapsed ? '▸' : '▾'}</span>
-                  <p className="flex-1 text-left text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>{g.title}</p>
+                  <span className="text-[10px]" style={{ color: '#5B6660' }}>{isCollapsed ? '▸' : '▾'}</span>
+                  <p className="flex-1 text-left text-xs font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>{g.title}</p>
                   <span className="text-[12px] font-black tabular-nums" style={{ color: availColor(sub.available, 0) }}>{fmtCell(sub.available)}</span>
                 </button>
 
                 {!isCollapsed && (
-                  <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF' }}>
+                  <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
                     {cats.map((c, i) => {
                       const row = env.rowByCategory.get(c.id);
                       const assigned = row?.assigned ?? 0;
@@ -1399,23 +1423,23 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
                           : pool > 0 ? Math.min(1, activity / pool) * 100 : 0;
                       // YNAB-style status text under the name.
                       let statusText = '';
-                      let statusColor = '#6B6459';
-                      if (available < 0) { statusText = `Sobregiraste ${fmtCell(-available)}`; statusColor = '#E5604C'; }
+                      let statusColor = '#5B6660';
+                      if (available < 0) { statusText = `Sobregiraste ${fmtCell(-available)}`; statusColor = '#E25749'; }
                       else if (needed > 0) { statusText = `${isMonthlyBudget ? 'Falta asignar' : 'Faltan'} ${fmtCell(needed)}`; statusColor = '#C79A2B'; }
                       else if (isMonthlyBudget) {
                         // Funded monthly budget → spend against the budget amount.
                         statusText = activity > 0 ? `Gastaste ${fmtCell(activity)} de ${fmtCell(target)}${available <= 0 ? ' · todo' : ''}` : 'Financiado';
-                        statusColor = activity > 0 ? '#6B6459' : '#5BA886';
+                        statusColor = activity > 0 ? '#5B6660' : '#1F8A68';
                       }
-                      else if (target > 0) { statusText = '✓ Meta cumplida'; statusColor = '#5BA886'; }
+                      else if (target > 0) { statusText = '✓ Meta cumplida'; statusColor = '#1F8A68'; }
                       else if (assigned <= 0 && activity <= 0) { statusText = ''; }
-                      else if (activity <= 0) { statusText = 'Financiado'; statusColor = '#5BA886'; }
+                      else if (activity <= 0) { statusText = 'Financiado'; statusColor = '#1F8A68'; }
                       else {
                         // YNAB "spent X of Y": Y is what was in the envelope this
                         // month (assignment + carry-over = `pool`). A fully-drained
                         // envelope reads "· todo".
                         statusText = `Gastaste ${fmtCell(activity)} de ${fmtCell(pool)}${available <= 0 ? ' · todo' : ''}`;
-                        statusColor = '#6B6459';
+                        statusColor = '#5B6660';
                       }
                       return (
                         <div
@@ -1423,8 +1447,8 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
                           onClick={() => setDetailCat(c)}
                           role="button"
                           tabIndex={0}
-                          className="px-3 py-2.5 cursor-pointer"
-                          style={{ borderTop: i > 0 ? '1px solid #F1ECE4' : 'none' }}
+                          className="px-4 py-3 cursor-pointer transition-colors hover:bg-[#F4F8F6] active:bg-[#EEF3F1]"
+                          style={{ borderTop: i > 0 ? '1px solid #EAF0ED' : 'none' }}
                         >
                           <div className="flex items-center gap-2">
                           <span className="relative shrink-0 text-lg">
@@ -1434,14 +1458,14 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
                             {c.icon}
                           </span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{c.name}</p>
+                            <p className="text-sm font-semibold truncate" style={{ color: '#18211D' }}>{c.name}</p>
                             {statusText && (
                               <p className="text-[10px] font-semibold" style={{ color: statusColor }}>{statusText}</p>
                             )}
                             {/* Per-category bar: how full the envelope is (toward its
                                 target, or its assignment). Shown on every row for a
                                 consistent look; empty track when nothing's in it. */}
-                            <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: '#F1ECE4' }}>
+                            <div className="mt-1.5 h-1.5 rounded-full overflow-hidden" style={{ background: '#EAF0ED' }}>
                               <div className="h-full rounded-full transition-all" style={{ width: `${barPct}%`, background: fg }} />
                             </div>
                           </div>
@@ -1465,7 +1489,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
           <button
             onClick={() => setNewCatOpen(true)}
             className="rounded-2xl py-3 text-sm font-bold border-2 border-dashed"
-            style={{ borderColor: '#D9CFC2', color: '#6B6459', background: 'transparent' }}
+            style={{ borderColor: '#CFD8D3', color: '#5B6660', background: 'transparent' }}
           >
             ➕ Nueva categoría
           </button>

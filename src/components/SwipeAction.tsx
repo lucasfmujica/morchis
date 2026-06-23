@@ -80,13 +80,13 @@ export function SwipeAction({ children, onDelete, disabled }: SwipeActionProps) 
       {/* Delete affordance behind the row, revealed on left-swipe. */}
       <div
         className="absolute inset-0 flex items-center justify-end pr-5"
-        style={{ background: '#FF7F6B', opacity: dx < 0 ? 1 : 0 }}
+        style={{ background: '#FF6F61', opacity: dx < 0 ? 1 : 0 }}
       >
         <span className="text-white font-black text-sm">🗑️ Borrar</span>
       </div>
       <div
         style={{
-          background: '#FFFFFF',
+          background: '#FFFFFF', boxShadow: 'var(--shadow-card)',
           transform: dx ? `translateX(${dx}px)` : undefined,
           transition: dragging ? 'none' : 'transform 0.2s ease',
         }}

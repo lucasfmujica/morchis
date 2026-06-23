@@ -24,8 +24,8 @@ export function CoupleBalanceChip({ householdId, myProfileId, partnerProfileId, 
   const partnerOwesMe = !balanced && net > 0;
   const amt = hideAmounts ? '••••••' : formatARS(absNet);
 
-  const bg = balanced ? '#ECE5DC' : partnerOwesMe ? '#E4F2EA' : '#FFE7E2';
-  const color = balanced ? '#6B6459' : partnerOwesMe ? '#5BA886' : '#E5604C';
+  const bg = balanced ? '#E5EBE8' : partnerOwesMe ? '#DDF0E8' : '#FFE5E0';
+  const color = balanced ? '#5B6660' : partnerOwesMe ? '#1F8A68' : '#E25749';
   const label = balanced
     ? '🤝 Al día'
     : partnerOwesMe

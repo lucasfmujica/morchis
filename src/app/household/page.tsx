@@ -84,7 +84,7 @@ export default function HouseholdPage() {
       <Screen>
         <div className="text-center mb-10">
           <div className="text-5xl mb-3">🏡</div>
-          <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>
+          <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>
             ¿Cómo arrancamos?
           </h1>
         </div>
@@ -101,9 +101,9 @@ export default function HouseholdPage() {
     return (
       <Screen>
         <BackBtn onClick={() => setStep('choose')} />
-        <h1 className="text-2xl font-black mb-6" style={{ color: '#2D2D2D' }}>Crear hogar</h1>
+        <h1 className="text-2xl font-black mb-6" style={{ color: '#18211D' }}>Crear hogar</h1>
         <div className="mb-4">
-          <label className="block text-sm font-semibold mb-2" style={{ color: '#2D2D2D' }}>
+          <label className="block text-sm font-semibold mb-2" style={{ color: '#18211D' }}>
             Nombre del hogar (opcional)
           </label>
           <TextInput
@@ -124,8 +124,8 @@ export default function HouseholdPage() {
     return (
       <Screen>
         <BackBtn onClick={() => setStep('choose')} />
-        <h1 className="text-2xl font-black mb-2" style={{ color: '#2D2D2D' }}>Unirme al hogar</h1>
-        <p className="text-sm mb-6" style={{ color: '#6B6459' }}>
+        <h1 className="text-2xl font-black mb-2" style={{ color: '#18211D' }}>Unirme al hogar</h1>
+        <p className="text-sm mb-6" style={{ color: '#5B6660' }}>
           Pedile el código de 6 letras a tu pareja desde la app.
         </p>
         <div className="mb-4">
@@ -136,7 +136,7 @@ export default function HouseholdPage() {
             placeholder="ABC123"
             maxLength={6}
             className="w-full px-4 py-3 rounded-2xl text-2xl font-black text-center tracking-widest outline-none border"
-            style={{ background: '#FFFFFF', borderColor: '#ECE5DC', color: '#2D2D2D' }}
+            style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', borderColor: '#E5EBE8', color: '#18211D' }}
           />
         </div>
         <Btn onClick={joinHousehold} disabled={loading || joinCode.length < 6}>
@@ -151,8 +151,8 @@ export default function HouseholdPage() {
     <Screen>
       <div className="text-center mb-8">
         <div className="text-5xl mb-3">✨</div>
-        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>¿Cómo te llamamos?</h1>
-        <p className="text-sm mt-1" style={{ color: '#6B6459' }}>Usamos tu apodo en la app.</p>
+        <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>¿Cómo te llamamos?</h1>
+        <p className="text-sm mt-1" style={{ color: '#5B6660' }}>Usamos tu apodo en la app.</p>
       </div>
       <div className="mb-4">
         <TextInput
@@ -177,7 +177,7 @@ export default function HouseholdPage() {
 
 function Screen({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6" style={{ background: '#F9F5F0' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center px-6" style={{ background: '#F1F5F3' }}>
       <div className="w-full max-w-sm">{children}</div>
     </div>
   );
@@ -198,8 +198,8 @@ function Btn({
       className="w-full py-4 rounded-2xl text-base font-bold transition-opacity disabled:opacity-50"
       style={
         variant === 'primary'
-          ? { background: '#7EC8A4', color: '#fff' }
-          : { background: 'transparent', color: '#7EC8A4', border: '2px solid #7EC8A4' }
+          ? { background: '#2FA37C', color: '#fff' }
+          : { background: 'transparent', color: '#2FA37C', border: '2px solid #2FA37C' }
       }
     >
       {children}
@@ -209,7 +209,7 @@ function Btn({
 
 function BackBtn({ onClick }: { onClick: () => void }) {
   return (
-    <button onClick={onClick} className="mb-6 text-sm" style={{ color: '#6B6459' }}>
+    <button onClick={onClick} className="mb-6 text-sm" style={{ color: '#5B6660' }}>
       ← Volver
     </button>
   );
@@ -231,9 +231,9 @@ function TextInput({
       placeholder={placeholder}
       className="w-full px-4 py-3 rounded-2xl text-base outline-none border"
       style={{
-        background: '#FFFFFF',
-        borderColor: '#ECE5DC',
-        color: '#2D2D2D',
+        background: '#FFFFFF', boxShadow: 'var(--shadow-card)',
+        borderColor: '#E5EBE8',
+        color: '#18211D',
         textAlign: center ? 'center' : 'left',
       }}
     />
@@ -257,16 +257,16 @@ function InviteCodeSection({ householdId }: { householdId: string }) {
   void householdId;
 
   return (
-    <div className="rounded-2xl p-4 mb-4" style={{ background: '#E4F2EA' }}>
-      <p className="text-sm font-semibold mb-2" style={{ color: '#2D2D2D' }}>
+    <div className="rounded-2xl p-4 mb-4" style={{ background: '#DDF0E8' }}>
+      <p className="text-sm font-semibold mb-2" style={{ color: '#18211D' }}>
         Invitá a tu pareja 💌
       </p>
       {code ? (
         <div className="text-center">
-          <div className="text-3xl font-black tracking-widest mb-1" style={{ color: '#5BA886' }}>
+          <div className="text-3xl font-black tracking-widest mb-1" style={{ color: '#1F8A68' }}>
             {code}
           </div>
-          <p className="text-xs" style={{ color: '#6B6459' }}>
+          <p className="text-xs" style={{ color: '#5B6660' }}>
             Que lo ingrese en &quot;Unirme con código&quot;. Expira en 7 días.
           </p>
         </div>
@@ -275,7 +275,7 @@ function InviteCodeSection({ householdId }: { householdId: string }) {
           onClick={generateCode}
           disabled={loading}
           className="text-sm font-bold underline disabled:opacity-50"
-          style={{ color: '#5BA886' }}
+          style={{ color: '#1F8A68' }}
         >
           {loading ? 'Generando...' : 'Generar código de invitación'}
         </button>

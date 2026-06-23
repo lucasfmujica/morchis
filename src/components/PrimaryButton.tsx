@@ -1,8 +1,8 @@
 'use client';
 
-// Primary CTA that visibly "lights up" when the form is valid: vibrant
-// green + glow when ready, muted grey when the action isn't available yet,
-// and a press-scale for tactile feedback. `disabled` = invalid/not ready;
+// Primary CTA that visibly "lights up" when the form is valid: a rich emerald
+// gradient + soft glow when ready, muted grey when the action isn't available
+// yet, and a press-scale for tactile feedback. `disabled` = invalid/not ready;
 // `loading` keeps the ready look but blocks interaction.
 export function PrimaryButton({
   disabled = false,
@@ -25,11 +25,13 @@ export function PrimaryButton({
       type={type}
       onClick={onClick}
       disabled={disabled || loading}
-      className={`rounded-2xl font-bold transition-all duration-150 active:scale-[0.97] ${className}`}
+      className={`rounded-2xl font-bold transition-all duration-200 active:scale-[0.97] ${className}`}
       style={{
-        background: ready ? '#7EC8A4' : '#E7E1D8',
-        color: ready ? '#FFFFFF' : '#B3A998',
-        boxShadow: ready ? '0 6px 16px rgba(126,200,164,0.5)' : 'none',
+        background: ready
+          ? 'linear-gradient(180deg, #34AD84 0%, #2FA37C 55%, #1F8A68 100%)'
+          : '#E5EBE8',
+        color: ready ? '#FFFFFF' : '#9AA49E',
+        boxShadow: ready ? 'var(--shadow-glow)' : 'none',
         opacity: loading ? 0.85 : 1,
       }}
     >

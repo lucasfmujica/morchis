@@ -176,19 +176,19 @@ export default function PreguntaleClient({ householdId, profileId }: { household
   }
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: '#F9F5F0' }}>
+    <div className="min-h-screen flex flex-col" style={{ background: '#F1F5F3' }}>
       <header className="px-5 pt-14 pb-3 shrink-0">
-        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Preguntale a Morchi ✨</h1>
-        <p className="text-sm mt-0.5" style={{ color: '#6B6459' }}>Preguntá lo que quieras sobre su plata.</p>
+        <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>Preguntale a Morchi ✨</h1>
+        <p className="text-sm mt-0.5" style={{ color: '#5B6660' }}>Preguntá lo que quieras sobre su plata.</p>
       </header>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pb-44">
         {messages.length === 0 && !loading && (
           <div className="mt-2">
-            <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+            <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
               <p className="text-3xl mb-2">👋</p>
-              <p className="font-bold" style={{ color: '#2D2D2D' }}>Hola, soy Morchi</p>
-              <p className="text-sm mt-1 leading-snug" style={{ color: '#6B6459' }}>
+              <p className="font-bold" style={{ color: '#18211D' }}>Hola, soy Morchi</p>
+              <p className="text-sm mt-1 leading-snug" style={{ color: '#5B6660' }}>
                 Puedo consultar todos sus movimientos: gastos, ingresos, comercios, categorías, meses, saldos, presupuestos, metas y deudas. Probá con una de estas:
               </p>
             </div>
@@ -198,7 +198,7 @@ export default function PreguntaleClient({ householdId, profileId }: { household
                   key={s}
                   onClick={() => ask(s)}
                   className="text-left text-sm font-semibold rounded-2xl px-4 py-3"
-                  style={{ background: '#E4F2EA', color: '#5BA886', border: '1px solid #7EC8A4' }}
+                  style={{ background: '#DDF0E8', color: '#1F8A68', border: '1px solid #2FA37C' }}
                 >
                   {s}
                 </button>
@@ -213,20 +213,20 @@ export default function PreguntaleClient({ householdId, profileId }: { household
               <div
                 className="max-w-[85%] rounded-3xl px-4 py-3 text-sm leading-snug whitespace-pre-wrap"
                 style={m.role === 'user'
-                  ? { background: '#7EC8A4', color: '#FFFFFF', borderBottomRightRadius: 6 }
-                  : { background: '#FFFFFF', color: '#2D2D2D', borderBottomLeftRadius: 6 }}
+                  ? { background: '#2FA37C', color: '#FFFFFF', borderBottomRightRadius: 6 }
+                  : { background: '#FFFFFF', boxShadow: 'var(--shadow-card)', color: '#18211D', borderBottomLeftRadius: 6 }}
               >
                 <Rich text={m.content} />
               </div>
               {m.role === 'assistant' && m.action && (
-                <div className="mt-2 max-w-[85%] rounded-2xl p-3" style={{ background: '#FFFFFF', border: '1px solid #ECE5DC' }}>
-                  <p className="text-sm font-semibold" style={{ color: '#2D2D2D' }}>{m.action.summary}</p>
+                <div className="mt-2 max-w-[85%] rounded-2xl p-3" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', border: '1px solid #E5EBE8' }}>
+                  <p className="text-sm font-semibold" style={{ color: '#18211D' }}>{m.action.summary}</p>
                   <div className="mt-2.5 flex gap-2">
                     <button
                       onClick={() => confirmAction(i, m.action!)}
                       disabled={loading}
                       className="flex-1 rounded-full py-2 text-sm font-bold text-white"
-                      style={{ background: loading ? '#C4B9AE' : '#7EC8A4' }}
+                      style={{ background: loading ? '#B0BAB4' : '#2FA37C' }}
                     >
                       Confirmar
                     </button>
@@ -234,7 +234,7 @@ export default function PreguntaleClient({ householdId, profileId }: { household
                       onClick={() => cancelAction(i)}
                       disabled={loading}
                       className="rounded-full px-4 py-2 text-sm font-semibold"
-                      style={{ background: '#F2ECE4', color: '#6B6459' }}
+                      style={{ background: '#EAF0ED', color: '#5B6660' }}
                     >
                       Cancelar
                     </button>
@@ -248,7 +248,7 @@ export default function PreguntaleClient({ householdId, profileId }: { household
                       key={s}
                       onClick={() => ask(s)}
                       className="rounded-full px-3 py-1.5 text-xs font-semibold"
-                      style={{ background: '#E4F2EA', color: '#5BA886', border: '1px solid #7EC8A4' }}
+                      style={{ background: '#DDF0E8', color: '#1F8A68', border: '1px solid #2FA37C' }}
                     >
                       {s}
                     </button>
@@ -259,7 +259,7 @@ export default function PreguntaleClient({ householdId, profileId }: { household
           ))}
           {loading && (
             <div className="flex justify-start">
-              <div className="rounded-3xl px-4 py-3 text-sm" style={{ background: '#FFFFFF', color: '#6B6459', borderBottomLeftRadius: 6 }}>
+              <div className="rounded-3xl px-4 py-3 text-sm" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', color: '#5B6660', borderBottomLeftRadius: 6 }}>
                 Morchi está pensando…
               </div>
             </div>
@@ -270,7 +270,7 @@ export default function PreguntaleClient({ householdId, profileId }: { household
       {/* Input bar, sitting just above the bottom nav */}
       <div
         className="fixed left-0 right-0 px-3 py-2 z-30"
-        style={{ bottom: 'calc(env(safe-area-inset-bottom) + 64px)', background: '#F9F5F0', borderTop: '1px solid #ECE5DC' }}
+        style={{ bottom: 'calc(env(safe-area-inset-bottom) + 64px)', background: '#F1F5F3', borderTop: '1px solid #E5EBE8' }}
       >
         <form
           onSubmit={(e) => { e.preventDefault(); ask(input); }}
@@ -290,7 +290,7 @@ export default function PreguntaleClient({ householdId, profileId }: { household
             disabled={loading}
             aria-label="Mandar foto de un ticket"
             className="w-11 h-11 rounded-full text-lg flex items-center justify-center shrink-0"
-            style={{ background: '#FFFFFF', color: '#6B6459', border: '1px solid #ECE5DC' }}
+            style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', color: '#5B6660', border: '1px solid #E5EBE8' }}
           >
             🧾
           </button>
@@ -301,8 +301,8 @@ export default function PreguntaleClient({ householdId, profileId }: { household
               aria-label={listening ? 'Detener dictado' : 'Dictar por voz'}
               className="w-11 h-11 rounded-full text-lg flex items-center justify-center shrink-0"
               style={listening
-                ? { background: '#E0584F', color: '#FFFFFF', border: '1px solid #E0584F' }
-                : { background: '#FFFFFF', color: '#6B6459', border: '1px solid #ECE5DC' }}
+                ? { background: '#E25749', color: '#FFFFFF', border: '1px solid #E25749' }
+                : { background: '#FFFFFF', boxShadow: 'var(--shadow-card)', color: '#5B6660', border: '1px solid #E5EBE8' }}
             >
               🎤
             </button>
@@ -313,13 +313,13 @@ export default function PreguntaleClient({ householdId, profileId }: { household
             placeholder={listening ? 'Escuchando…' : 'Escribí tu pregunta…'}
             enterKeyHint="send"
             className="flex-1 rounded-full px-4 py-3 text-sm outline-none"
-            style={{ background: '#FFFFFF', border: '1px solid #ECE5DC', color: '#2D2D2D' }}
+            style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', border: '1px solid #E5EBE8', color: '#18211D' }}
           />
           <button
             type="submit"
             disabled={loading || !input.trim()}
             className="w-11 h-11 rounded-full text-xl text-white flex items-center justify-center shrink-0"
-            style={{ background: loading || !input.trim() ? '#C4B9AE' : '#7EC8A4' }}
+            style={{ background: loading || !input.trim() ? '#B0BAB4' : '#2FA37C' }}
             aria-label="Enviar"
           >
             ↑

@@ -9,7 +9,7 @@ const steps = [
     title: 'Instalá Morchis en tu iPhone',
     body: (
       <>
-        <p className="text-base text-center" style={{ color: '#6B6459' }}>
+        <p className="text-base text-center" style={{ color: '#5B6660' }}>
           Para que se abra como una app de verdad, seguí estos pasos en Safari:
         </p>
         <ol className="mt-4 space-y-3 text-left">
@@ -21,11 +21,11 @@ const steps = [
           ].map((s) => (
             <li key={s.icon} className="flex items-start gap-3">
               <span className="text-xl shrink-0">{s.icon}</span>
-              <span className="text-base" style={{ color: '#2D2D2D' }}>{s.text}</span>
+              <span className="text-base" style={{ color: '#18211D' }}>{s.text}</span>
             </li>
           ))}
         </ol>
-        <div className="mt-4 rounded-2xl p-3 text-sm text-center" style={{ background: '#FFE7E2', color: '#E5604C' }}>
+        <div className="mt-4 rounded-2xl p-3 text-sm text-center" style={{ background: '#FFE5E0', color: '#E25749' }}>
           Sólo funciona en <strong>Safari</strong>. Chrome e Instagram browser no lo soportan.
         </div>
       </>
@@ -35,7 +35,7 @@ const steps = [
     emoji: '💚',
     title: '¡Todo listo, Morch!',
     body: (
-      <p className="text-base text-center" style={{ color: '#6B6459' }}>
+      <p className="text-base text-center" style={{ color: '#5B6660' }}>
         Ya podés empezar a registrar gastos e ingresos juntos. Tocá <strong>+</strong> para agregar tu primer movimiento.
       </p>
     ),
@@ -57,11 +57,11 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6" style={{ background: '#F9F5F0' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center px-6" style={{ background: '#F1F5F3' }}>
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <div className="text-6xl mb-4">{step.emoji}</div>
-          <h1 className="text-2xl font-black mb-4" style={{ color: '#2D2D2D' }}>
+          <h1 className="text-2xl font-black mb-4" style={{ color: '#18211D' }}>
             {step.title}
           </h1>
           {step.body}
@@ -74,7 +74,7 @@ export default function OnboardingPage() {
               className="h-2 rounded-full transition-all"
               style={{
                 width: i === idx ? 24 : 8,
-                background: i === idx ? '#7EC8A4' : '#ECE5DC',
+                background: i === idx ? '#2FA37C' : '#E5EBE8',
               }}
             />
           ))}
@@ -83,7 +83,7 @@ export default function OnboardingPage() {
         <button
           onClick={next}
           className="w-full py-4 rounded-2xl text-base font-bold text-white"
-          style={{ background: '#7EC8A4' }}
+          style={{ background: '#2FA37C' }}
         >
           {isLast ? '¡Empecemos! 🚀' : 'Siguiente'}
         </button>
@@ -92,7 +92,7 @@ export default function OnboardingPage() {
           <button
             onClick={() => router.push('/presupuestos')}
             className="w-full py-3 text-sm text-center"
-            style={{ color: '#6B6459' }}
+            style={{ color: '#5B6660' }}
           >
             Saltar
           </button>

@@ -15,9 +15,9 @@ interface Insight {
 }
 
 const SEVERITY_STYLE: Record<string, { bg: string; color: string; icon: string }> = {
-  positive: { bg: '#E4F2EA', color: '#5BA886', icon: '✨' },
-  warning:  { bg: '#FFE7E2', color: '#E5604C', icon: '⚠️' },
-  info:     { bg: '#F0EDE8', color: '#6B6459', icon: '💡' },
+  positive: { bg: '#DDF0E8', color: '#1F8A68', icon: '✨' },
+  warning:  { bg: '#FFE5E0', color: '#E25749', icon: '⚠️' },
+  info:     { bg: '#EAF0ED', color: '#5B6660', icon: '💡' },
 };
 
 export function InsightTopCard({ householdId, profileId }: { householdId: string; profileId: string }) {
@@ -72,16 +72,16 @@ export function InsightTopCard({ householdId, profileId }: { householdId: string
 
   if (!insight) {
     return (
-      <div className="mx-4 mb-4 rounded-3xl p-4 flex items-center justify-between" style={{ background: '#F0EDE8' }}>
+      <div className="mx-4 mb-4 rounded-3xl p-4 flex items-center justify-between" style={{ background: '#EAF0ED' }}>
         <div className="flex items-center gap-3">
           <span className="text-xl">💡</span>
-          <p className="text-sm" style={{ color: '#6B6459' }}>Sin insights aún. Tocá para generar.</p>
+          <p className="text-sm" style={{ color: '#5B6660' }}>Sin insights aún. Tocá para generar.</p>
         </div>
         <button
           onClick={handleRefresh}
           disabled={refreshing}
           className="text-xs font-bold px-3 py-1.5 rounded-full"
-          style={{ background: '#ECE5DC', color: refreshing ? '#C4B9AE' : '#6B6459' }}
+          style={{ background: '#E5EBE8', color: refreshing ? '#B0BAB4' : '#5B6660' }}
         >
           {refreshing ? '…' : 'Actualizar'}
         </button>

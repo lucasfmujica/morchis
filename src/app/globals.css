@@ -5,18 +5,18 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  /* Morchis design tokens */
-  --color-sage: #7EC8A4;
-  --color-sage-soft: #E4F2EA;
-  --color-sage-deep: #5BA886;
-  --color-cream: #F9F5F0;
-  --color-coral: #FF7F6B;
-  --color-coral-soft: #FFE7E2;
-  --color-coral-deep: #E5604C;
-  --color-charcoal: #2D2D2D;
+  /* Morchis design tokens — "Menta & tinta" (cool premium) */
+  --color-sage: #2FA37C;
+  --color-sage-soft: #DDF0E8;
+  --color-sage-deep: #1F8A68;
+  --color-cream: #F1F5F3;
+  --color-coral: #FF6F61;
+  --color-coral-soft: #FFE5E0;
+  --color-coral-deep: #E25749;
+  --color-charcoal: #18211D;
   --color-surface: #FFFFFF;
-  --color-muted-text: #6B6459;
-  --color-hairline: #ECE5DC;
+  --color-muted-text: #5B6660;
+  --color-hairline: #E5EBE8;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -40,29 +40,47 @@
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) * 1.4);
+
+  --shadow-card: var(--shadow-card-value);
+  --shadow-soft: var(--shadow-soft-value);
+  --shadow-pop: var(--shadow-pop-value);
 }
 
 :root {
   /* Map Morchis tokens to shadcn variables */
-  --background: #F9F5F0;
-  --foreground: #2D2D2D;
+  --background: #F1F5F3;
+  --foreground: #18211D;
   --card: #FFFFFF;
-  --card-foreground: #2D2D2D;
+  --card-foreground: #18211D;
   --popover: #FFFFFF;
-  --popover-foreground: #2D2D2D;
-  --primary: #7EC8A4;
+  --popover-foreground: #18211D;
+  --primary: #2FA37C;
   --primary-foreground: #FFFFFF;
-  --secondary: #E4F2EA;
-  --secondary-foreground: #2D2D2D;
-  --muted: #E4F2EA;
-  --muted-foreground: #6B6459;
-  --accent: #FFE7E2;
-  --accent-foreground: #2D2D2D;
-  --destructive: #FF7F6B;
-  --border: #ECE5DC;
-  --input: #ECE5DC;
-  --ring: #7EC8A4;
+  --secondary: #DDF0E8;
+  --secondary-foreground: #18211D;
+  --muted: #EAF0ED;
+  --muted-foreground: #5B6660;
+  --accent: #FFE5E0;
+  --accent-foreground: #18211D;
+  --destructive: #FF6F61;
+  --border: #E5EBE8;
+  --input: #E5EBE8;
+  --ring: #2FA37C;
   --radius: 1rem;
+
+  /* Depth system — soft, cool, layered. Referenced from inline styles too. */
+  --shadow-card-value: 0 1px 2px rgba(20, 42, 33, 0.04), 0 8px 20px -10px rgba(20, 42, 33, 0.13);
+  --shadow-soft-value: 0 1px 3px rgba(20, 42, 33, 0.06);
+  --shadow-pop-value: 0 12px 34px -12px rgba(20, 42, 33, 0.24);
+  --shadow-card: var(--shadow-card-value);
+  --shadow-soft: var(--shadow-soft-value);
+  --shadow-pop: var(--shadow-pop-value);
+  --shadow-glow: 0 10px 26px -8px rgba(47, 163, 124, 0.45);
+  --shadow-glow-coral: 0 10px 26px -8px rgba(255, 111, 97, 0.42);
+
+  /* Frosted-glass chrome (nav bars) */
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(20, 42, 33, 0.07);
 }
 
 @layer base {
@@ -78,6 +96,7 @@
     @apply bg-background text-foreground;
     font-family: var(--font-nunito), system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
     overscroll-behavior-y: none;
   }
   /* Tailwind v4 resets interactive elements to cursor:default — restore pointer for desktop */
@@ -93,7 +112,32 @@
   [aria-disabled="true"] {
     cursor: not-allowed;
   }
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 22%, transparent);
+  }
 }
+
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
+/* Frosted glass utility for fixed nav chrome. */
+.glass {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: saturate(1.6) blur(18px);
+  backdrop-filter: saturate(1.6) blur(18px);
+}
+
+/* Slim, calm scrollbars on desktop. */
+@media (pointer: fine) {
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--muted-foreground) 28%, transparent);
+    border-radius: 9999px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--muted-foreground) 45%, transparent);
+    background-clip: padding-box;
+  }
+}

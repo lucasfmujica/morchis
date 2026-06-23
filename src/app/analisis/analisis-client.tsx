@@ -23,12 +23,12 @@ interface Profile {
   display_name: string | null;
 }
 
-const DONUT_PALETTE = ['#7EC8A4', '#FF7F6B', '#F5A623', '#6FA8DC', '#B084CC', '#E89AC7', '#5BA886', '#C4B9AE'];
+const DONUT_PALETTE = ['#2FA37C', '#FF6F61', '#F5A623', '#7AA6E6', '#B084CC', '#E89AC7', '#1F8A68', '#B0BAB4'];
 
 const SEVERITY = {
-  positive: { bg: '#E4F2EA', color: '#5BA886', icon: '✨' },
-  warning: { bg: '#FFE7E2', color: '#E5604C', icon: '⚠️' },
-  info: { bg: '#F0EDE8', color: '#6B6459', icon: '💡' },
+  positive: { bg: '#DDF0E8', color: '#1F8A68', icon: '✨' },
+  warning: { bg: '#FFE5E0', color: '#E25749', icon: '⚠️' },
+  info: { bg: '#EAF0ED', color: '#5B6660', icon: '💡' },
 } as const;
 
 export default function AnalisisClient({
@@ -266,7 +266,7 @@ export default function AnalisisClient({
     const topCats = catRows.slice(0, TOP);
     const restTotal = catRows.slice(TOP).reduce((s, r) => s + r.value, 0);
     const segments = topCats.map((r) => ({ label: r.cat!.name, value: r.value, color: r.color }));
-    if (restTotal > 0) segments.push({ label: 'Otras', value: restTotal, color: '#C4B9AE' });
+    if (restTotal > 0) segments.push({ label: 'Otras', value: restTotal, color: '#B0BAB4' });
 
     // Subscriptions radar — current-month spend in subscription-type categories.
     // Match by keyword (substring) so variants like "Suscripción" or "Streaming
@@ -505,21 +505,22 @@ export default function AnalisisClient({
   }
 
   return (
-    <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
+    <div className="min-h-screen pb-24" style={{ background: '#F1F5F3' }}>
       <header className="px-5 pt-14 pb-4">
-        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Análisis 📊</h1>
+        <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>Análisis 📊</h1>
       </header>
 
       {/* Scope toggle: Mío / Nuestro / pareja */}
-      <div className="mx-4 mb-3 flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#ECE5DC' }}>
+      <div className="mx-4 mb-3 flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#E5EBE8' }}>
         {scopeTabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setScope(tab.key)}
-            className="flex-1 py-1.5 text-xs font-bold rounded-xl transition-colors"
+            className="flex-1 py-2 text-xs font-black rounded-xl transition-all"
             style={{
               background: scope === tab.key ? '#FFFFFF' : 'transparent',
-              color: scope === tab.key ? '#2D2D2D' : '#6B6459',
+              color: scope === tab.key ? '#18211D' : '#5B6660',
+              boxShadow: scope === tab.key ? 'var(--shadow-soft)' : 'none',
             }}
           >
             {tab.label}
@@ -528,43 +529,49 @@ export default function AnalisisClient({
       </div>
 
       <div className="px-4 flex flex-col gap-4">
-        {/* Net worth hero */}
-        <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6B6459' }}>💰 Patrimonio</p>
-          <div className="flex items-end justify-between mb-3">
-            <p className="text-3xl font-black leading-none" style={{ color: '#2D2D2D', fontVariantNumeric: 'tabular-nums' }}>
+        {/* Net worth hero — premium two-zone: gradient headline + white trend chart */}
+        <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-pop)' }}>
+          <div
+            className="relative px-5 pt-5 pb-5 overflow-hidden"
+            style={{ background: currentNetWorth < 0 ? 'linear-gradient(135deg, #FF8173 0%, #E25749 100%)' : 'linear-gradient(135deg, #34AD84 0%, #1F8A68 100%)' }}
+          >
+            <div className="absolute -top-10 -right-8 w-40 h-40 rounded-full pointer-events-none" style={{ background: 'rgba(255,255,255,0.14)' }} />
+            <div className="relative flex items-center justify-between">
+              <p className="text-[11px] font-black uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.82)' }}>💰 Patrimonio</p>
+              {nwDelta != null && (
+                <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: 'rgba(255,255,255,0.22)', color: '#FFFFFF' }}>
+                  {nwDelta >= 0 ? '▲' : '▼'} {formatARS(Math.abs(nwDelta))}
+                </span>
+              )}
+            </div>
+            <p className="relative text-[2.4rem] leading-none font-black mt-2 tracking-tight" style={{ color: '#FFFFFF', fontVariantNumeric: 'tabular-nums' }}>
               {formatARS(currentNetWorth)}
             </p>
-            {nwDelta != null && (
-              <span
-                className="text-xs font-bold px-2 py-1 rounded-full"
-                style={{ background: nwDelta >= 0 ? '#E4F2EA' : '#FFE7E2', color: nwDelta >= 0 ? '#5BA886' : '#E5604C' }}
-              >
-                {nwDelta >= 0 ? '▲' : '▼'} {formatARS(Math.abs(nwDelta))} vs mes ant.
-              </span>
-            )}
+            <p className="relative text-[11px] mt-2" style={{ color: 'rgba(255,255,255,0.85)' }}>Evolución últimos meses</p>
           </div>
-          <SingleBars rows={nwRows} color="#7EC8A4" />
+          <div className="px-5 py-4">
+            <SingleBars rows={nwRows} color="#2FA37C" />
+          </div>
         </div>
 
         {/* Composition: on-budget cash vs tracking vs card debt */}
-        <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-          <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>🧩 Composición</p>
+        <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#5B6660' }}>🧩 Composición</p>
           {(() => {
             const total = Math.max(1, composition.onBudget + composition.tracking);
             return (
               <>
-                <div className="flex h-2.5 rounded-full overflow-hidden mb-3" style={{ background: '#F1ECE4' }}>
-                  <div style={{ width: `${(composition.onBudget / total) * 100}%`, background: '#7EC8A4' }} />
-                  <div style={{ width: `${(composition.tracking / total) * 100}%`, background: '#6FA8DC' }} />
+                <div className="flex h-2.5 rounded-full overflow-hidden mb-3" style={{ background: '#EAF0ED' }}>
+                  <div style={{ width: `${(composition.onBudget / total) * 100}%`, background: '#2FA37C' }} />
+                  <div style={{ width: `${(composition.tracking / total) * 100}%`, background: '#7AA6E6' }} />
                 </div>
                 {[
-                  { label: '💵 En presupuesto', v: composition.onBudget, c: '#5BA886' },
-                  { label: '👁️ Seguimiento', v: composition.tracking, c: '#5B8DEF' },
-                  { label: '💳 Deuda tarjetas (ciclo)', v: -composition.cardDebt, c: '#E5604C' },
+                  { label: '💵 En presupuesto', v: composition.onBudget, c: '#1F8A68' },
+                  { label: '👁️ Seguimiento', v: composition.tracking, c: '#4E84E0' },
+                  { label: '💳 Deuda tarjetas (ciclo)', v: -composition.cardDebt, c: '#E25749' },
                 ].map((r) => (
                   <div key={r.label} className="flex items-center justify-between py-1">
-                    <span className="text-sm" style={{ color: '#6B6459' }}>{r.label}</span>
+                    <span className="text-sm" style={{ color: '#5B6660' }}>{r.label}</span>
                     <span className="text-sm font-black tabular-nums" style={{ color: r.c }}>{formatARS(r.v)}</span>
                   </div>
                 ))}
@@ -575,13 +582,13 @@ export default function AnalisisClient({
 
         {/* Age of Money — YNAB Reflect signature metric */}
         {ageOfMoney != null && (
-          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-            <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6B6459' }}>🕰️ Antigüedad del dinero</p>
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+            <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#5B6660' }}>🕰️ Antigüedad del dinero</p>
             <div className="flex items-end gap-2">
-              <p className="text-3xl font-black leading-none" style={{ color: '#2D2D2D', fontVariantNumeric: 'tabular-nums' }}>{ageOfMoney}</p>
-              <p className="text-sm font-bold mb-0.5" style={{ color: '#6B6459' }}>{ageOfMoney === 1 ? 'día' : 'días'}</p>
+              <p className="text-3xl font-black leading-none" style={{ color: '#18211D', fontVariantNumeric: 'tabular-nums' }}>{ageOfMoney}</p>
+              <p className="text-sm font-bold mb-0.5" style={{ color: '#5B6660' }}>{ageOfMoney === 1 ? 'día' : 'días'}</p>
             </div>
-            <p className="text-[11px] mt-2" style={{ color: '#6B6459' }}>
+            <p className="text-[11px] mt-2" style={{ color: '#5B6660' }}>
               {ageOfMoney < 30
                 ? 'Gastás plata que entró hace poco — vivís bastante al día.'
                 : ageOfMoney < 60
@@ -593,41 +600,41 @@ export default function AnalisisClient({
 
         {/* Savings rate vs target */}
         {savingsVsTarget.rate != null && (
-          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>🎯 Ahorro vs meta</p>
-              <span className="text-xs font-bold" style={{ color: savingsVsTarget.rate >= savingsVsTarget.target ? '#5BA886' : '#C79A2B' }}>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>🎯 Ahorro vs meta</p>
+              <span className="text-xs font-bold" style={{ color: savingsVsTarget.rate >= savingsVsTarget.target ? '#1F8A68' : '#C79A2B' }}>
                 {Math.round(savingsVsTarget.rate * 100)}% / meta {Math.round(savingsVsTarget.target * 100)}%
               </span>
             </div>
-            <div className="h-3 rounded-full overflow-hidden" style={{ background: '#ECE5DC' }}>
-              <div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(100, savingsVsTarget.rate * 100))}%`, background: savingsVsTarget.rate >= savingsVsTarget.target ? '#7EC8A4' : '#F5A623' }} />
+            <div className="h-3 rounded-full overflow-hidden" style={{ background: '#E5EBE8' }}>
+              <div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(100, savingsVsTarget.rate * 100))}%`, background: savingsVsTarget.rate >= savingsVsTarget.target ? '#2FA37C' : '#F5A623' }} />
             </div>
-            <p className="text-[11px] mt-2" style={{ color: '#6B6459' }}>
+            <p className="text-[11px] mt-2" style={{ color: '#5B6660' }}>
               {savingsVsTarget.rate >= savingsVsTarget.target ? '¡Vas por arriba de tu meta de ahorro! 🎉' : 'Estás por debajo de tu meta de ahorro de este mes.'}
             </p>
           </div>
         )}
 
         {/* Spending breakdown — total + segmented bar + per-category % bars */}
-        <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+        <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
           {/* Month selector */}
           <div className="flex items-center justify-center gap-2 mb-3">
             <button
               onClick={() => bIdx > 0 && setBreakdownMonth(months[bIdx - 1].key)}
               disabled={bIdx <= 0}
-              className="w-8 h-8 rounded-full text-lg flex items-center justify-center"
-              style={{ background: '#F9F5F0', color: bIdx <= 0 ? '#D9CFC2' : '#6B6459' }}
+              className="w-8 h-8 rounded-full text-lg flex items-center justify-center transition-all active:scale-95"
+              style={{ background: '#FFFFFF', color: bIdx <= 0 ? '#CFD8D3' : '#5B6660', boxShadow: bIdx <= 0 ? 'none' : 'var(--shadow-soft)' }}
               aria-label="Mes anterior"
             >
               ‹
             </button>
-            <span className="text-sm font-bold min-w-[8rem] text-center" style={{ color: '#2D2D2D' }}>{bMonthLabel}</span>
+            <span className="text-sm font-bold min-w-[8rem] text-center" style={{ color: '#18211D' }}>{bMonthLabel}</span>
             <button
               onClick={() => bIdx >= 0 && bIdx < months.length - 1 && setBreakdownMonth(months[bIdx + 1].key)}
               disabled={bIdx >= months.length - 1}
-              className="w-8 h-8 rounded-full text-lg flex items-center justify-center"
-              style={{ background: '#F9F5F0', color: bIdx >= months.length - 1 ? '#D9CFC2' : '#6B6459' }}
+              className="w-8 h-8 rounded-full text-lg flex items-center justify-center transition-all active:scale-95"
+              style={{ background: '#FFFFFF', color: bIdx >= months.length - 1 ? '#CFD8D3' : '#5B6660', boxShadow: bIdx >= months.length - 1 ? 'none' : 'var(--shadow-soft)' }}
               aria-label="Mes siguiente"
             >
               ›
@@ -635,17 +642,17 @@ export default function AnalisisClient({
           </div>
 
           {/* Total */}
-          <p className="text-xs font-bold uppercase tracking-wide text-center" style={{ color: '#6B6459' }}>Gasto total</p>
-          <p className="text-3xl font-black text-center mb-3" style={{ color: '#2D2D2D', fontVariantNumeric: 'tabular-nums' }}>
+          <p className="text-xs font-bold uppercase tracking-wide text-center" style={{ color: '#5B6660' }}>Gasto total</p>
+          <p className="text-3xl font-black text-center mb-3" style={{ color: '#18211D', fontVariantNumeric: 'tabular-nums' }}>
             {formatARS(monthExpense)}
           </p>
 
           {catRows.length === 0 ? (
-            <p className="text-sm text-center py-6" style={{ color: '#6B6459' }}>Sin gastos este mes.</p>
+            <p className="text-sm text-center py-6" style={{ color: '#5B6660' }}>Sin gastos este mes.</p>
           ) : (
             <>
               {/* Segmented bar */}
-              <div className="flex h-3 rounded-full overflow-hidden mb-4" style={{ background: '#F1ECE4' }}>
+              <div className="flex h-3 rounded-full overflow-hidden mb-4" style={{ background: '#EAF0ED' }}>
                 {segments.map((s, i) => (
                   <div key={i} style={{ width: `${(s.value / monthExpense) * 100}%`, background: s.color }} />
                 ))}
@@ -656,18 +663,18 @@ export default function AnalisisClient({
                 {catRows.map((r) => {
                   const pct = Math.round((r.value / monthExpense) * 100);
                   return (
-                    <button key={r.id} onClick={() => setDrillCat({ id: r.id, name: r.cat!.name, icon: r.cat!.icon })} className="flex items-center gap-3 py-2.5 text-left w-full">
+                    <button key={r.id} onClick={() => setDrillCat({ id: r.id, name: r.cat!.name, icon: r.cat!.icon })} className="flex items-center gap-3 py-2.5 px-2 -mx-2 rounded-2xl text-left w-full transition-colors hover:bg-[#F4F8F6] active:bg-[#EEF3F1]">
                       <span className="text-xl shrink-0">{r.cat!.icon}</span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{r.cat!.name}</span>
-                          <span className="text-sm font-black tabular-nums shrink-0" style={{ color: '#2D2D2D' }}>{formatARS(r.value)}</span>
+                          <span className="text-sm font-semibold truncate" style={{ color: '#18211D' }}>{r.cat!.name}</span>
+                          <span className="text-sm font-black tabular-nums shrink-0" style={{ color: '#18211D' }}>{formatARS(r.value)}</span>
                         </div>
                         <div className="flex items-center gap-2 mt-1">
-                          <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: '#F1ECE4' }}>
+                          <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: '#EAF0ED' }}>
                             <div className="h-full rounded-full" style={{ width: `${Math.max(pct, 2)}%`, background: r.color }} />
                           </div>
-                          <span className="text-[11px] font-semibold tabular-nums w-8 text-right" style={{ color: '#6B6459' }}>{pct}%</span>
+                          <span className="text-[11px] font-semibold tabular-nums w-8 text-right" style={{ color: '#5B6660' }}>{pct}%</span>
                         </div>
                       </div>
                     </button>
@@ -680,19 +687,19 @@ export default function AnalisisClient({
 
         {/* Top merchants (Spending by Payee) */}
         {topMerchants.rows.length > 0 && (
-          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>🏪 Top comercios · {bMonthLabel}</p>
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#5B6660' }}>🏪 Top comercios · {bMonthLabel}</p>
             <div className="flex flex-col gap-2.5">
               {topMerchants.rows.map((r) => {
                 const pct = topMerchants.total > 0 ? Math.round((r.value / topMerchants.total) * 100) : 0;
                 return (
                   <div key={r.name}>
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{r.name}</span>
-                      <span className="text-sm font-black tabular-nums ml-2 shrink-0" style={{ color: '#2D2D2D' }}>{formatARS(r.value)}</span>
+                      <span className="text-sm font-semibold truncate" style={{ color: '#18211D' }}>{r.name}</span>
+                      <span className="text-sm font-black tabular-nums ml-2 shrink-0" style={{ color: '#18211D' }}>{formatARS(r.value)}</span>
                     </div>
-                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#F1ECE4' }}>
-                      <div className="h-full rounded-full" style={{ width: `${pct}%`, background: '#7EC8A4' }} />
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#EAF0ED' }}>
+                      <div className="h-full rounded-full" style={{ width: `${pct}%`, background: '#2FA37C' }} />
                     </div>
                   </div>
                 );
@@ -703,17 +710,17 @@ export default function AnalisisClient({
 
         {/* Biggest single expenses */}
         {biggestExpenses.length > 0 && (
-          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>💸 Gastos más grandes · {bMonthLabel}</p>
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#5B6660' }}>💸 Gastos más grandes · {bMonthLabel}</p>
             <div className="flex flex-col gap-2.5">
               {biggestExpenses.map((e) => (
                 <div key={e.id} className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-base shrink-0" style={{ background: '#F9F5F0' }}>{e.cat?.icon || '🧾'}</div>
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-base shrink-0" style={{ background: '#FFE5E0', boxShadow: 'var(--shadow-soft)' }}>{e.cat?.icon || '🧾'}</div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{e.merchant || e.cat?.name || 'Gasto'}</p>
-                    <p className="text-[11px]" style={{ color: '#6B6459' }}>{e.date.slice(8, 10)}/{e.date.slice(5, 7)}{e.cat ? ` · ${e.cat.name}` : ''}</p>
+                    <p className="text-sm font-semibold truncate" style={{ color: '#18211D' }}>{e.merchant || e.cat?.name || 'Gasto'}</p>
+                    <p className="text-[11px]" style={{ color: '#5B6660' }}>{e.date.slice(8, 10)}/{e.date.slice(5, 7)}{e.cat ? ` · ${e.cat.name}` : ''}</p>
                   </div>
-                  <span className="text-sm font-black tabular-nums shrink-0" style={{ color: '#FF7F6B' }}>{formatARS(e.value)}</span>
+                  <span className="text-sm font-black tabular-nums shrink-0" style={{ color: '#FF6F61' }}>{formatARS(e.value)}</span>
                 </div>
               ))}
             </div>
@@ -721,25 +728,26 @@ export default function AnalisisClient({
         )}
 
         {/* Income vs expense trend (6M/12M, nominal or constant pesos) */}
-        <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+        <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
           {spendingInsight != null && (
-            <p className="text-base font-black mb-3 leading-snug" style={{ color: '#2D2D2D' }}>
+            <p className="text-base font-black mb-3 leading-snug" style={{ color: '#18211D' }}>
               {spendingInsight ? 'En promedio, gastás menos de lo que ganás. 🎉' : 'En promedio, estás gastando más de lo que ganás. ⚠️'}
             </p>
           )}
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>
               📈 Ingresos vs gastos · {trendRange === '12M' ? '12 meses' : '6 meses'}
             </p>
-            <div className="flex rounded-full p-0.5 gap-0.5" style={{ background: '#ECE5DC' }}>
+            <div className="flex rounded-full p-0.5 gap-0.5" style={{ background: '#E5EBE8' }}>
               {(['6M', '12M'] as const).map((r) => (
                 <button
                   key={r}
                   onClick={() => setTrendRange(r)}
-                  className="px-2.5 py-1 text-[10px] font-bold rounded-full transition-colors"
+                  className="px-2.5 py-1 text-[10px] font-black rounded-full transition-all"
                   style={{
                     background: trendRange === r ? '#FFFFFF' : 'transparent',
-                    color: trendRange === r ? '#2D2D2D' : '#6B6459',
+                    color: trendRange === r ? '#18211D' : '#5B6660',
+                    boxShadow: trendRange === r ? 'var(--shadow-soft)' : 'none',
                   }}
                 >
                   {r}
@@ -748,7 +756,7 @@ export default function AnalisisClient({
             </div>
           </div>
           <div className="flex items-center justify-between mb-2">
-            <div className="flex rounded-full p-0.5 gap-0.5" style={{ background: '#ECE5DC' }}>
+            <div className="flex rounded-full p-0.5 gap-0.5" style={{ background: '#E5EBE8' }}>
               {([
                 { key: false, label: '$ corrientes' },
                 { key: true, label: '$ constantes' },
@@ -756,10 +764,11 @@ export default function AnalisisClient({
                 <button
                   key={opt.label}
                   onClick={() => setConstantPesos(opt.key)}
-                  className="px-2.5 py-1 text-[10px] font-bold rounded-full transition-colors"
+                  className="px-2.5 py-1 text-[10px] font-black rounded-full transition-all"
                   style={{
                     background: constantPesos === opt.key ? '#FFFFFF' : 'transparent',
-                    color: constantPesos === opt.key ? '#2D2D2D' : '#6B6459',
+                    color: constantPesos === opt.key ? '#18211D' : '#5B6660',
+                    boxShadow: constantPesos === opt.key ? 'var(--shadow-soft)' : 'none',
                   }}
                 >
                   {opt.label}
@@ -767,17 +776,17 @@ export default function AnalisisClient({
               ))}
             </div>
             {inflationActive && (
-              <span className="text-[10px]" style={{ color: '#C4B9AE' }}>ajustado por inflación (INDEC)</span>
+              <span className="text-[10px]" style={{ color: '#B0BAB4' }}>ajustado por inflación (INDEC)</span>
             )}
           </div>
           <div className="flex items-center gap-4 mb-3 text-[11px]">
-            <span className="flex items-center gap-1.5" style={{ color: '#5BA886' }}>
-              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#7EC8A4' }} /> Ingresos
+            <span className="flex items-center gap-1.5" style={{ color: '#1F8A68' }}>
+              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#2FA37C' }} /> Ingresos
             </span>
-            <span className="flex items-center gap-1.5" style={{ color: '#E5604C' }}>
-              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#FF7F6B' }} /> Gastos
+            <span className="flex items-center gap-1.5" style={{ color: '#E25749' }}>
+              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#FF6F61' }} /> Gastos
             </span>
-            <span className="ml-auto" style={{ color: '#6B6459' }}>% = ahorro</span>
+            <span className="ml-auto" style={{ color: '#5B6660' }}>% = ahorro</span>
           </div>
           {/* 12 columns don't fit a phone width with fixed-width bars — let the chart scroll. */}
           <div className={trendRange === '12M' ? 'overflow-x-auto -mx-1 px-1' : undefined}>
@@ -786,12 +795,12 @@ export default function AnalisisClient({
             </div>
           </div>
           {yearTotals && (
-            <div className="flex items-center justify-between mt-3 pt-3" style={{ borderTop: '1px solid #ECE5DC' }}>
-              <span className="text-xs font-bold" style={{ color: '#6B6459' }}>Total del año</span>
+            <div className="flex items-center justify-between mt-3 pt-3" style={{ borderTop: '1px solid #E5EBE8' }}>
+              <span className="text-xs font-bold" style={{ color: '#5B6660' }}>Total del año</span>
               <span className="text-xs font-black" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                <span style={{ color: '#5BA886' }}>{formatARS(yearTotals.income)}</span>
-                <span style={{ color: '#C4B9AE' }}> · </span>
-                <span style={{ color: '#E5604C' }}>{formatARS(yearTotals.expense)}</span>
+                <span style={{ color: '#1F8A68' }}>{formatARS(yearTotals.income)}</span>
+                <span style={{ color: '#B0BAB4' }}> · </span>
+                <span style={{ color: '#E25749' }}>{formatARS(yearTotals.expense)}</span>
               </span>
             </div>
           )}
@@ -799,23 +808,23 @@ export default function AnalisisClient({
 
         {/* Income by source */}
         {incomeBySource.rows.length > 0 && (
-          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>💵 Ingresos por fuente · {bMonthLabel}</p>
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#5B6660' }}>💵 Ingresos por fuente · {bMonthLabel}</p>
             <div className="flex flex-col gap-2.5">
               {incomeBySource.rows.map((r, i) => {
                 const pct = incomeBySource.total > 0 ? Math.round((r.value / incomeBySource.total) * 100) : 0;
                 return (
                   <div key={r.cat?.id ?? `none-${i}`} className="flex items-center gap-3">
-                    <span className="text-base shrink-0">{r.cat?.icon || '💰'}</span>
-                    <span className="flex-1 text-sm font-semibold truncate" style={{ color: '#2D2D2D' }}>{r.cat?.name || 'Sin categoría'}</span>
-                    <span className="text-xs font-bold tabular-nums" style={{ color: '#6B6459' }}>{pct}%</span>
-                    <span className="text-sm font-black tabular-nums shrink-0 text-right" style={{ color: '#5BA886', minWidth: '5.5rem' }}>{formatARS(r.value)}</span>
+                    <span className="w-9 h-9 rounded-full flex items-center justify-center text-base shrink-0" style={{ background: '#DDF0E8', boxShadow: 'var(--shadow-soft)' }}>{r.cat?.icon || '💰'}</span>
+                    <span className="flex-1 text-sm font-semibold truncate" style={{ color: '#18211D' }}>{r.cat?.name || 'Sin categoría'}</span>
+                    <span className="text-xs font-bold tabular-nums" style={{ color: '#5B6660' }}>{pct}%</span>
+                    <span className="text-sm font-black tabular-nums shrink-0 text-right" style={{ color: '#1F8A68', minWidth: '5.5rem' }}>{formatARS(r.value)}</span>
                   </div>
                 );
               })}
-              <div className="flex items-center justify-between pt-2 mt-1" style={{ borderTop: '1px solid #ECE5DC' }}>
-                <span className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Total</span>
-                <span className="text-sm font-black tabular-nums" style={{ color: '#5BA886' }}>{formatARS(incomeBySource.total)}</span>
+              <div className="flex items-center justify-between pt-2 mt-1" style={{ borderTop: '1px solid #E5EBE8' }}>
+                <span className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>Total</span>
+                <span className="text-sm font-black tabular-nums" style={{ color: '#1F8A68' }}>{formatARS(incomeBySource.total)}</span>
               </div>
             </div>
           </div>
@@ -823,17 +832,17 @@ export default function AnalisisClient({
 
         {/* Per-person comparison */}
         {personRows.length > 1 && (
-          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6B6459' }}>👥 Quién gastó qué · este mes</p>
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#5B6660' }}>👥 Quién gastó qué · este mes</p>
             <div className="flex flex-col gap-3">
               {personRows.map((p, i) => (
                 <div key={p.id}>
                   <div className="flex justify-between items-baseline mb-1">
-                    <span className="text-sm font-bold" style={{ color: '#2D2D2D' }}>{p.name}</span>
-                    <span className="text-sm font-black" style={{ color: '#FF7F6B' }}>{formatARS(p.value)}</span>
+                    <span className="text-sm font-bold" style={{ color: '#18211D' }}>{p.name}</span>
+                    <span className="text-sm font-black" style={{ color: '#FF6F61' }}>{formatARS(p.value)}</span>
                   </div>
-                  <div className="h-2 rounded-full overflow-hidden" style={{ background: '#ECE5DC' }}>
-                    <div className="h-full rounded-full" style={{ width: `${(p.value / personMax) * 100}%`, background: i === 0 ? '#FF7F6B' : '#6FA8DC' }} />
+                  <div className="h-2 rounded-full overflow-hidden" style={{ background: '#E5EBE8' }}>
+                    <div className="h-full rounded-full" style={{ width: `${(p.value / personMax) * 100}%`, background: i === 0 ? '#FF6F61' : '#7AA6E6' }} />
                   </div>
                 </div>
               ))}
@@ -843,18 +852,18 @@ export default function AnalisisClient({
 
         {/* Subscriptions radar */}
         {subRows.length > 0 && (
-          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
             <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>📡 Suscripciones · este mes</p>
-              <span className="text-xs font-black" style={{ color: '#FF7F6B' }}>{formatARS(subsTotal)}</span>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>📡 Suscripciones · este mes</p>
+              <span className="text-xs font-black" style={{ color: '#FF6F61' }}>{formatARS(subsTotal)}</span>
             </div>
             <div className="flex flex-col gap-2">
               {subRows.map((r) => (
-                <button key={r.cat!.id} onClick={() => setDrillCat({ id: r.cat!.id, name: r.cat!.name, icon: r.cat!.icon })} className="flex items-center gap-2 text-left w-full">
+                <button key={r.cat!.id} onClick={() => setDrillCat({ id: r.cat!.id, name: r.cat!.name, icon: r.cat!.icon })} className="flex items-center gap-2 py-1.5 px-2 -mx-2 rounded-2xl text-left w-full transition-colors hover:bg-[#F4F8F6] active:bg-[#EEF3F1]">
                   <span className="text-lg">{r.cat!.icon}</span>
-                  <span className="text-sm flex-1 truncate" style={{ color: '#2D2D2D' }}>{r.cat!.name}</span>
-                  <span className="text-sm font-bold" style={{ color: '#2D2D2D' }}>{formatARS(r.value)}</span>
-                  <span className="text-[10px]" style={{ color: '#C4B9AE' }}>›</span>
+                  <span className="text-sm flex-1 truncate" style={{ color: '#18211D' }}>{r.cat!.name}</span>
+                  <span className="text-sm font-bold" style={{ color: '#18211D' }}>{formatARS(r.value)}</span>
+                  <span className="text-[10px]" style={{ color: '#B0BAB4' }}>›</span>
                 </button>
               ))}
             </div>
@@ -862,26 +871,26 @@ export default function AnalisisClient({
         )}
 
         {/* AI insights */}
-        <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+        <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
           <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6B6459' }}>Insights ✨</p>
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>Insights ✨</p>
             <button
               onClick={handleRefresh}
               disabled={refreshing}
-              className="text-xs font-bold px-3 py-1.5 rounded-full"
-              style={{ background: refreshing ? '#ECE5DC' : '#7EC8A4', color: refreshing ? '#6B6459' : '#FFFFFF' }}
+              className="text-xs font-black px-3.5 py-1.5 rounded-full transition-all active:scale-95"
+              style={{ background: refreshing ? '#E5EBE8' : '#2FA37C', color: refreshing ? '#5B6660' : '#FFFFFF', boxShadow: refreshing ? 'none' : 'var(--shadow-soft)' }}
             >
               {refreshing ? 'Analizando…' : 'Actualizar'}
             </button>
           </div>
           {insights.length === 0 ? (
-            <p className="text-sm text-center py-4" style={{ color: '#6B6459' }}>Tocá &quot;Actualizar&quot; para que la IA analice tus gastos.</p>
+            <p className="text-sm text-center py-4" style={{ color: '#5B6660' }}>Tocá &quot;Actualizar&quot; para que la IA analice tus gastos.</p>
           ) : (
             <div className="flex flex-col gap-2">
               {insights.map((ins) => {
                 const s = SEVERITY[(ins.severity as keyof typeof SEVERITY)] ?? SEVERITY.info;
                 return (
-                  <Link key={ins.id} href={`/insights/${ins.id}`} className="rounded-2xl p-3 flex items-start gap-2.5" style={{ background: s.bg }}>
+                  <Link key={ins.id} href={`/insights/${ins.id}`} className="rounded-2xl p-3 flex items-start gap-2.5 transition-all active:scale-[0.99]" style={{ background: s.bg, boxShadow: 'var(--shadow-soft)' }}>
                     <span className="text-lg shrink-0">{s.icon}</span>
                     <div className="min-w-0 flex-1">
                       <p className="font-black text-sm leading-tight" style={{ color: s.color }}>{ins.title}</p>
@@ -891,7 +900,7 @@ export default function AnalisisClient({
                   </Link>
                 );
               })}
-              <Link href="/insights" className="text-xs font-bold text-center pt-1" style={{ color: '#5BA886' }}>
+              <Link href="/insights" className="text-xs font-bold text-center pt-1" style={{ color: '#1F8A68' }}>
                 Ver todos los insights →
               </Link>
             </div>
@@ -900,15 +909,15 @@ export default function AnalisisClient({
       </div>
 
       {drillCat && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(45,45,45,0.4)' }} onClick={() => setDrillCat(null)}>
-          <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6" style={{ background: '#FFFFFF', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
-            <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#ECE5DC' }} />
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(20,28,24,0.45)' }} onClick={() => setDrillCat(null)}>
+          <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
+            <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#E5EBE8' }} />
             <div className="flex items-center gap-2 mb-1">
               <span className="text-2xl">{drillCat.icon}</span>
-              <h2 className="text-lg font-black" style={{ color: '#2D2D2D' }}>{drillCat.name}</h2>
+              <h2 className="text-lg font-black" style={{ color: '#18211D' }}>{drillCat.name}</h2>
             </div>
-            <p className="text-xs mb-4" style={{ color: '#6B6459' }}>Gasto de los últimos {trendMonths.length} meses (tu parte)</p>
-            <SingleBars rows={categoryTrend(drillCat.id)} color="#FF7F6B" />
+            <p className="text-xs mb-4" style={{ color: '#5B6660' }}>Gasto de los últimos {trendMonths.length} meses (tu parte)</p>
+            <SingleBars rows={categoryTrend(drillCat.id)} color="#FF6F61" />
           </div>
         </div>
       )}

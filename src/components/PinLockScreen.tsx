@@ -47,12 +47,12 @@ export function PinLockScreen() {
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-8"
-      style={{ background: '#F9F5F0' }}
+      style={{ background: '#F1F5F3' }}
     >
       {/* Title */}
       <div className="text-center">
-        <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#6B6459' }}>Morchis</p>
-        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Ingresá tu PIN</h1>
+        <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#5B6660' }}>Morchis</p>
+        <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>Ingresá tu PIN</h1>
       </div>
 
       {/* Dots */}
@@ -61,14 +61,14 @@ export function PinLockScreen() {
           <div
             key={i}
             className="w-4 h-4 rounded-full transition-colors"
-            style={{ background: i < digits.length ? '#7EC8A4' : '#ECE5DC' }}
+            style={{ background: i < digits.length ? '#2FA37C' : '#E5EBE8' }}
           />
         ))}
       </div>
 
       {/* Error */}
       {error && (
-        <p className="text-sm font-semibold text-center px-8" style={{ color: '#FF7F6B' }}>{error}</p>
+        <p className="text-sm font-semibold text-center px-8" style={{ color: '#FF6F61' }}>{error}</p>
       )}
 
       {/* Keypad */}
@@ -79,7 +79,7 @@ export function PinLockScreen() {
             onClick={handleConfirm}
             disabled={digits.length < 4}
             className="mt-4 w-full py-4 rounded-2xl font-bold text-white mx-4 disabled:opacity-40"
-            style={{ background: '#7EC8A4', width: 'calc(100% - 2rem)', marginLeft: '1rem' }}
+            style={{ background: '#2FA37C', width: 'calc(100% - 2rem)', marginLeft: '1rem' }}
           >
             Confirmar
           </button>

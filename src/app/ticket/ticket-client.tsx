@@ -257,10 +257,10 @@ export default function TicketClient({ profile }: { profile: Profile }) {
   const itemsSum = receipt ? receipt.items.reduce((s, it) => s + it.line_total, 0) : 0;
 
   return (
-    <div className="min-h-screen pb-24" style={{ background: '#F9F5F0' }}>
+    <div className="min-h-screen pb-24" style={{ background: '#F1F5F3' }}>
       <header className="px-5 pt-14 pb-4 flex items-center gap-3">
         <Link href="/mas" className="text-2xl">←</Link>
-        <h1 className="text-2xl font-black" style={{ color: '#2D2D2D' }}>Escanear comprobante 🧾</h1>
+        <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>Escanear comprobante 🧾</h1>
       </header>
 
       <input
@@ -279,10 +279,10 @@ export default function TicketClient({ profile }: { profile: Profile }) {
       <div className="px-4 flex flex-col gap-4">
         {/* Idle / capture */}
         {status === 'idle' && (
-          <div className="rounded-3xl p-6 text-center" style={{ background: '#FFFFFF' }}>
+          <div className="rounded-3xl p-6 text-center" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
             <p className="text-5xl mb-3">🧾</p>
-            <p className="font-bold mb-1" style={{ color: '#2D2D2D' }}>Subí un ticket o un comprobante</p>
-            <p className="text-sm mb-5" style={{ color: '#6B6459' }}>
+            <p className="font-bold mb-1" style={{ color: '#18211D' }}>Subí un ticket o un comprobante</p>
+            <p className="text-sm mb-5" style={{ color: '#5B6660' }}>
               Sirve para tickets de súper, facturas o capturas de notificaciones del banco/billetera
               (DiDi, Mercado Pago, etc.). La IA lo categoriza y detecta la moneda.
               ¿Ticket largo? Sacale varias fotos y subílas todas juntas: se leen como un único comprobante.
@@ -290,15 +290,15 @@ export default function TicketClient({ profile }: { profile: Profile }) {
             <div className="flex gap-3">
               <button
                 onClick={() => { fileRef.current?.setAttribute('capture', 'environment'); fileRef.current?.click(); }}
-                className="flex-1 py-3.5 rounded-2xl text-sm font-bold text-white"
-                style={{ background: '#FF7F6B' }}
+                className="flex-1 py-3.5 rounded-2xl text-sm font-bold text-white transition-all"
+                style={{ background: 'linear-gradient(135deg, #FF8173 0%, #E25749 100%)', boxShadow: 'var(--shadow-glow)' }}
               >
                 📷 Sacar foto
               </button>
               <button
                 onClick={() => { fileRef.current?.removeAttribute('capture'); fileRef.current?.click(); }}
-                className="flex-1 py-3.5 rounded-2xl text-sm font-bold"
-                style={{ background: '#E4F2EA', color: '#5BA886' }}
+                className="flex-1 py-3.5 rounded-2xl text-sm font-bold transition-all"
+                style={{ background: '#DDF0E8', color: '#1F8A68', boxShadow: 'var(--shadow-soft)' }}
               >
                 🖼️ Subir imagen
               </button>
@@ -308,10 +308,10 @@ export default function TicketClient({ profile }: { profile: Profile }) {
 
         {/* Working */}
         {status === 'working' && (
-          <div className="rounded-3xl p-8 text-center" style={{ background: '#FFFFFF' }}>
+          <div className="rounded-3xl p-8 text-center" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
             <p className="text-4xl mb-3 animate-pulse">🤖</p>
-            <p className="font-bold" style={{ color: '#2D2D2D' }}>Leyendo el comprobante…</p>
-            <p className="text-sm mt-1" style={{ color: '#6B6459' }}>Esto tarda unos segundos.</p>
+            <p className="font-bold" style={{ color: '#18211D' }}>Leyendo el comprobante…</p>
+            <p className="text-sm mt-1" style={{ color: '#5B6660' }}>Esto tarda unos segundos.</p>
           </div>
         )}
 
@@ -319,12 +319,12 @@ export default function TicketClient({ profile }: { profile: Profile }) {
         {status === 'review' && receipt && (
           <>
             {/* Merchant + the hero total */}
-            <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
+            <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
               <input
                 value={receipt.merchant}
                 onChange={(e) => setReceipt({ ...receipt, merchant: e.target.value })}
                 className="w-full text-lg font-black outline-none bg-transparent"
-                style={{ color: '#2D2D2D' }}
+                style={{ color: '#18211D' }}
                 placeholder="Comercio"
               />
               <input
@@ -332,26 +332,27 @@ export default function TicketClient({ profile }: { profile: Profile }) {
                 value={receipt.date}
                 onChange={(e) => setReceipt({ ...receipt, date: e.target.value })}
                 className="mt-0.5 text-xs outline-none bg-transparent"
-                style={{ color: '#6B6459' }}
+                style={{ color: '#5B6660' }}
               />
 
-              <div className="flex items-end justify-between gap-3 mt-4 pt-4" style={{ borderTop: '1px solid #F1ECE4' }}>
+              <div className="flex items-end justify-between gap-3 mt-4 pt-4" style={{ borderTop: '1px solid #EAF0ED' }}>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: '#A89B8C' }}>Total</p>
+                  <p className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: '#8C968F' }}>Total</p>
                   <MoneyInput
                     value={receipt.total}
                     onChange={(n) => setReceipt({ ...receipt, total: n })}
                     className="w-full text-3xl font-black outline-none bg-transparent tabular-nums"
-                    style={{ color: '#FF7F6B' }}
+                    style={{ color: '#FF6F61' }}
                   />
                 </div>
                 {/* Currency toggle — the AI detects it, but you can correct it. */}
                 <button
                   onClick={() => setReceipt({ ...receipt, currency: receipt.currency === 'USD' ? 'ARS' : 'USD' })}
-                  className="text-sm font-black px-4 py-2 rounded-2xl shrink-0"
+                  className="text-sm font-black px-4 py-2.5 rounded-2xl shrink-0 transition-all"
                   style={{
-                    background: receipt.currency === 'USD' ? '#FFF1EE' : '#E4F2EA',
-                    color: receipt.currency === 'USD' ? '#FF7F6B' : '#5BA886',
+                    background: receipt.currency === 'USD' ? '#FFF0EE' : '#DDF0E8',
+                    color: receipt.currency === 'USD' ? '#FF6F61' : '#1F8A68',
+                    boxShadow: 'var(--shadow-soft)',
                   }}
                 >
                   {receipt.currency} ⇄
@@ -366,14 +367,14 @@ export default function TicketClient({ profile }: { profile: Profile }) {
             </div>
 
             {/* Category, account + split */}
-            <div className="rounded-3xl p-5 flex flex-col gap-3" style={{ background: '#FFFFFF' }}>
+            <div className="rounded-3xl p-5 flex flex-col gap-3" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wide mb-1.5" style={{ color: '#A89B8C' }}>Categoría</p>
+                <p className="text-[11px] font-bold uppercase tracking-wide mb-1.5" style={{ color: '#8C968F' }}>Categoría</p>
                 <select
                   value={categoryId}
                   onChange={(e) => setCategoryId(e.target.value)}
                   className="w-full px-3 py-2.5 rounded-2xl border text-sm bg-white outline-none"
-                  style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+                  style={{ borderColor: '#E5EBE8', color: '#18211D' }}
                 >
                   {categories.map((c) => (
                     <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
@@ -381,13 +382,13 @@ export default function TicketClient({ profile }: { profile: Profile }) {
                 </select>
               </div>
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wide mb-1.5" style={{ color: '#A89B8C' }}>Cuenta</p>
+                <p className="text-[11px] font-bold uppercase tracking-wide mb-1.5" style={{ color: '#8C968F' }}>Cuenta</p>
                 {/* Which account paid + whether the expense is split with the partner */}
                 <select
                   value={accountId}
                   onChange={(e) => setAccountId(e.target.value)}
                   className="w-full px-3 py-2.5 rounded-2xl border text-sm bg-white outline-none"
-                  style={{ borderColor: '#ECE5DC', color: '#2D2D2D' }}
+                  style={{ borderColor: '#E5EBE8', color: '#18211D' }}
                 >
                   <option value="none">💳 Sin cuenta</option>
                   {accounts.map((a) => (
@@ -398,13 +399,13 @@ export default function TicketClient({ profile }: { profile: Profile }) {
               {partner && (
                 <button
                   onClick={() => setIsShared(!isShared)}
-                  className="w-full flex items-center justify-between px-4 py-3 rounded-2xl border text-sm"
-                  style={{ borderColor: isShared ? '#7EC8A4' : '#ECE5DC', background: isShared ? '#F0FAF5' : '#FFFFFF' }}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-2xl border text-sm transition-all"
+                  style={{ borderColor: isShared ? '#2FA37C' : '#E5EBE8', background: isShared ? '#EAF6F1' : '#FFFFFF', boxShadow: isShared ? 'var(--shadow-soft)' : 'none' }}
                 >
-                  <span style={{ color: '#2D2D2D' }}>👫 Compartido con {partnerName} (50/50)</span>
+                  <span style={{ color: '#18211D' }}>👫 Compartido con {partnerName} (50/50)</span>
                   <span
                     className="text-xs font-black px-2.5 py-1 rounded-full"
-                    style={{ background: isShared ? '#7EC8A4' : '#F1ECE4', color: isShared ? '#FFFFFF' : '#A89B8C' }}
+                    style={{ background: isShared ? '#2FA37C' : '#EAF0ED', color: isShared ? '#FFFFFF' : '#8C968F' }}
                   >
                     {isShared ? 'Sí' : 'No'}
                   </span>
@@ -414,8 +415,8 @@ export default function TicketClient({ profile }: { profile: Profile }) {
 
             {/* Group breakdown */}
             {groupTotals.length > 0 && (
-              <div className="rounded-3xl p-5" style={{ background: '#FFFFFF' }}>
-                <p className="text-xs font-bold uppercase tracking-wide mb-4" style={{ color: '#6B6459' }}>En qué se fue</p>
+              <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+                <p className="text-xs font-bold uppercase tracking-wide mb-4" style={{ color: '#5B6660' }}>En qué se fue</p>
                 <div className="flex flex-col gap-3.5">
                   {groupTotals.map(({ g, total }) => {
                     const meta = GROUP_META[g] ?? GROUP_META.otros;
@@ -424,11 +425,11 @@ export default function TicketClient({ profile }: { profile: Profile }) {
                       <div key={g}>
                         <div className="flex items-center gap-2 mb-1.5">
                           <span className="text-sm">{meta.icon}</span>
-                          <span className="text-sm capitalize flex-1 truncate" style={{ color: '#2D2D2D' }}>{g}</span>
-                          <span className="text-[11px] font-semibold tabular-nums" style={{ color: '#A89B8C' }}>{pct}%</span>
+                          <span className="text-sm capitalize flex-1 truncate" style={{ color: '#18211D' }}>{g}</span>
+                          <span className="text-[11px] font-semibold tabular-nums" style={{ color: '#8C968F' }}>{pct}%</span>
                           <span className="text-sm font-bold tabular-nums" style={{ color: meta.color }}>{fmt(total)}</span>
                         </div>
-                        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#F1ECE4' }}>
+                        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#EAF0ED' }}>
                           <div className="h-full rounded-full" style={{ width: `${Math.max(pct, 3)}%`, background: meta.color }} />
                         </div>
                       </div>
@@ -441,24 +442,24 @@ export default function TicketClient({ profile }: { profile: Profile }) {
             {/* Items — only for itemized receipts; a single-charge proof
                 (e.g. a DiDi notification) has none, so we skip the list. */}
             {receipt.items.length > 0 && (
-            <div className="rounded-3xl p-3" style={{ background: '#FFFFFF' }}>
-              <p className="text-xs font-bold uppercase tracking-wide mb-2 px-2" style={{ color: '#6B6459' }}>
+            <div className="rounded-3xl p-3" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+              <p className="text-xs font-bold uppercase tracking-wide mb-2 px-2" style={{ color: '#5B6660' }}>
                 Productos ({receipt.items.length})
               </p>
               <div className="flex flex-col">
                 {receipt.items.map((it, i) => (
-                  <div key={i} className="flex items-center gap-2 px-2 py-2" style={{ borderTop: i > 0 ? '1px solid #ECE5DC' : 'none' }}>
+                  <div key={i} className="flex items-center gap-2 px-2 py-2.5 rounded-xl transition-colors hover:bg-[#F4F8F6]" style={{ borderTop: i > 0 ? '1px solid #E5EBE8' : 'none' }}>
                     <input
                       value={it.name}
                       onChange={(e) => updateItem(i, { name: e.target.value })}
                       className="flex-1 min-w-0 text-sm outline-none bg-transparent"
-                      style={{ color: '#2D2D2D' }}
+                      style={{ color: '#18211D' }}
                     />
                     <select
                       value={it.group}
                       onChange={(e) => updateItem(i, { group: e.target.value })}
                       className="text-[11px] rounded-lg px-1.5 py-1 border bg-white outline-none"
-                      style={{ borderColor: '#ECE5DC', color: '#6B6459' }}
+                      style={{ borderColor: '#E5EBE8', color: '#5B6660' }}
                     >
                       {GROUPS.map((g) => <option key={g} value={g}>{GROUP_META[g]?.icon} {g}</option>)}
                     </select>
@@ -466,9 +467,9 @@ export default function TicketClient({ profile }: { profile: Profile }) {
                       value={it.line_total}
                       onChange={(n) => updateItem(i, { line_total: n })}
                       className="w-20 text-sm font-bold text-right outline-none bg-transparent"
-                      style={{ color: '#2D2D2D' }}
+                      style={{ color: '#18211D' }}
                     />
-                    <button onClick={() => removeItem(i)} className="text-xs px-1" style={{ color: '#FF7F6B' }}>✕</button>
+                    <button onClick={() => removeItem(i)} className="text-xs px-1" style={{ color: '#FF6F61' }}>✕</button>
                   </div>
                 ))}
               </div>
@@ -485,7 +486,7 @@ export default function TicketClient({ profile }: { profile: Profile }) {
             <button
               onClick={() => { setReceipt(null); setStatus('idle'); }}
               className="w-full py-3 rounded-2xl text-sm font-bold"
-              style={{ color: '#6B6459' }}
+              style={{ color: '#5B6660' }}
             >
               Descartar
             </button>
@@ -494,22 +495,22 @@ export default function TicketClient({ profile }: { profile: Profile }) {
 
         {/* Done */}
         {status === 'done' && (
-          <div className="rounded-3xl p-6 text-center" style={{ background: '#FFFFFF' }}>
+          <div className="rounded-3xl p-6 text-center" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
             <p className="text-5xl mb-3">✅</p>
-            <p className="font-bold mb-1" style={{ color: '#2D2D2D' }}>¡Comprobante guardado!</p>
-            <p className="text-sm mb-5" style={{ color: '#6B6459' }}>Quedó cargado en tus movimientos.</p>
+            <p className="font-bold mb-1" style={{ color: '#18211D' }}>¡Comprobante guardado!</p>
+            <p className="text-sm mb-5" style={{ color: '#5B6660' }}>Quedó cargado en tus movimientos.</p>
             <div className="flex gap-3">
               <button
                 onClick={() => { setReceipt(null); setStatus('idle'); }}
-                className="flex-1 py-3.5 rounded-2xl text-sm font-bold"
-                style={{ background: '#E4F2EA', color: '#5BA886' }}
+                className="flex-1 py-3.5 rounded-2xl text-sm font-bold transition-all"
+                style={{ background: '#DDF0E8', color: '#1F8A68', boxShadow: 'var(--shadow-soft)' }}
               >
                 Escanear otro
               </button>
               <Link
                 href="/movimientos"
-                className="flex-1 py-3.5 rounded-2xl text-sm font-bold text-white flex items-center justify-center"
-                style={{ background: '#7EC8A4' }}
+                className="flex-1 py-3.5 rounded-2xl text-sm font-bold text-white flex items-center justify-center transition-all"
+                style={{ background: 'linear-gradient(135deg, #34AD84 0%, #1F8A68 100%)', boxShadow: 'var(--shadow-glow)' }}
               >
                 Ver movimientos
               </Link>
