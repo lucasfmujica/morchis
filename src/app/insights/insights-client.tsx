@@ -29,6 +29,8 @@ export default function InsightsClient({ householdId, profileId }: { householdId
   const supabase = createClient();
   const qc = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
+  // Brief "✓ Listo" flash on the refresh button after a successful analysis.
+  const [justDone, setJustDone] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
 
@@ -83,6 +85,8 @@ export default function InsightsClient({ householdId, profileId }: { householdId
         return;
       }
       toast.success(`${data.generated} insight${data.generated === 1 ? '' : 's'} actualizado${data.generated === 1 ? '' : 's'} ✓`);
+      setJustDone(true);
+      setTimeout(() => setJustDone(false), 1600);
     } catch (e) {
       console.error(e);
       toast.error('No se pudieron actualizar los insights. Probá de nuevo.');
@@ -105,7 +109,7 @@ export default function InsightsClient({ householdId, profileId }: { householdId
             boxShadow: refreshing ? 'none' : 'var(--shadow-glow)',
           }}
         >
-          {refreshing ? 'Analizando…' : 'Actualizar'}
+          {refreshing ? 'Analizando…' : justDone ? <span key="done" className="inline-block animate-pop">✓ Listo</span> : 'Actualizar'}
         </button>
       </header>
 

@@ -10,12 +10,14 @@ import { ReceiptItemsSheet } from '@/components/ReceiptItemsSheet';
 import { BottomNav } from '@/components/BottomNav';
 import { EmptyState } from '@/components/EmptyState';
 import { SwipeAction } from '@/components/SwipeAction';
+import { UpcomingStrip } from '@/components/UpcomingStrip';
 import { useHaptics } from '@/hooks/useHaptics';
 import { exportTransactionsToCSV } from '@/lib/csvExport';
 import { formatARS } from '@/lib/format';
 import { ChartTooltip } from '@/components/ChartTooltip';
 import { FLAG_COLORS, flagHex } from '@/lib/flags';
 import { todayISO, weekRange, shortDM } from '@/lib/date';
+import { normalizeText } from '@/lib/text';
 import {
   BarChart,
   Bar,
@@ -59,12 +61,6 @@ type Tx = {
   installment_total: number | null;
   categories: { name: string; icon: string } | null;
 };
-
-// Accent-insensitive matching: NFD + strip combining marks + lowercase, so
-// "cafe" finds "Café" and "Martinez" finds "Martínez".
-function normalizeText(s: string): string {
-  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-}
 
 export default function MovimientosClient({ profile, partnerProfileId }: MovimientosClientProps) {
   const supabase = createClient();
@@ -431,7 +427,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   return (
     <div className="min-h-screen pb-24" style={{ background: '#F1F5F3' }}>
       {/* Header */}
-      <header className="px-5 pt-14 pb-4 flex items-center justify-between">
+      <header className="px-5 pt-14 pb-4 flex items-center justify-between sticky top-0 z-20" style={{ background: '#F1F5F3' }}>
         <div>
           <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>Movimientos</h1>
           <p className="text-xs mt-0.5" style={{ color: '#5B6660' }}>
@@ -681,6 +677,9 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
           </button>
         </div>
       )}
+
+      {/* Próximos vencimientos (reglas recurrentes) — solo en la vista normal */}
+      {!searchActive && !selectMode && <UpcomingStrip householdId={profile.household_id} />}
 
       {/* Transactions grouped by day */}
       <div className="px-4 flex flex-col gap-4">

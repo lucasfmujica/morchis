@@ -10,6 +10,7 @@ import { useHaptics } from '@/hooks/useHaptics';
 import { useDragToDismiss } from '@/hooks/useDragToDismiss';
 import { createClient } from '@/lib/supabase';
 import { formatARS, formatUSD, usdToArs, arsToUsd, parseMoney, roundMoney, formatTypedAmount, evalMoneyExpr, hasMoneyOperator, formatExprDisplay } from '@/lib/format';
+import { normalizeMerchant } from '@/lib/text';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { todayISO, toLocalISO } from '@/lib/date';
 import { triggerBudgetAlerts } from '@/lib/notifyBudgets';
@@ -152,6 +153,41 @@ export function AddTransactionSheet({
     },
   });
 
+  // Payee memory: which category the household usually files each merchant
+  // under, so typing a known merchant can pre-pick its category (YNAB-style).
+  // For each normalized merchant we keep the most-frequent category.
+  const { data: merchantCategoryMap } = useQuery({
+    queryKey: ['merchant-category', householdId],
+    enabled: !!householdId && open,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('transactions')
+        .select('merchant, category_id')
+        .eq('household_id', householdId)
+        .not('merchant', 'is', null)
+        .not('category_id', 'is', null)
+        .order('occurred_on', { ascending: false })
+        .limit(400);
+      const tally = new Map<string, Map<string, number>>();
+      for (const row of data ?? []) {
+        if (!row.merchant || !row.category_id) continue;
+        const key = normalizeMerchant(row.merchant);
+        if (!key) continue;
+        const inner = tally.get(key) ?? new Map<string, number>();
+        inner.set(row.category_id, (inner.get(row.category_id) ?? 0) + 1);
+        tally.set(key, inner);
+      }
+      const best = new Map<string, string>();
+      for (const [key, inner] of tally) {
+        let topId: string | null = null;
+        let topN = 0;
+        for (const [cid, n] of inner) if (n > topN) { topN = n; topId = cid; }
+        if (topId) best.set(key, topId);
+      }
+      return best;
+    },
+  });
+
   // Default split suggestion: when the household divides "según ingresos"
   // (households.split_mode), a new shared expense starts at each person's
   // share of the previous closed month's income instead of 50/50. The user
@@ -207,6 +243,11 @@ export function AddTransactionSheet({
   const [raw, setRaw] = useState('');
   const [txType, setTxType] = useState<'expense' | 'income' | 'transfer'>('expense');
   const [categoryId, setCategoryId] = useState<string | null>(null);
+  // Payee-memory autofill: `categoryTouched` means the user picked a category by
+  // hand, so the merchant suggestion never overrides it; `suggestedCat` drives
+  // the dismissible "Categoría sugerida" hint under the merchant field.
+  const [categoryTouched, setCategoryTouched] = useState(false);
+  const [suggestedCat, setSuggestedCat] = useState<{ id: string; name: string; icon: string } | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
   // Destination account for a transfer (money arrives here). Origin reuses accountId.
   const [toAccountId, setToAccountId] = useState<string | null>(null);
@@ -256,6 +297,10 @@ export function AddTransactionSheet({
 
   useEffect(() => {
     if (open) {
+      // Reset payee-memory state every time the sheet opens. Editing counts as a
+      // manual choice (don't re-suggest over an existing category).
+      setSuggestedCat(null);
+      setCategoryTouched(!!editTx);
       if (editTx) {
         setRaw(String(editTx.amount).replace('.', ','));
         setTxType(editTx.type as 'expense' | 'income' | 'transfer');
@@ -962,6 +1007,8 @@ export function AddTransactionSheet({
                 onClick={() => {
                   setTxType(t);
                   setCategoryId(null);
+                  setCategoryTouched(false);
+                  setSuggestedCat(null);
                 }}
                 className="flex-1 py-2.5 text-[13px] font-bold transition-all"
                 style={{
@@ -983,7 +1030,7 @@ export function AddTransactionSheet({
               {visibleCategories.map((c) => (
                 <button
                   key={c.id}
-                  onClick={() => setCategoryId(categoryId === c.id ? null : c.id)}
+                  onClick={() => { setCategoryTouched(true); setSuggestedCat(null); setCategoryId(categoryId === c.id ? null : c.id); }}
                   className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-2xl text-sm font-semibold border transition-all"
                   style={{
                     background: categoryId === c.id ? '#DDF0E8' : '#FFFFFF',
@@ -1343,10 +1390,38 @@ export function AddTransactionSheet({
               type="text"
               placeholder="Descripción (opcional)"
               value={merchant}
-              onChange={(e) => setMerchant(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setMerchant(v);
+                // Payee memory: when the typed merchant exactly matches a known
+                // payee, pre-pick its usual category — unless the user already
+                // chose one by hand, or we're editing an existing movement.
+                if (editTx || categoryTouched || isTransfer) return;
+                const key = normalizeMerchant(v);
+                const catId = key ? merchantCategoryMap?.get(key) : undefined;
+                if (catId) {
+                  const cat = categories.find((c) => c.id === catId);
+                  if (cat) { setCategoryId(catId); setSuggestedCat({ id: cat.id, name: cat.name, icon: cat.icon }); }
+                } else if (suggestedCat) {
+                  // Typing diverged from the matched payee — undo the auto-pick.
+                  setSuggestedCat(null);
+                  setCategoryId(null);
+                }
+              }}
               className="w-full px-4 py-3 rounded-2xl text-sm border bg-white outline-none"
               style={{ borderColor: '#E5EBE8', color: '#18211D' }}
             />
+            {suggestedCat && (
+              <button
+                type="button"
+                onClick={() => { setSuggestedCat(null); setCategoryId(null); setCategoryTouched(true); }}
+                className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
+                style={{ background: '#DDF0E8', color: '#1F8A68' }}
+              >
+                <span>↩︎ Categoría sugerida: {suggestedCat.icon} {suggestedCat.name}</span>
+                <span style={{ color: '#5B6660' }}>✕</span>
+              </button>
+            )}
           </div>
 
           {/* breathing room so the last field clears the sticky save bar */}

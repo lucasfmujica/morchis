@@ -181,6 +181,22 @@
   animation: skeleton-shimmer 1.4s ease-in-out infinite;
 }
 
+/* Celebratory pop — overshoots slightly then settles (success/confirmation). */
+@keyframes pop-in {
+  0% { transform: scale(0.85); opacity: 0; }
+  60% { transform: scale(1.08); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.animate-pop {
+  animation: pop-in 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Delight: bounce the toast's status icon on entrance (icon transform only, so
+   it never affects toast layout/positioning). */
+[data-sonner-toast] [data-icon] {
+  animation: pop-in 0.34s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
 /* Respect users who prefer reduced motion: kill entrance/shimmer/press effects. */
 @media (prefers-reduced-motion: reduce) {
   *,

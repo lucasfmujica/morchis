@@ -8,9 +8,10 @@ import { useInflation } from '@/hooks/useInflation';
 import { BottomNav } from '@/components/BottomNav';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { MonthlyBars, SingleBars, lastSixMonths } from '@/components/MonthlyBars';
+import { CashFlowForecast } from '@/components/CashFlowForecast';
 import { netWorthAt, assetBalance, cardMonthSpend, type AccountRow, type AccountTx } from '@/lib/accounts';
 import { ageOfMoneyDays, type CashFlow } from '@/lib/ageOfMoney';
-import { myShareArs, type SplitRow } from '@/lib/budgets';
+import { myShareArs, isFixedExpense, type SplitRow } from '@/lib/budgets';
 import { toLocalISO } from '@/lib/date';
 import { formatARS } from '@/lib/format';
 import { toast } from 'sonner';
@@ -115,7 +116,7 @@ export default function AnalisisClient({
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('id, amount, type, occurred_on, category_id, profile_id, currency, is_shared, scope, merchant, splits(payer_profile_id, ower_profile_id, amount)')
+        .select('id, amount, type, occurred_on, category_id, profile_id, currency, is_shared, is_fixed, source, scope, merchant, splits(payer_profile_id, ower_profile_id, amount)')
         .eq('household_id', profile.household_id)
         .gte('occurred_on', trendRangeStart)
         // Don't pull future-dated installment rows — Análisis only looks back.
@@ -219,6 +220,8 @@ export default function AnalisisClient({
     profile_id: string;
     currency: string;
     is_shared: boolean;
+    is_fixed: boolean;
+    source: string | null;
     scope: string;
     merchant: string | null;
     splits: SplitRow[] | null;
@@ -288,6 +291,24 @@ export default function AnalisisClient({
     const subsTotal = subRows.reduce((s, r) => s + r.value, 0);
     return { monthExpense, catRows, segments, subRows, subsTotal };
   }, [allTxns, categories, scopeProfileId, bMonth, todayStr, expenseShareArs]);
+
+  // Fixed vs variable spend for the breakdown month — "% comprometido" tells you
+  // how much of the month is locked in (rent, subscriptions, recurring) vs
+  // discretionary. Uses isFixedExpense (is_fixed || source==='recurring') and
+  // the same per-person share math as the rest of Análisis.
+  const fixedSplit = useMemo(() => {
+    let fixed = 0;
+    let variable = 0;
+    for (const t of allTxns) {
+      if (t.type !== 'expense' || !t.occurred_on.startsWith(bMonth) || t.occurred_on > todayStr) continue;
+      const share = expenseShareArs(t, scopeProfileId);
+      if (share <= 0) continue;
+      if (isFixedExpense(t)) fixed += share;
+      else variable += share;
+    }
+    const total = fixed + variable;
+    return { fixed, variable, total, pct: total > 0 ? fixed / total : 0 };
+  }, [allTxns, bMonth, todayStr, scopeProfileId, expenseShareArs]);
 
   // Per-person comparison — each person's current-month *share* (so a shared
   // bill is split, not credited entirely to whoever fronted it). Always across
@@ -506,7 +527,7 @@ export default function AnalisisClient({
 
   return (
     <div className="min-h-screen pb-24" style={{ background: '#F1F5F3' }}>
-      <header className="px-5 pt-14 pb-4">
+      <header className="px-5 pt-14 pb-4 sticky top-0 z-20" style={{ background: '#F1F5F3' }}>
         <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>Análisis 📊</h1>
       </header>
 
@@ -528,7 +549,7 @@ export default function AnalisisClient({
         ))}
       </div>
 
-      <div className="px-4 flex flex-col gap-4">
+      <div key={scope} className="px-4 flex flex-col gap-4 animate-in fade-in duration-300">
         {/* Net worth hero — premium two-zone: gradient headline + white trend chart */}
         <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-pop)' }}>
           <div
@@ -580,6 +601,9 @@ export default function AnalisisClient({
           })()}
         </div>
 
+        {/* Cash-flow projection (household-level, forward-looking) */}
+        <CashFlowForecast householdId={profile.household_id} accounts={accounts} accountTx={accountTx} />
+
         {/* Age of Money — YNAB Reflect signature metric */}
         {ageOfMoney != null && (
           <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
@@ -624,7 +648,7 @@ export default function AnalisisClient({
               onClick={() => bIdx > 0 && setBreakdownMonth(months[bIdx - 1].key)}
               disabled={bIdx <= 0}
               className="w-8 h-8 rounded-full text-lg flex items-center justify-center transition-all active:scale-95"
-              style={{ background: '#FFFFFF', color: bIdx <= 0 ? '#CFD8D3' : '#5B6660', boxShadow: bIdx <= 0 ? 'none' : 'var(--shadow-soft)' }}
+              style={{ background: '#FFFFFF', color: bIdx <= 0 ? '#B0BAB4' : '#5B6660', boxShadow: bIdx <= 0 ? 'none' : 'var(--shadow-soft)' }}
               aria-label="Mes anterior"
             >
               ‹
@@ -634,7 +658,7 @@ export default function AnalisisClient({
               onClick={() => bIdx >= 0 && bIdx < months.length - 1 && setBreakdownMonth(months[bIdx + 1].key)}
               disabled={bIdx >= months.length - 1}
               className="w-8 h-8 rounded-full text-lg flex items-center justify-center transition-all active:scale-95"
-              style={{ background: '#FFFFFF', color: bIdx >= months.length - 1 ? '#CFD8D3' : '#5B6660', boxShadow: bIdx >= months.length - 1 ? 'none' : 'var(--shadow-soft)' }}
+              style={{ background: '#FFFFFF', color: bIdx >= months.length - 1 ? '#B0BAB4' : '#5B6660', boxShadow: bIdx >= months.length - 1 ? 'none' : 'var(--shadow-soft)' }}
               aria-label="Mes siguiente"
             >
               ›
@@ -684,6 +708,31 @@ export default function AnalisisClient({
             </>
           )}
         </div>
+
+        {/* Fixed vs variable — how much of the month is committed */}
+        {fixedSplit.total > 0 && (
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+            <div className="flex items-center justify-between mb-3 gap-2">
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>📌 Fijos vs variables · {bMonthLabel}</p>
+              <span className="text-xs font-black px-2.5 py-1 rounded-full" style={{ background: '#EAF0ED', color: '#4E84E0' }}>
+                {Math.round(fixedSplit.pct * 100)}% comprometido
+              </span>
+            </div>
+            <div className="flex h-2.5 rounded-full overflow-hidden mb-3" style={{ background: '#EAF0ED' }}>
+              <div style={{ width: `${(fixedSplit.fixed / fixedSplit.total) * 100}%`, background: '#4E84E0' }} />
+              <div style={{ width: `${(fixedSplit.variable / fixedSplit.total) * 100}%`, background: '#FF6F61' }} />
+            </div>
+            {[
+              { label: '📌 Fijos', v: fixedSplit.fixed, c: '#4E84E0' },
+              { label: '🛒 Variables', v: fixedSplit.variable, c: '#FF6F61' },
+            ].map((r) => (
+              <div key={r.label} className="flex items-center justify-between py-1">
+                <span className="text-sm" style={{ color: '#5B6660' }}>{r.label}</span>
+                <span className="text-sm font-black tabular-nums" style={{ color: r.c }}>{formatARS(Math.round(r.v))}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Top merchants (Spending by Payee) */}
         {topMerchants.rows.length > 0 && (

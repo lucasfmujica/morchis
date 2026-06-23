@@ -1,5 +1,7 @@
 'use client';
 
+import { formatARS } from '@/lib/format';
+
 export interface MonthBar {
   key: string;
   label: string;
@@ -28,7 +30,11 @@ export function MonthlyBars({ rows, showRate = true }: { rows: MonthBar[]; showR
   return (
     <div className="flex items-end gap-2" style={{ height: showRate ? 150 : 132 }}>
       {rows.map((r) => (
-        <div key={r.key} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+        <div
+          key={r.key}
+          className="flex-1 flex flex-col items-center gap-1 h-full justify-end"
+          title={`${r.label} · Ingresos ${formatARS(r.income)} · Gastos ${formatARS(r.expense)}${r.rate != null ? ` · Ahorro ${Math.round(r.rate * 100)}%` : ''}`}
+        >
           <div className="flex items-end gap-1 w-full justify-center" style={{ height: 110 }}>
             <div
               className="rounded-t-md"
@@ -102,12 +108,13 @@ export function SingleBars({
             onClick={() => onSelect(r.key)}
             aria-label={`Ver ${r.label}`}
             aria-pressed={selected}
+            title={`${r.label}: ${formatARS(r.value)}`}
             className="flex-1 flex flex-col items-center gap-1 h-full justify-end"
           >
             {bar}
           </button>
         ) : (
-          <div key={r.key} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+          <div key={r.key} title={`${r.label}: ${formatARS(r.value)}`} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
             {bar}
           </div>
         );

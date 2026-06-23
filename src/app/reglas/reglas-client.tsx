@@ -7,6 +7,7 @@ import { formatARS, formatUSD, parseMoney } from '@/lib/format';
 import { useFx } from '@/hooks/useFx';
 import { useEnvelope } from '@/hooks/useEnvelope';
 import { toLocalISO, monthKey, shortDayMonth } from '@/lib/date';
+import { daysUntil, monthlyEquivalent, dayOfMonth, advanceNextRun, whenLabel } from '@/lib/recurrence';
 import { MoneyInput } from '@/components/MoneyInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { SecondaryButton } from '@/components/SecondaryButton';
@@ -90,49 +91,6 @@ const CADENCE_LABEL: Record<string, string> = {
 
 const WEEKDAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
-// Count how many times a given weekday (0=Sun..6=Sat) falls in a month.
-function weekdayOccurrencesInMonth(weekday: number, year: number, month: number): number {
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  let count = 0;
-  for (let day = 1; day <= daysInMonth; day++) {
-    if (new Date(year, month, day).getDay() === weekday) count++;
-  }
-  return count;
-}
-
-// Normalize any cadence to the actual amount for the current month so totals
-// reflect the real number of occurrences (e.g. a weekly expense on Thursdays
-// counts the exact number of Thursdays in this month, not an average of 4.33;
-// a biweekly one counts its actual 14-day cycle dates, which can be 1–3).
-function monthlyEquivalent(amount: number, cadence: string, anchorDay: number | null, nextRun: string | null): number {
-  if (cadence === 'weekly') {
-    const now = new Date();
-    const weekday = anchorDay != null ? ((anchorDay % 7) + 7) % 7 : now.getDay();
-    return amount * weekdayOccurrencesInMonth(weekday, now.getFullYear(), now.getMonth());
-  }
-  if (cadence === 'biweekly') {
-    // Walk the 14-day cycle anchored at next_run and count the occurrences
-    // landing in the current month — same exact-count idea as the weekly case.
-    // (ms arithmetic is safe: Argentina has no DST, so days are always 24h.)
-    if (!nextRun) return amount * 2;
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
-    const step = 14 * 86400000;
-    const monthStart = new Date(year, month, 1).getTime();
-    let t = new Date(nextRun + 'T00:00:00').getTime();
-    // Align to the first cycle date on/after the start of this month.
-    while (t - step >= monthStart) t -= step;
-    while (t < monthStart) t += step;
-    let count = 0;
-    for (let d = new Date(t); d.getFullYear() === year && d.getMonth() === month; d = new Date(d.getTime() + step)) {
-      count++;
-    }
-    return amount * count;
-  }
-  return amount;
-}
-
 // --- Subscription detection -------------------------------------------------
 
 // Normalization for merchant names and rule labels: lowercase, accents
@@ -181,13 +139,6 @@ interface SubscriptionSuggestion {
   categoryId: string | null;
 }
 
-function daysUntil(dateStr: string): number {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const d = new Date(dateStr + 'T00:00:00');
-  return Math.round((d.getTime() - today.getTime()) / 86400000);
-}
-
 function UpcomingBills({ rules, availableByCat, onEdit }: { rules: Rule[]; availableByCat: Map<string, number>; onEdit: (r: Rule) => void }) {
   const { arsPerUsd } = useFx();
   const upcoming = rules
@@ -199,12 +150,6 @@ function UpcomingBills({ rules, availableByCat, onEdit }: { rules: Rule[]; avail
   const totalExpense = upcoming
     .filter((r) => r.direction === 'expense')
     .reduce((s, r) => s + toArs(r.amount, r.currency, arsPerUsd), 0);
-
-  function whenLabel(d: number) {
-    if (d === 0) return 'Hoy';
-    if (d === 1) return 'Mañana';
-    return `En ${d} días`;
-  }
 
   return (
     <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
@@ -335,15 +280,6 @@ function FixedSummaryCard({ rules }: { rules: Rule[] }) {
   );
 }
 
-// A day-of-month for a given year/month, clamped to that month's length — mirrors
-// the cron's `least(anchor_day, last_day_of_month)`. Without this, anchor day 31
-// in February makes `new Date(year, 1, 31)` overflow into March and the schedule
-// drifts. So anchor_day 31 means "último día del mes".
-function dayOfMonth(year: number, month: number, day: number): Date {
-  const lastDay = new Date(year, month + 1, 0).getDate();
-  return new Date(year, month, Math.min(day, lastDay));
-}
-
 function nextRunFromAnchor(cadence: string, anchorDay: number): string {
   // Compare against start-of-today so a rule created ON its anchor day gets
   // next_run = today: the cron posts rules with next_run <= current_date, so
@@ -372,17 +308,6 @@ function nextRunFromAnchor(cadence: string, anchorDay: number): string {
     return toLocalISO(d);
   }
   return toLocalISO(today);
-}
-
-// Advance next_run by one cycle WITHOUT posting — used to skip a single
-// occurrence. Mirrors the cron's advancement (+7 / +14 / same anchor day next
-// month, clamped to the month's length).
-function advanceNextRun(rule: Rule): string {
-  const base = new Date((rule.next_run ?? toLocalISO(new Date())) + 'T00:00:00');
-  if (rule.cadence === 'weekly') return toLocalISO(new Date(base.getTime() + 7 * 86400000));
-  if (rule.cadence === 'biweekly') return toLocalISO(new Date(base.getTime() + 14 * 86400000));
-  const anchor = rule.anchor_day ?? base.getDate();
-  return toLocalISO(dayOfMonth(base.getFullYear(), base.getMonth() + 1, anchor));
 }
 
 // Map a rule's cadence/amount to a monthly-budget target. Monthly bills become a

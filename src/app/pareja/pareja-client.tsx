@@ -200,14 +200,15 @@ function SettleUpSheet({
         </div>
 
         <div
-          className="rounded-2xl p-4 mb-4 text-center"
-          style={{ background: iPay ? '#FFE5E0' : '#DDF0E8' }}
+          key={settledExactly ? 'settled' : 'paying'}
+          className={`rounded-2xl p-4 mb-4 text-center transition-colors ${settledExactly ? 'animate-pop' : ''}`}
+          style={{ background: settledExactly ? '#DDF0E8' : iPay ? '#FFE5E0' : '#DDF0E8' }}
         >
-          <p className="text-3xl font-black" style={{ color: iPay ? '#E25749' : '#1F8A68' }}>
-            {fmt(amount)}
+          <p className="text-3xl font-black" style={{ color: settledExactly ? '#1F8A68' : iPay ? '#E25749' : '#1F8A68' }}>
+            {settledExactly ? '🤝 ¡A mano!' : fmt(amount)}
           </p>
-          <p className="text-xs mt-1" style={{ color: iPay ? '#E25749' : '#1F8A68', opacity: 0.75 }}>
-            {payerName} → {receiverName}
+          <p className="text-xs mt-1" style={{ color: settledExactly ? '#1F8A68' : iPay ? '#E25749' : '#1F8A68', opacity: 0.75 }}>
+            {settledExactly ? `${fmt(amount)} · ${payerName} → ${receiverName}` : `${payerName} → ${receiverName}`}
           </p>
         </div>
 
