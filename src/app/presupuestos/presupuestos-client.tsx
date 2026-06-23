@@ -11,6 +11,7 @@ import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { MoneyInput } from '@/components/MoneyInput';
 import { useDragToDismiss } from '@/hooks/useDragToDismiss';
 import { monthKey } from '@/lib/date';
+import { toast } from 'sonner';
 
 interface Profile {
   id: string;
@@ -193,7 +194,7 @@ function CategoryDetailSheet({
             <button onClick={() => { if (cName.trim()) { onRenameCategory(cName.trim(), cIcon || category.icon); setEditingName(false); } }} className="px-4 rounded-xl text-sm font-bold text-white" style={{ background: '#2FA37C' }}>OK</button>
           </div>
         )}
-        {editingName && editable && groups.length > 0 && (
+        {editable && groups.length > 0 && (
           <div className="flex items-center gap-2 mb-4">
             <span className="text-xs font-bold shrink-0" style={{ color: '#5B6660' }}>Grupo</span>
             <select
@@ -427,8 +428,9 @@ function CategoryDetailSheet({
 }
 
 const CATEGORY_ICONS = [
-  '🛒', '🍕', '☕', '🍷', '🚇', '🚗', '💊', '🏥', '🎭', '📚', '✈️', '🏠',
-  '💼', '💵', '📱', '💻', '👗', '💅', '🎮', '🎁', '🐾', '🌿', '⚽', '💡',
+  '🏷️', '🛒', '🍕', '☕', '🍷', '🚇', '🚗', '💊', '🏥', '🎭', '📚', '✈️',
+  '🏠', '💼', '💵', '📱', '💻', '👗', '💅', '🎮', '🎁', '🐾', '🌿', '⚽',
+  '💡', '💳', '🧾', '🏦', '📉', '🎯',
 ];
 
 function NewCategorySheet({ groups, onClose, onCreate }: { groups: EnvelopeCategory[]; onClose: () => void; onCreate: (name: string, icon: string, isGroup: boolean, parentId: string | null) => void }) {
@@ -456,18 +458,30 @@ function NewCategorySheet({ groups, onClose, onCreate }: { groups: EnvelopeCateg
           style={{ background: '#F1F5F3', color: '#18211D', borderColor: name ? '#2FA37C' : '#E5EBE8' }}
         />
 
-        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#5B6660' }}>Ícono</p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#5B6660' }}>
+          Ícono <span className="font-normal normal-case" style={{ color: '#8C968F' }}>· elegiste {icon}</span>
+        </p>
         <div className="flex flex-wrap gap-2 mb-5">
-          {CATEGORY_ICONS.map((ic) => (
-            <button
-              key={ic}
-              onClick={() => setIcon(ic)}
-              className="w-10 h-10 rounded-xl text-xl flex items-center justify-center"
-              style={{ background: icon === ic ? '#2FA37C' : '#F1F5F3', outline: icon === ic ? '2px solid #1F8A68' : 'none' }}
-            >
-              {ic}
-            </button>
-          ))}
+          {CATEGORY_ICONS.map((ic) => {
+            const sel = icon === ic;
+            return (
+              <button
+                key={ic}
+                type="button"
+                onClick={() => setIcon(ic)}
+                aria-pressed={sel}
+                className="w-10 h-10 rounded-xl text-xl flex items-center justify-center border-2 transition-transform"
+                style={{
+                  background: sel ? '#DDF0E8' : '#F1F5F3',
+                  borderColor: sel ? '#2FA37C' : 'transparent',
+                  boxShadow: sel ? '0 0 0 3px rgba(47,163,124,0.30)' : 'none',
+                  transform: sel ? 'scale(1.08)' : 'none',
+                }}
+              >
+                {ic}
+              </button>
+            );
+          })}
         </div>
 
         <button
@@ -1076,8 +1090,16 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
         .from('categories')
         .insert({ household_id: profile.household_id, name, icon, kind: 'expense', is_default: false, is_group: !!isGroup, parent_id: isGroup ? null : (parentId ?? null) });
       if (error) throw error;
+      return { isGroup: !!isGroup, name };
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['categories', profile.household_id] }); qc.invalidateQueries({ queryKey: ['envelope-categories', profile.household_id] }); },
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['categories', profile.household_id] });
+      qc.invalidateQueries({ queryKey: ['envelope-categories', profile.household_id] });
+      // An empty group doesn't show in the list yet (it appears once it has a
+      // category), so confirm explicitly and hint how to fill it.
+      toast.success(res.isGroup ? `Grupo "${res.name}" creado — asignale categorías desde cada una` : `Categoría "${res.name}" creada`);
+    },
+    onError: () => toast.error('No se pudo crear. Probá de nuevo.'),
   });
 
   const renameCategory = useMutation({
