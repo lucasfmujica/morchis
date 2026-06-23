@@ -1319,7 +1319,7 @@ export function AddTransactionSheet({
                 )}
               </div>
               <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-                {[1, 3, 6, 9, 12, 18, 24].map((n) => (
+                {[1, 2, 3, 6, 9, 12, 18, 24].map((n) => (
                   <button
                     key={n}
                     onClick={() => setInstallments(n)}

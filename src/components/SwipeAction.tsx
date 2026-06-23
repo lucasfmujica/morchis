@@ -77,10 +77,14 @@ export function SwipeAction({ children, onDelete, disabled }: SwipeActionProps) 
       onTouchEnd={onTouchEnd}
       onClickCapture={onClickCapture}
     >
-      {/* Delete affordance behind the row, revealed on left-swipe. */}
+      {/* Delete affordance behind the row, revealed on left-swipe. It's purely
+          visual — delete commits from the swipe gesture in onTouchEnd — so it
+          must never intercept taps, or it would cover the row (an absolute
+          inset-0 overlay paints above static content) and only the
+          relatively-positioned bits below would stay clickable. */}
       <div
         className="absolute inset-0 flex items-center justify-end pr-5"
-        style={{ background: '#FF6F61', opacity: dx < 0 ? 1 : 0 }}
+        style={{ background: '#FF6F61', opacity: dx < 0 ? 1 : 0, pointerEvents: 'none' }}
       >
         <span className="text-white font-black text-sm">🗑️ Borrar</span>
       </div>

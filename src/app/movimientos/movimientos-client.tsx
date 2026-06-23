@@ -755,29 +755,29 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                         ? `${acctName(tx.account_id)} → ${acctName(tx.transfer_account_id)}`
                         : tx.merchant || tx.categories?.name || 'Sin categoría'}
                     </p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
+                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 mt-0.5">
                       {tx.categories?.name && tx.merchant && (
-                        <span className="text-xs font-semibold" style={{ color: catColorById.get(tx.category_id ?? '') ?? '#5B6660' }}>{tx.categories.name}</span>
+                        <span className="text-xs font-semibold whitespace-nowrap shrink-0" style={{ color: catColorById.get(tx.category_id ?? '') ?? '#5B6660' }}>{tx.categories.name}</span>
                       )}
                       {tx.is_shared && (
-                        <span className="text-xs px-1.5 py-0.5 rounded-md font-semibold" style={{ background: '#FFE5E0', color: '#FF6F61' }}>
+                        <span className="text-xs px-1.5 py-0.5 rounded-md font-semibold whitespace-nowrap shrink-0" style={{ background: '#FFE5E0', color: '#FF6F61' }}>
                           Compartido
                         </span>
                       )}
                       {tx.scope === 'household' && (
-                        <span className="text-xs px-1.5 py-0.5 rounded-md font-semibold" style={{ background: '#DDF0E8', color: '#1F8A68' }}>
+                        <span className="text-xs px-1.5 py-0.5 rounded-md font-semibold whitespace-nowrap shrink-0" style={{ background: '#DDF0E8', color: '#1F8A68' }}>
                           Hogar
                         </span>
                       )}
                       {tx.installment_total && tx.installment_total > 1 && (
-                        <span className="text-xs px-1.5 py-0.5 rounded-md font-semibold" style={{ background: '#E5EBE8', color: '#5B6660' }}>
+                        <span className="text-xs px-1.5 py-0.5 rounded-md font-semibold whitespace-nowrap shrink-0" style={{ background: '#E5EBE8', color: '#5B6660' }}>
                           Cuota {tx.installment_number}/{tx.installment_total}
                         </span>
                       )}
                       {!selectMode && itemTxIds.has(tx.id) && (
                         <span
                           onClick={(e) => { e.stopPropagation(); setItemsTx(tx); }}
-                          className="text-xs px-1.5 py-0.5 rounded-md font-semibold cursor-pointer"
+                          className="text-xs px-1.5 py-0.5 rounded-md font-semibold cursor-pointer whitespace-nowrap shrink-0"
                           style={{ background: '#FBF1D8', color: '#C79A2B' }}
                         >
                           🧾 Productos
