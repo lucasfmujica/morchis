@@ -915,13 +915,19 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
 
   const env = useEnvelope(profile.household_id, targetProfileId, month);
 
-  // What the partner owes me (net > 0). When I front a shared expense my cash
-  // drops by the whole bill but my envelope only by my share, so this receivable
-  // sits invisibly inside "Para asignar" until I'm paid back — surfacing it here
-  // explains why the number looks lower than my cash suggests. From my own
-  // perspective only (the couple balance is computed as mine), so the partner-view.
+  // The couple balance, surfaced from BOTH sides so each person treats that money
+  // right. net > 0 = the partner owes me (receivable): when I front a shared
+  // expense my cash drops by the whole bill but my envelope only by my share, so
+  // it sits invisibly inside "Para asignar" until I'm paid back — the chip explains
+  // why the number looks lower than my cash suggests, and that it IS coming back.
+  // net < 0 = I owe the partner (payable): their share of a gasto they fronted hit
+  // my envelope but never my cash, so that money is still sitting in my account and
+  // INFLATES "Para asignar" — the chip warns me to set it aside, not budget it.
+  // From my own perspective only (the couple balance is computed as mine), so it's
+  // gated to my view.
   const { net: coupleNet } = useCoupleBalance(profile.household_id, profile.id, partner?.id);
   const receivable = editable && coupleNet > 0 ? Math.round(coupleNet) : 0;
+  const payable = editable && coupleNet < 0 ? Math.round(-coupleNet) : 0;
 
   const paymentCatOwner = useMemo(() => {
     const m = new Map<string, string | null>();
@@ -1273,7 +1279,15 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
           <div className="mt-3 flex items-center gap-2 rounded-2xl px-3 py-2" style={{ background: '#DDF0E8' }}>
             <span className="text-base">💸</span>
             <p className="text-[11px] leading-snug flex-1" style={{ color: '#5B6660' }}>
-              <b style={{ color: '#1F8A68' }}>{partner?.nickname || 'Tu pareja'} te debe {format(receivable)}</b> — plata que fronteaste. Te baja “Para asignar” hasta que te la devuelva.
+              <b style={{ color: '#1F8A68' }}>{partner?.nickname || 'Tu pareja'} te debe {format(receivable)}</b> — plata que fronteaste. Te baja “Para asignar” hasta que te la devuelva. Contá con que vuelve. ✓
+            </p>
+          </div>
+        )}
+        {payable > 0 && (
+          <div className="mt-3 flex items-center gap-2 rounded-2xl px-3 py-2" style={{ background: '#FFE5E0' }}>
+            <span className="text-base">⚠️</span>
+            <p className="text-[11px] leading-snug flex-1" style={{ color: '#5B6660' }}>
+              <b style={{ color: '#E25749' }}>Le debés {format(payable)} a {partner?.nickname || 'tu pareja'}</b> — gastos que fronteó. Esa plata todavía está en tus cuentas y te <b>infla</b> “Para asignar”. Apartala para saldar, no la presupuestes.
             </p>
           </div>
         )}

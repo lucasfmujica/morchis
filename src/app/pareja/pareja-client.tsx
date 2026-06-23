@@ -10,7 +10,7 @@ import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { InvitePartnerModal } from '@/components/InvitePartnerModal';
 import { formatARS } from '@/lib/format';
 import { MoneyInput } from '@/components/MoneyInput';
-import { todayISO, toLocalISO } from '@/lib/date';
+import { todayISO, toLocalISO, shortDayMonth } from '@/lib/date';
 import { toast } from 'sonner';
 import Link from 'next/link';
 
@@ -32,6 +32,28 @@ interface SettleAccount {
   type: string;
   currency: string;
   owner_profile_id?: string | null;
+}
+
+/** One shared gasto someone fronted, for the per-category double-entry sheet. */
+interface SharedTx {
+  id: string;
+  merchant: string | null;
+  occurred_on: string;
+  amountArs: number;
+}
+
+/** A shared category's combined spend plus who-owes-whom breakdown (all ARS). */
+interface SharedCatDetail {
+  key: string;
+  name: string;
+  icon: string;
+  amount: number;
+  /** Partner's share of the gastos I fronted → partner owes me this. */
+  owedToMe: number;
+  /** My share of the gastos the partner fronted → I owe partner this. */
+  iOwe: number;
+  myTxs: SharedTx[];
+  partnerTxs: SharedTx[];
 }
 
 function SettleUpSheet({
@@ -335,6 +357,113 @@ function SettleUpSheet({
   );
 }
 
+// Double-entry breakdown for one shared category: a column for each person with
+// the gastos they fronted, and a reconciliation showing how the per-category net
+// (who owes whom) is reached. Opened by tapping a category in the breakdown.
+function CategorySplitSheet({
+  detail,
+  myName,
+  partnerName,
+  fmt,
+  onClose,
+}: {
+  detail: SharedCatDetail;
+  myName: string;
+  partnerName: string;
+  fmt: (n: number) => string;
+  onClose: () => void;
+}) {
+  const paidByMe = detail.myTxs.reduce((s, t) => s + t.amountArs, 0);
+  const paidByPartner = detail.partnerTxs.reduce((s, t) => s + t.amountArs, 0);
+  // Each person's fair share of the combined spend. My share = the part of what I
+  // paid that's mine (paid − owedToMe) plus the part of the partner's gastos
+  // that's mine (iOwe). The two shares always add up to the category total.
+  const myShare = paidByMe - detail.owedToMe + detail.iOwe;
+  const partnerShare = paidByPartner - detail.iOwe + detail.owedToMe;
+  // Net from my perspective: >0 partner owes me, <0 I owe partner.
+  const net = Math.round(detail.owedToMe - detail.iOwe);
+
+  const Column = ({ name, txs, total, accent }: { name: string; txs: SharedTx[]; total: number; accent: string }) => (
+    <div className="flex-1 min-w-0">
+      <div className="px-3 py-2 text-center" style={{ background: accent }}>
+        <p className="text-[11px] font-black truncate" style={{ color: '#FFFFFF' }}>{name}</p>
+        <p className="text-sm font-black tabular-nums" style={{ color: '#FFFFFF' }}>{fmt(total)}</p>
+      </div>
+      <div className="flex flex-col">
+        {txs.length === 0 ? (
+          <p className="text-[11px] text-center py-3" style={{ color: '#8C968F' }}>No pagó nada acá</p>
+        ) : (
+          txs.map((t, i) => (
+            <div key={t.id} className="px-3 py-2" style={{ borderTop: i > 0 ? '1px solid #E5EBE8' : 'none' }}>
+              <p className="text-[11px] font-semibold truncate" style={{ color: '#18211D' }}>{t.merchant || detail.name}</p>
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[10px]" style={{ color: '#8C968F' }}>{shortDayMonth(t.occurred_on)}</span>
+                <span className="text-[11px] font-bold tabular-nums" style={{ color: '#18211D' }}>{fmt(t.amountArs)}</span>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center animate-in fade-in duration-200" style={{ background: 'rgba(20,28,24,0.45)' }} onClick={onClose}>
+      <div
+        className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 max-h-[88vh] overflow-y-auto animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
+        style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-pop)', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ background: '#E5EBE8' }} />
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-2xl">{detail.icon}</span>
+          <h2 className="text-lg font-black flex-1 min-w-0 truncate" style={{ color: '#18211D' }}>{detail.name}</h2>
+        </div>
+        <p className="text-xs mb-4" style={{ color: '#5B6660' }}>Total compartido este mes · <strong>{fmt(detail.amount)}</strong></p>
+
+        {/* Double entry — what each person fronted */}
+        <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: '#5B6660' }}>Quién pagó qué</p>
+        <div className="flex rounded-2xl overflow-hidden mb-4" style={{ background: '#F1F5F3', border: '1px solid #E5EBE8' }}>
+          <Column name={myName} txs={detail.myTxs} total={paidByMe} accent="#34AD84" />
+          <div className="w-px" style={{ background: '#E5EBE8' }} />
+          <Column name={partnerName} txs={detail.partnerTxs} total={paidByPartner} accent="#4E84E0" />
+        </div>
+
+        {/* Reconciliation — how the net is reached */}
+        <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: '#5B6660' }}>Cómo se reparte</p>
+        <div className="rounded-2xl overflow-hidden mb-4" style={{ background: '#F1F5F3' }}>
+          {[
+            { l: 'Pagó', a: fmt(paidByMe), b: fmt(paidByPartner) },
+            { l: 'Le corresponde', a: fmt(Math.round(myShare)), b: fmt(Math.round(partnerShare)) },
+          ].map((r, i) => (
+            <div key={r.l} className="grid grid-cols-[1fr_auto_auto] gap-2 px-4 py-2.5 items-center" style={{ borderTop: i > 0 ? '1px solid #E5EBE8' : 'none' }}>
+              <span className="text-xs" style={{ color: '#5B6660' }}>{r.l}</span>
+              <span className="text-xs font-bold tabular-nums text-right w-20" style={{ color: '#18211D' }}>{r.a}</span>
+              <span className="text-xs font-bold tabular-nums text-right w-20" style={{ color: '#18211D' }}>{r.b}</span>
+            </div>
+          ))}
+          <div className="grid grid-cols-[1fr_auto_auto] gap-2 px-4 py-2.5 items-center" style={{ borderTop: '1px solid #E5EBE8', background: '#FFFFFF' }}>
+            <span className="text-xs font-bold" style={{ color: '#18211D' }}>Diferencia</span>
+            <span className="text-xs font-black tabular-nums text-right w-20" style={{ color: net > 0 ? '#1F8A68' : net < 0 ? '#E25749' : '#5B6660' }}>{net >= 0 ? '+' : ''}{fmt(net)}</span>
+            <span className="text-xs font-black tabular-nums text-right w-20" style={{ color: net < 0 ? '#1F8A68' : net > 0 ? '#E25749' : '#5B6660' }}>{net <= 0 ? '+' : ''}{fmt(-net)}</span>
+          </div>
+        </div>
+
+        {/* Plain-language result */}
+        <div className="rounded-2xl p-4 text-center" style={{ background: Math.abs(net) < 1 ? '#DDF0E8' : net > 0 ? '#DDF0E8' : '#FFE5E0' }}>
+          <p className="text-sm font-black" style={{ color: Math.abs(net) < 1 ? '#1F8A68' : net > 0 ? '#1F8A68' : '#E25749' }}>
+            {Math.abs(net) < 1
+              ? '🤝 Están a mano en esta categoría'
+              : net > 0
+                ? `${partnerName} te debe ${fmt(net)} acá`
+                : `Le debés ${fmt(-net)} a ${partnerName} acá`}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ParejaClient({
   profile,
   partner,
@@ -349,6 +478,8 @@ export default function ParejaClient({
   const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
   const [settleOpen, setSettleOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  // Which shared category's double-entry breakdown is open (its category key).
+  const [detailKey, setDetailKey] = useState<string | null>(null);
 
   const myName = profile.nickname || profile.display_name || 'Yo';
 
@@ -434,7 +565,7 @@ export default function ParejaClient({
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('amount, type, currency, scope, profile_id, category_id, is_shared, categories(name, icon), splits(payer_profile_id, ower_profile_id, amount)')
+        .select('id, merchant, occurred_on, amount, type, currency, scope, profile_id, category_id, is_shared, categories(name, icon), splits(payer_profile_id, ower_profile_id, amount)')
         .eq('household_id', profile.household_id)
         .gte('occurred_on', monthStart)
         .order('occurred_on', { ascending: false });
@@ -457,19 +588,27 @@ export default function ParejaClient({
   // Category breakdown for shared expenses. `amount` is the full combined spend;
   // `owedToMe`/`iOwe` come from the split rows (ARS) so each category shows who's
   // carrying whose share THIS month — net > 0 means the partner owes me there.
+  // `myTxs`/`partnerTxs` keep the individual gastos each person fronted so the
+  // detail sheet can show the full double-entry breakdown (who paid what + how the
+  // net is reached).
   type SplitRow = { payer_profile_id: string; ower_profile_id: string; amount: number };
-  const sharedByCategory: Record<string, { name: string; icon: string; amount: number; owedToMe: number; iOwe: number }> = {};
+  const sharedByCategory: Record<string, SharedCatDetail> = {};
   for (const t of expenses.filter((t) => t.is_shared)) {
     const cat = (t as unknown as { categories: { name: string; icon: string } | null }).categories;
     const key = t.category_id ?? 'sin-categoria';
     if (!sharedByCategory[key]) {
-      sharedByCategory[key] = { name: cat?.name ?? 'Sin categoría', icon: cat?.icon ?? '🏷️', amount: 0, owedToMe: 0, iOwe: 0 };
+      sharedByCategory[key] = { key, name: cat?.name ?? 'Sin categoría', icon: cat?.icon ?? '🏷️', amount: 0, owedToMe: 0, iOwe: 0, myTxs: [], partnerTxs: [] };
     }
-    sharedByCategory[key].amount += toArs(t.amount, t.currency);
+    const entry = sharedByCategory[key];
+    const amountArs = toArs(t.amount, t.currency);
+    entry.amount += amountArs;
+    const txRow: SharedTx = { id: t.id, merchant: t.merchant ?? null, occurred_on: t.occurred_on, amountArs };
+    if (t.profile_id === profile.id) entry.myTxs.push(txRow);
+    else if (partner && t.profile_id === partner.id) entry.partnerTxs.push(txRow);
     const splits = ((t as unknown as { splits: SplitRow[] | null }).splits) ?? [];
     for (const s of splits) {
-      if (s.payer_profile_id === profile.id && s.ower_profile_id === partner?.id) sharedByCategory[key].owedToMe += s.amount;
-      else if (partner && s.payer_profile_id === partner.id && s.ower_profile_id === profile.id) sharedByCategory[key].iOwe += s.amount;
+      if (s.payer_profile_id === profile.id && s.ower_profile_id === partner?.id) entry.owedToMe += s.amount;
+      else if (partner && s.payer_profile_id === partner.id && s.ower_profile_id === profile.id) entry.iOwe += s.amount;
     }
   }
   const sharedCats = Object.values(sharedByCategory).sort((a, b) => b.amount - a.amount);
@@ -670,8 +809,11 @@ export default function ParejaClient({
       {/* Shared category breakdown */}
       {sharedCats.length > 0 && (
         <div className="mx-4 rounded-3xl p-5 mb-4 shadow-sm" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
-          <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#5B6660' }}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-0.5" style={{ color: '#5B6660' }}>
             Gastos compartidos por categoría
+          </p>
+          <p className="text-[11px] mb-3" style={{ color: '#8C968F' }}>
+            Tocá una categoría para ver quién pagó qué y cómo se reparte.
           </p>
           <div className="flex flex-col gap-2">
             {sharedCats.map((cat) => {
@@ -679,13 +821,20 @@ export default function ParejaClient({
               // Net of this month's split rows for the category: who's owed what.
               const net = Math.round(cat.owedToMe - cat.iOwe);
               return (
-                <div key={cat.name}>
+                <button
+                  key={cat.key}
+                  onClick={() => setDetailKey(cat.key)}
+                  className="text-left w-full -mx-1 px-1 py-1 rounded-xl transition-colors active:bg-[#F1F5F3]"
+                >
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
                       <span>{cat.icon}</span>
                       <p className="text-sm font-semibold" style={{ color: '#18211D' }}>{cat.name}</p>
                     </div>
-                    <p className="text-sm font-bold" style={{ color: '#18211D' }}>{f(cat.amount)}</p>
+                    <div className="flex items-center gap-1">
+                      <p className="text-sm font-bold" style={{ color: '#18211D' }}>{f(cat.amount)}</p>
+                      <span className="text-xs" style={{ color: '#B0BAB4' }}>›</span>
+                    </div>
                   </div>
                   <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#E5EBE8' }}>
                     <div
@@ -700,7 +849,7 @@ export default function ParejaClient({
                         : `Le debés ${f(-net)} a ${partner.name} acá`}
                     </p>
                   )}
-                </div>
+                </button>
               );
             })}
           </div>
@@ -739,6 +888,16 @@ export default function ParejaClient({
       )}
 
       <InvitePartnerModal open={inviteOpen} onClose={() => setInviteOpen(false)} />
+
+      {partner && detailKey && sharedByCategory[detailKey] && (
+        <CategorySplitSheet
+          detail={sharedByCategory[detailKey]}
+          myName={myName}
+          partnerName={partner.name}
+          fmt={f}
+          onClose={() => setDetailKey(null)}
+        />
+      )}
     </div>
   );
 }
