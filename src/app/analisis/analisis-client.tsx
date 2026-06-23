@@ -527,7 +527,7 @@ export default function AnalisisClient({
 
   return (
     <div className="min-h-screen pb-24" style={{ background: '#F1F5F3' }}>
-      <header className="px-5 pt-14 pb-4 sticky top-0 z-20" style={{ background: '#F1F5F3' }}>
+      <header className="px-5 pt-14 pb-4 sticky top-0 z-20 md:static" style={{ background: '#F1F5F3' }}>
         <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>Análisis 📊</h1>
       </header>
 

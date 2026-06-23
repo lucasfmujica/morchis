@@ -22,6 +22,8 @@ interface UpcomingRule {
   currency: 'ARS' | 'USD';
   next_run: string | null;
   is_variable: boolean;
+  scope: 'personal' | 'household';
+  profile_id: string;
 }
 
 const HORIZON_DAYS = 14;
@@ -30,21 +32,22 @@ function fmtMoney(amount: number, currency: string): string {
   return currency === 'USD' ? formatUSD(amount) : formatARS(amount);
 }
 
-export function UpcomingStrip({ householdId }: { householdId: string }) {
+export function UpcomingStrip({ householdId, profileId }: { householdId: string; profileId: string }) {
   const supabase = createClient();
   const { arsPerUsd } = useFx();
   const [open, setOpen] = useState(false);
 
   const { data: rules = [] } = useQuery({
-    queryKey: ['upcoming-rules', householdId],
+    queryKey: ['upcoming-rules', householdId, profileId],
     enabled: !!householdId,
     queryFn: async () => {
       const { data } = await supabase
         .from('recurring_rules')
-        .select('id, direction, label, amount, currency, next_run, is_variable')
+        .select('id, direction, label, amount, currency, next_run, is_variable, scope, profile_id')
         .eq('household_id', householdId)
         .eq('active', true);
-      return (data ?? []) as UpcomingRule[];
+      // Cada uno ve sus reglas personales + las del hogar; las personales del otro quedan ocultas.
+      return ((data ?? []) as UpcomingRule[]).filter((r) => r.scope === 'household' || r.profile_id === profileId);
     },
   });
 

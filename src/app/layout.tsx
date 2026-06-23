@@ -49,7 +49,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
       </head>
       <body className="min-h-screen bg-[#F1F5F3] text-[#18211D] antialiased" style={{ fontFamily: 'var(--font-nunito), system-ui, sans-serif' }}>
-        <Providers><AppLockWrapper><PullToRefresh><div className="md:max-w-3xl md:mx-auto">{children}</div></PullToRefresh></AppLockWrapper></Providers>
+        <Providers><AppLockWrapper><PullToRefresh><div className="md:max-w-3xl md:mx-auto md:pt-8">{children}</div></PullToRefresh></AppLockWrapper></Providers>
         <Toaster position="top-center" richColors />
         <script
           dangerouslySetInnerHTML={{

@@ -427,7 +427,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   return (
     <div className="min-h-screen pb-24" style={{ background: '#F1F5F3' }}>
       {/* Header */}
-      <header className="px-5 pt-14 pb-4 flex items-center justify-between sticky top-0 z-20" style={{ background: '#F1F5F3' }}>
+      <header className="px-5 pt-14 pb-4 flex items-center justify-between sticky top-0 z-20 md:static" style={{ background: '#F1F5F3' }}>
         <div>
           <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>Movimientos</h1>
           <p className="text-xs mt-0.5" style={{ color: '#5B6660' }}>
@@ -679,7 +679,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       )}
 
       {/* Próximos vencimientos (reglas recurrentes) — solo en la vista normal */}
-      {!searchActive && !selectMode && <UpcomingStrip householdId={profile.household_id} />}
+      {!searchActive && !selectMode && <UpcomingStrip householdId={profile.household_id} profileId={profile.id} />}
 
       {/* Transactions grouped by day */}
       <div className="px-4 flex flex-col gap-4">
