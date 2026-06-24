@@ -234,7 +234,9 @@ export default function AnalisisClient({
   // and the couple balance all agree on "who spent what".
   const expenseShareArs = useCallback(
     (t: Txn, pid: string | undefined): number => {
-      if (!pid) return toArs(t.amount, t.currency); // "Nuestro" → combined household
+      // "Nuestro" (no profile) → solo lo compartido del hogar, a monto completo.
+      // Los gastos personales de cada uno no aparecen en la vista de pareja.
+      if (!pid) return t.is_shared ? toArs(t.amount, t.currency) : 0;
       if (!t.is_shared) return t.profile_id === pid ? toArs(t.amount, t.currency) : 0;
       return myShareArs(t, pid, arsPerUsd);
     },
@@ -493,6 +495,52 @@ export default function AnalisisClient({
     return { rows, total: rows.reduce((s, r) => s + r.value, 0) };
   }, [allTxns, bMonth, todayStr, scopeProfileId, toArs, catById]);
 
+  // Weekly spend for the breakdown month — splits the month into 7-day buckets
+  // (1–7, 8–14, …) so you can see which week you spent the most. Respects scope
+  // and the same share math as the rest of Análisis.
+  const weeklySpend = useMemo(() => {
+    const [y, mo] = bMonth.split('-').map(Number);
+    const daysInMonth = new Date(y, mo, 0).getDate();
+    const isCurrent = bMonth === currentKey;
+    const todayDay = isCurrent ? new Date().getDate() : daysInMonth;
+    const nWeeks = Math.ceil(daysInMonth / 7);
+    const buckets = Array.from({ length: nWeeks }, (_, i) => ({
+      idx: i,
+      from: i * 7 + 1,
+      to: Math.min((i + 1) * 7, daysInMonth),
+      value: 0,
+    }));
+    for (const t of allTxns) {
+      if (t.type !== 'expense' || !t.occurred_on.startsWith(bMonth) || t.occurred_on > todayStr) continue;
+      const share = expenseShareArs(t, scopeProfileId);
+      if (share <= 0) continue;
+      const day = Number(t.occurred_on.slice(8, 10));
+      const bi = Math.min(nWeeks - 1, Math.floor((day - 1) / 7));
+      buckets[bi].value += share;
+    }
+    // For the current month, hide weeks that haven't started yet.
+    const weeks = buckets.filter((b) => b.from <= todayDay);
+    const max = Math.max(1, ...weeks.map((b) => b.value));
+    let maxIdx = 0;
+    weeks.forEach((b, i) => { if (b.value > weeks[maxIdx].value) maxIdx = i; });
+    const total = weeks.reduce((s, b) => s + b.value, 0);
+    return { weeks, max, maxIdx, total, avg: weeks.length ? total / weeks.length : 0 };
+  }, [allTxns, bMonth, currentKey, todayStr, scopeProfileId, expenseShareArs]);
+
+  // Individual movements in the drilled category, for the breakdown month — the
+  // "en qué gastaste" list inside the category sheet (most recent first).
+  const drillTxns = useMemo(() => {
+    if (!drillCat) return [];
+    const rows: { id: string; merchant: string | null; date: string; value: number }[] = [];
+    for (const t of allTxns) {
+      if (t.type !== 'expense' || t.category_id !== drillCat.id || !t.occurred_on.startsWith(bMonth) || t.occurred_on > todayStr) continue;
+      const share = expenseShareArs(t, scopeProfileId);
+      if (share <= 0) continue;
+      rows.push({ id: t.id, merchant: t.merchant, date: t.occurred_on, value: share });
+    }
+    return rows.sort((a, b) => (a.date < b.date ? 1 : -1));
+  }, [drillCat, allTxns, bMonth, todayStr, scopeProfileId, expenseShareArs]);
+
   async function handleRefresh() {
     setRefreshing(true);
     try {
@@ -708,6 +756,37 @@ export default function AnalisisClient({
             </>
           )}
         </div>
+
+        {/* Weekly cash-out — spend per week of the month, peak week highlighted */}
+        {weeklySpend.total > 0 && (
+          <div className="rounded-3xl p-5" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
+            <div className="flex items-center justify-between mb-1 gap-2">
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>📅 Gasto por semana · {bMonthLabel}</p>
+              <span className="text-xs font-bold" style={{ color: '#5B6660' }}>prom {formatARS(Math.round(weeklySpend.avg))}</span>
+            </div>
+            <p className="text-[11px] mb-3" style={{ color: '#5B6660' }}>
+              La semana del {weeklySpend.weeks[weeklySpend.maxIdx].from}–{weeklySpend.weeks[weeklySpend.maxIdx].to} fue la de mayor gasto.
+            </p>
+            <div className="flex flex-col gap-2.5">
+              {weeklySpend.weeks.map((w, i) => {
+                const isPeak = i === weeklySpend.maxIdx;
+                return (
+                  <div key={w.idx}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-semibold" style={{ color: '#18211D' }}>
+                        Sem {i + 1} <span className="text-[11px] font-normal" style={{ color: '#5B6660' }}>· {w.from}–{w.to}</span>
+                      </span>
+                      <span className="text-sm font-black tabular-nums ml-2 shrink-0" style={{ color: isPeak ? '#E25749' : '#18211D' }}>{formatARS(Math.round(w.value))}</span>
+                    </div>
+                    <div className="h-2 rounded-full overflow-hidden" style={{ background: '#EAF0ED' }}>
+                      <div className="h-full rounded-full" style={{ width: `${Math.max((w.value / weeklySpend.max) * 100, 2)}%`, background: isPeak ? '#FF6F61' : '#2FA37C' }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Fixed vs variable — how much of the month is committed */}
         {fixedSplit.total > 0 && (
@@ -967,6 +1046,22 @@ export default function AnalisisClient({
             </div>
             <p className="text-xs mb-4" style={{ color: '#5B6660' }}>Gasto de los últimos {trendMonths.length} meses (tu parte)</p>
             <SingleBars rows={categoryTrend(drillCat.id)} color="#FF6F61" />
+            {drillTxns.length > 0 && (
+              <div className="mt-5 pt-4" style={{ borderTop: '1px solid #E5EBE8' }}>
+                <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#5B6660' }}>En qué gastaste · {bMonthLabel}</p>
+                <div className="flex flex-col max-h-64 overflow-y-auto -mx-1 px-1">
+                  {drillTxns.map((t) => (
+                    <div key={t.id} className="flex items-center justify-between gap-3 py-2" style={{ borderBottom: '1px solid #F1F5F3' }}>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold truncate" style={{ color: '#18211D' }}>{t.merchant || 'Sin comercio'}</p>
+                        <p className="text-[11px]" style={{ color: '#5B6660' }}>{t.date.slice(8, 10)}/{t.date.slice(5, 7)}</p>
+                      </div>
+                      <span className="text-sm font-black tabular-nums shrink-0" style={{ color: '#FF6F61' }}>{formatARS(t.value)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
