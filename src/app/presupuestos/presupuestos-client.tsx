@@ -122,6 +122,7 @@ function CategoryDetailSheet({
   onRenameCategory,
   groups,
   onMoveToGroup,
+  onCreateGroup,
 }: {
   category: EnvelopeCategory;
   row: RowData;
@@ -145,6 +146,7 @@ function CategoryDetailSheet({
   onRenameCategory: (name: string, icon: string) => void;
   groups: EnvelopeCategory[];
   onMoveToGroup: (groupId: string | null) => void;
+  onCreateGroup: (name: string) => void;
 }) {
   const [moveTo, setMoveTo] = useState('');
   const [moveAmt, setMoveAmt] = useState(0);
@@ -158,6 +160,9 @@ function CategoryDetailSheet({
   const [editingName, setEditingName] = useState(false);
   const [cName, setCName] = useState(category.name);
   const [cIcon, setCIcon] = useState(category.icon);
+  // Inline "create a new group" flow inside the Grupo selector.
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
   // How much more to assign this month to be on track — already computed per
   // target type by the hook (refill tops `available` up to X; set_aside assigns
   // a fresh X regardless of what's left). Use it for the pill colour and the
@@ -195,20 +200,48 @@ function CategoryDetailSheet({
             <button onClick={() => { if (cName.trim()) { onRenameCategory(cName.trim(), cIcon || category.icon); setEditingName(false); } }} className="px-4 rounded-xl text-sm font-bold text-white" style={{ background: '#2FA37C' }}>OK</button>
           </div>
         )}
-        {editable && groups.length > 0 && (
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-xs font-bold shrink-0" style={{ color: '#5B6660' }}>Grupo</span>
-            <select
-              value={category.parent_id ?? ''}
-              onChange={(e) => onMoveToGroup(e.target.value || null)}
-              className="flex-1 rounded-xl border-2 outline-none px-3 py-2 text-sm font-bold bg-white"
-              style={{ borderColor: '#E5EBE8', color: '#18211D' }}
-            >
-              <option value="">Sin grupo</option>
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>{g.icon} {g.name}</option>
-              ))}
-            </select>
+        {editable && (
+          <div className="mb-4">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold shrink-0" style={{ color: '#5B6660' }}>Grupo</span>
+              <select
+                value={creatingGroup ? '__new__' : (category.parent_id ?? '')}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === '__new__') { setCreatingGroup(true); }
+                  else { setCreatingGroup(false); onMoveToGroup(v || null); }
+                }}
+                className="flex-1 rounded-xl border-2 outline-none px-3 py-2 text-sm font-bold bg-white"
+                style={{ borderColor: '#E5EBE8', color: '#18211D' }}
+              >
+                <option value="">Sin grupo</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>{g.icon} {g.name}</option>
+                ))}
+                <option value="__new__">➕ Nuevo grupo…</option>
+              </select>
+            </div>
+            {creatingGroup && (
+              <div className="flex gap-2 mt-2">
+                <input
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  placeholder="Nombre del grupo nuevo"
+                  autoFocus
+                  className="flex-1 min-w-0 rounded-xl border-2 outline-none px-3 py-2 text-sm font-bold"
+                  style={{ borderColor: '#E5EBE8', background: '#F1F5F3', color: '#18211D' }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { const n = newGroupName.trim(); if (n) { onCreateGroup(n); setNewGroupName(''); setCreatingGroup(false); } } }}
+                />
+                <button
+                  onClick={() => { const n = newGroupName.trim(); if (n) { onCreateGroup(n); setNewGroupName(''); setCreatingGroup(false); } }}
+                  disabled={!newGroupName.trim()}
+                  className="shrink-0 px-4 rounded-xl text-sm font-bold text-white"
+                  style={{ background: newGroupName.trim() ? '#2FA37C' : '#B0BAB4' }}
+                >
+                  Crear
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -1120,6 +1153,29 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['categories', profile.household_id] }); qc.invalidateQueries({ queryKey: ['envelope-categories', profile.household_id] }); },
   });
 
+  // Create a new group (is_group header) and drop the category into it in one go,
+  // so you can group categories on the fly from the detail sheet without going to
+  // "Nueva categoría". Returns the new group's id to set as the category's parent.
+  const createGroupForCategory = useMutation({
+    mutationFn: async ({ categoryId, name }: { categoryId: string; name: string }) => {
+      const { data, error } = await supabase
+        .from('categories')
+        .insert({ household_id: profile.household_id, name, icon: '📁', kind: 'expense', is_default: false, is_group: true, parent_id: null })
+        .select('id')
+        .single();
+      if (error) throw error;
+      const { error: moveErr } = await supabase.from('categories').update({ parent_id: data.id }).eq('id', categoryId);
+      if (moveErr) throw moveErr;
+      return { name };
+    },
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['categories', profile.household_id] });
+      qc.invalidateQueries({ queryKey: ['envelope-categories', profile.household_id] });
+      toast.success(`Grupo "${res.name}" creado y categoría movida ✓`);
+    },
+    onError: () => toast.error('No se pudo crear el grupo. Probá de nuevo.'),
+  });
+
   const saveTarget = useMutation({
     mutationFn: async ({ categoryId, amount, cadence, date, targetType }: { categoryId: string; amount: number; cadence: 'monthly' | 'by_date' | 'weekly'; date: string | null; targetType: 'refill' | 'set_aside' }) => {
       const { error } = await supabase.from('category_targets').upsert(
@@ -1604,6 +1660,7 @@ export default function PresupuestosClient({ profile }: { profile: Profile }) {
           onRenameCategory={(name, icon) => renameCategory.mutate({ categoryId: detailCat.id, name, icon })}
           groups={groupCats}
           onMoveToGroup={(groupId) => moveToGroup.mutate({ categoryId: detailCat.id, groupId })}
+          onCreateGroup={(name) => createGroupForCategory.mutate({ categoryId: detailCat.id, name })}
         />
       )}
 
