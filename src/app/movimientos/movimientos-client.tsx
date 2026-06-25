@@ -315,11 +315,13 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
 
   const grouped = useMemo(() => {
     // Sort by amount: one flat group (the '__amount__' sentinel renders a
-    // "mayor a menor" header instead of a date), biggest ARS first.
+    // "mayor a menor" header instead of a date) of EXPENSES only, biggest ARS
+    // first — so the list adds up to the month's gasto total and you can see
+    // what makes it up. FX/transfer rows are excluded (they aren't spend).
     if (sortBy === 'amount') {
-      const sorted = [...filtered].sort(
-        (a, b) => toArs(b.amount, b.currency) - toArs(a.amount, a.currency),
-      );
+      const sorted = filtered
+        .filter((tx) => tx.type === 'expense' && !tx.exclude_from_stats)
+        .sort((a, b) => toArs(b.amount, b.currency) - toArs(a.amount, a.currency));
       return (sorted.length ? [['__amount__', sorted]] : []) as [string, Tx[]][];
     }
     const map = new Map<string, Tx[]>();
@@ -725,7 +727,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
         {grouped.map(([date, txs]) => (
           <div key={date}>
             <p className="text-xs font-bold mb-2 capitalize" style={{ color: '#5B6660' }}>
-              {date === '__amount__' ? '💰 De mayor a menor' : fmtDate(date)}
+              {date === '__amount__' ? '💰 Gastos · de mayor a menor' : fmtDate(date)}
             </p>
             <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
               {txs.map((tx, i) => (
