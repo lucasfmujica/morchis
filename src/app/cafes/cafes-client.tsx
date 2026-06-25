@@ -54,6 +54,23 @@ function prodKey(s: string): string {
 function isNonProduct(name: string): boolean {
   return /propina|cubierto|^bolsa|servicio de mesa/.test(norm(name));
 }
+// A tip logged as its OWN café expense ("Propina Ada Cafe" / "Propón café
+// rosie"), separate from the consumption ticket. These get folded into their
+// café's visit so the visit/place total is the real amount paid.
+function isTipTx(merchant: string | null): boolean {
+  return /^prop(ina|on)\b/.test(norm(merchant ?? ''));
+}
+// Significant name tokens of a place (drops tip/café filler + connectors), used
+// to match a tip back to its consumption ticket of the same day.
+const PLACE_STOP = new Set(['propina', 'propon', 'cafe', 'cafes', 'cafeteria', 'del', 'con']);
+function placeTokens(merchant: string | null): Set<string> {
+  return new Set(
+    norm(merchant ?? '')
+      .replace(/[^a-z0-9 ]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length >= 3 && !PLACE_STOP.has(w)),
+  );
+}
 
 export default function CafesClient({ profile }: { profile: Profile }) {
   const supabase = createClient();
@@ -126,8 +143,45 @@ export default function CafesClient({ profile }: { profile: Profile }) {
     [txs, range, profile.id, curMonth, prevMonth],
   );
 
+  // Fold standalone tip tickets into their café's consumption visit of the same
+  // day (matched by shared name tokens), so each visit's total is what was
+  // actually paid and tips stop showing up as phantom separate cafés. The grand
+  // total is unchanged — the tip just moves onto its visit. `tipByTxId` is the
+  // tip amount (native currency) folded into each consumption tx; `displayTxs`
+  // drops the absorbed tip tickets (an unmatched tip stays as its own row).
+  const { displayTxs, tipByTxId } = useMemo(() => {
+    const tips = visible.filter((t) => isTipTx(t.merchant));
+    const nonTips = visible.filter((t) => !isTipTx(t.merchant));
+    const tipByTxId = new Map<string, number>();
+    const absorbed = new Set<string>();
+    for (const tip of tips) {
+      const wanted = placeTokens(tip.merchant);
+      let best: { tx: Tx; score: number } | null = null;
+      for (const tx of nonTips) {
+        if (tx.occurred_on !== tip.occurred_on || tx.currency !== tip.currency) continue;
+        let score = 0;
+        const toks = placeTokens(tx.merchant);
+        for (const w of wanted) if (toks.has(w)) score += 1;
+        if (score > 0 && (!best || score > best.score || (score === best.score && tx.amount > best.tx.amount))) {
+          best = { tx, score };
+        }
+      }
+      if (best) {
+        tipByTxId.set(best.tx.id, (tipByTxId.get(best.tx.id) ?? 0) + tip.amount);
+        absorbed.add(tip.id);
+      }
+    }
+    return { displayTxs: visible.filter((t) => !absorbed.has(t.id)), tipByTxId };
+  }, [visible]);
+
+  // Real visit total in ARS: the ticket plus any tip folded into it.
+  const visitArs = useCallback(
+    (tx: Tx) => toArs(tx.amount + (tipByTxId.get(tx.id) ?? 0), tx.currency),
+    [toArs, tipByTxId],
+  );
+
   const itemsByTx = useMemo(() => {
-    const visibleIds = new Set(visible.map((t) => t.id));
+    const visibleIds = new Set(displayTxs.map((t) => t.id));
     const map = new Map<string, ItemRow[]>();
     for (const r of itemRows) {
       if (!visibleIds.has(r.transaction_id)) continue;
@@ -136,11 +190,11 @@ export default function CafesClient({ profile }: { profile: Profile }) {
       map.set(r.transaction_id, arr);
     }
     return map;
-  }, [itemRows, visible]);
+  }, [itemRows, displayTxs]);
 
   const totalArs = useMemo(
-    () => visible.reduce((s, tx) => s + toArs(tx.amount, tx.currency), 0),
-    [visible, toArs],
+    () => displayTxs.reduce((s, tx) => s + visitArs(tx), 0),
+    [displayTxs, visitArs],
   );
 
   // Product comparison: same product across cafés, averaged per café (so two
@@ -156,7 +210,7 @@ export default function CafesClient({ profile }: { profile: Profile }) {
   };
   const products = useMemo<Product[]>(() => {
     const map = new Map<string, { names: Map<string, number>; group: string; byMerchant: Map<string, { sum: number; n: number }> }>();
-    for (const tx of visible) {
+    for (const tx of displayTxs) {
       const rows = itemsByTx.get(tx.id);
       if (!rows) continue;
       const merchant = tx.merchant?.trim() || 'Sin nombre';
@@ -188,28 +242,28 @@ export default function CafesClient({ profile }: { profile: Profile }) {
         return { key, name, group: e.group, count, merchants, min: merchants[0], max: merchants[merchants.length - 1] };
       })
       .sort((a, b) => b.merchants.length - a.merchants.length || b.count - a.count || a.name.localeCompare(b.name));
-  }, [visible, itemsByTx, toArs]);
+  }, [displayTxs, itemsByTx, toArs]);
 
-  // Café ranking — total spend & visits per place.
+  // Café ranking — total spend & visits per place (tips folded into the visit).
   const cafes = useMemo(() => {
     const m = new Map<string, { total: number; visits: number }>();
-    for (const tx of visible) {
+    for (const tx of displayTxs) {
       const k = tx.merchant?.trim() || 'Sin nombre';
       const e = m.get(k) ?? { total: 0, visits: 0 };
-      e.total += toArs(tx.amount, tx.currency);
+      e.total += visitArs(tx);
       e.visits += 1;
       m.set(k, e);
     }
     const rows = [...m.entries()].map(([merchant, v]) => ({ merchant, ...v })).sort((a, b) => b.total - a.total);
     return { rows, max: Math.max(1, ...rows.map((r) => r.total)) };
-  }, [visible, toArs]);
+  }, [displayTxs, visitArs]);
 
   const purchases = useMemo(
     () =>
-      [...visible]
+      [...displayTxs]
         .map((tx) => ({ tx, count: itemsByTx.get(tx.id)?.length ?? 0 }))
         .sort((a, b) => b.tx.occurred_on.localeCompare(a.tx.occurred_on)),
-    [visible, itemsByTx],
+    [displayTxs, itemsByTx],
   );
 
   const comparable = products.filter((p) => p.merchants.length > 1).length;
@@ -371,10 +425,15 @@ export default function CafesClient({ profile }: { profile: Profile }) {
                             sin detalle
                           </span>
                         )}
+                        {(tipByTxId.get(tx.id) ?? 0) > 0 && (
+                          <span className="text-[11px] px-1.5 py-0.5 rounded-md font-semibold" style={{ background: '#EFE7E0', color: '#6F4E37' }}>
+                            + propina
+                          </span>
+                        )}
                       </div>
                     </div>
                     <span className="text-base font-black tabular-nums shrink-0" style={{ color: '#6F4E37' }}>
-                      {format(toArs(tx.amount, tx.currency))}
+                      {format(visitArs(tx))}
                     </span>
                   </button>
                 ))}
@@ -440,6 +499,7 @@ export default function CafesClient({ profile }: { profile: Profile }) {
         transactionId={openTx?.id ?? null}
         merchant={openTx?.merchant ?? null}
         total={openTx?.amount ?? 0}
+        tip={openTx ? (tipByTxId.get(openTx.id) ?? 0) : 0}
         currency={openTx?.currency ?? 'ARS'}
         occurredOn={openTx?.occurred_on ?? curMonth + '-01'}
       />

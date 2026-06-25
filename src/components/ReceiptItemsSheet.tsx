@@ -18,6 +18,10 @@ interface ReceiptItemsSheetProps {
   transactionId: string | null;
   merchant: string | null;
   total: number;
+  // Tip charged separately (a standalone "Propina X" ticket folded into this
+  // visit by /cafes). 0 when there's none. The header shows total + tip as the
+  // real visit total; `total` stays the consumption amount the items sum to.
+  tip?: number;
   currency: string;
   occurredOn: string;
 }
@@ -54,6 +58,7 @@ export function ReceiptItemsSheet({
   transactionId,
   merchant,
   total,
+  tip = 0,
   currency,
   occurredOn,
 }: ReceiptItemsSheetProps) {
@@ -254,8 +259,13 @@ export function ReceiptItemsSheet({
               })}
             </p>
             <p className="text-3xl font-black mt-1.5 tabular-nums" style={{ color: '#FF6F61' }}>
-              {fmt(total)}
+              {fmt(total + tip)}
             </p>
+            {tip > 0 && (
+              <p className="text-[11px] mt-0.5" style={{ color: '#8C968F' }}>
+                Incluye {fmt(tip)} de propina
+              </p>
+            )}
           </div>
 
           <div className="px-4 pb-6 flex flex-col gap-4" style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}>
@@ -431,11 +441,23 @@ export function ReceiptItemsSheet({
                   )}
                 </div>
 
-                {/* Items subtotal */}
+                {/* Items subtotal (+ separately-charged tip, when folded in) */}
                 <div className="flex items-center justify-between px-2">
                   <span className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>Suma de productos</span>
                   <span className="text-sm font-black tabular-nums" style={{ color: '#18211D' }}>{fmt(itemsSum)}</span>
                 </div>
+                {tip > 0 && (
+                  <>
+                    <div className="flex items-center justify-between px-2 -mt-2">
+                      <span className="text-xs" style={{ color: '#8C968F' }}>Propina</span>
+                      <span className="text-sm font-semibold tabular-nums" style={{ color: '#6F4E37' }}>{fmt(tip)}</span>
+                    </div>
+                    <div className="flex items-center justify-between px-2 -mt-2">
+                      <span className="text-xs font-bold uppercase tracking-wide" style={{ color: '#5B6660' }}>Total visita</span>
+                      <span className="text-sm font-black tabular-nums" style={{ color: '#18211D' }}>{fmt(total + tip)}</span>
+                    </div>
+                  </>
+                )}
 
                 {editing && (
                   <div className="flex flex-col gap-2">
