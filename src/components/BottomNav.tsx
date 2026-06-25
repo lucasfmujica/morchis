@@ -19,6 +19,7 @@ const MENU = [
   { href: '/deudas', icon: '🤝', label: 'Deudas' },
   { href: '/pareja', icon: '👫', label: 'Pareja' },
   { href: '/super', icon: '🛒', label: 'Súper' },
+  { href: '/cafes', icon: '☕', label: 'Cafés' },
   { href: '/ticket', icon: '🧾', label: 'Escanear ticket' },
   { href: '/extractos', icon: '💳', label: 'Extractos' },
   { href: '/simulador', icon: '🔮', label: 'Simulador' },
