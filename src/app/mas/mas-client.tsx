@@ -57,6 +57,7 @@ export default function MasClient({ profile }: { profile: Profile }) {
     { title: 'Capturar', items: [
       { href: '/ticket', icon: '🧾', label: 'Escanear ticket' },
       { href: '/super', icon: '🛒', label: 'Compras de súper' },
+      { href: '/cafes', icon: '☕', label: 'Cafés' },
       { href: '/extractos', icon: '🧾', label: 'Extractos de tarjeta' },
     ] },
     { title: 'Ajustes', items: [

@@ -192,6 +192,7 @@ export function ReceiptItemsSheet({
     await Promise.all([
       qc.invalidateQueries({ queryKey: ['transaction-items', transactionId] }),
       qc.invalidateQueries({ queryKey: ['super-items'] }),
+      qc.invalidateQueries({ queryKey: ['cafe-items'] }),
       // The /movimientos "🧾 Productos" chip keys off this set, so a purchase
       // that just got its first item should start showing the badge.
       qc.invalidateQueries({ queryKey: ['transaction-item-ids'] }),

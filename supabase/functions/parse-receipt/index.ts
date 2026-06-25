@@ -9,7 +9,7 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, content-type",
 };
 
-const GROUPS = ["frutas y verduras", "carnes y fiambres", "lácteos y huevos", "almacén", "panadería", "agua", "bebidas", "snacks", "limpieza", "cuidado personal", "hogar", "mascotas", "otros"];
+const GROUPS = ["frutas y verduras", "carnes y fiambres", "lácteos y huevos", "almacén", "panadería", "agua", "bebidas", "snacks", "limpieza", "cuidado personal", "hogar", "mascotas", "café", "tostados y sándwiches", "pastelería", "desayuno y bowls", "jugos y licuados", "otros"];
 const CURRENCIES = ["ARS", "USD"];
 
 interface ReceiptItem {
@@ -62,7 +62,13 @@ Devolvé SIEMPRE este JSON:
             · cuidado personal = shampoo, jabón, pasta dental, desodorante e higiene personal.
             · hogar = pilas, lámparas, utensilios y cosas durables para la casa.
             · mascotas = alimento o artículos para mascotas.
+            · café = bebidas de cafetería preparadas: espresso, americano, cortado, flat white, latte, capuchino, mocaccino, té, chocolatada, submarino. (NO el café en grano/molido de supermercado: eso es "almacén".)
+            · tostados y sándwiches = tostados, sándwiches, wraps, lomitos, hamburguesas y similares servidos para comer ahí.
+            · pastelería = medialunas, facturas, budines, tortas, cookies, scones, alfajores y dulces de cafetería.
+            · desayuno y bowls = desayunos/meriendas armados, bowls de yogur o granola, tostadas con palta, huevos y combos de desayuno.
+            · jugos y licuados = jugos exprimidos, licuados, smoothies y limonadas de cafetería.
             · otros = cualquier cosa que no encaje (incluye propinas, bolsas, etc.).
+    IMPORTANTE para CAFETERÍAS, BARES y RESTAURANTES (comida/bebida preparada para consumir): clasificá cada ítem en los grupos de cafetería (café, tostados y sándwiches, pastelería, desayuno y bowls, jugos y licuados) y NO en los grupos de supermercado. Para que después se puedan comparar precios entre cafés, poné en "name" el NOMBRE CANÓNICO y CORTO del producto (ej: "Latte", "Capuchino", "Tostado", "Medialuna", "Jugo de naranja"), sin agregar tamaños ni aclaraciones largas; si es saborizado/especial podés dejar una palabra (ej: "Latte saborizado").
     * Si es un COMPROBANTE de un único cargo SIN detalle de productos (ej. una notificación de DiDi, una transferencia, un débito), devolvé items como un array VACÍO []. NO inventes productos ni los clasifiques en grupos de supermercado.
 
 Reglas:
