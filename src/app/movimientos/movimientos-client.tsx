@@ -207,6 +207,9 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
 
   // Per-purchase detail (scanned products) for a tapped movement.
   const [itemsTx, setItemsTx] = useState<Tx | null>(null);
+  // Category tapped in the "Por categoría" summary → opens a popup listing all
+  // of that category's expenses this month ('__none__' = sin categoría).
+  const [categoryDetail, setCategoryDetail] = useState<string | null>(null);
 
   // Visibility rule: each user only sees their own personal movements plus the
   // shared household ones. The partner's personal movements never show here.
@@ -385,6 +388,24 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     const income = current.filter((tx) => tx.type === 'income' && !tx.exclude_from_stats).reduce((s, tx) => s + toArs(tx.amount, tx.currency), 0);
     return { expenses, income };
   }, [scopeFiltered, filterCategory, toArs, spendArs]);
+
+  // Expenses behind a tapped category in the "Por categoría" summary, this month,
+  // biggest first (respects the active Mi parte / Total view).
+  const categoryDetailRows = useMemo(() => {
+    if (categoryDetail === null) return [];
+    const now = new Date();
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    return scopeFiltered
+      .filter(
+        (tx) =>
+          tx.occurred_on.startsWith(month) &&
+          tx.type === 'expense' &&
+          !tx.exclude_from_stats &&
+          (tx.category_id ?? '__none__') === categoryDetail,
+      )
+      .sort((a, b) => spendArs(b) - spendArs(a));
+  }, [categoryDetail, scopeFiltered, spendArs]);
+  const categoryDetailCat = categoryDetail ? categories.find((c) => c.id === categoryDetail) : null;
 
   // Chart data: top 5 categories current vs previous month
   const chartData = useMemo(() => {
@@ -906,6 +927,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
           .map((tx) => ({ ...tx, amount: spendArs(tx) }))}
         categories={categories}
         format={format}
+        onSelect={setCategoryDetail}
       />
 
       {/* Bulk action bar */}
@@ -932,6 +954,47 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                 <button key={c.id} onClick={() => bulkUpdate({ category_id: c.id }, `movidos a ${c.name}`)} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-left" style={{ background: '#F1F5F3' }}>
                   <span className="text-xl">{c.icon}</span>
                   <span className="text-sm font-semibold" style={{ color: '#18211D' }}>{c.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Category detail popup — every expense of a tapped category this month */}
+      {categoryDetail !== null && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ background: 'rgba(20,28,24,0.45)' }} onClick={() => setCategoryDetail(null)}>
+          <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 max-h-[80vh] overflow-y-auto" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-pop)', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
+            <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#E5EBE8' }} />
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-2xl">{categoryDetailCat?.icon ?? '🏷️'}</span>
+              <h2 className="text-lg font-black flex-1 truncate" style={{ color: '#18211D' }}>{categoryDetailCat?.name ?? 'Sin categoría'}</h2>
+              <span className="text-base font-black tabular-nums shrink-0" style={{ color: '#FF6F61' }}>{format(categoryDetailRows.reduce((s, t) => s + spendArs(t), 0))}</span>
+            </div>
+            <p className="text-xs mb-4" style={{ color: '#5B6660' }}>
+              {categoryDetailRows.length} gasto{categoryDetailRows.length !== 1 ? 's' : ''} · este mes{mineActive ? ' · mi parte' : ''}
+            </p>
+            <div className="flex flex-col">
+              {categoryDetailRows.map((tx, i) => (
+                <button
+                  key={tx.id}
+                  onClick={() => { setCategoryDetail(null); setEditTx(tx); setSheetOpen(true); }}
+                  className="flex items-center gap-3 py-2.5 -mx-2 px-2 rounded-xl text-left transition-colors hover:bg-[#F4F8F6] active:bg-[#EEF3F1]"
+                  style={{ borderTop: i > 0 ? '1px solid #EAF0ED' : 'none' }}
+                >
+                  <span className="text-xl shrink-0">{tx.categories?.icon ?? categoryDetailCat?.icon ?? '🏷️'}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold truncate" style={{ color: '#18211D' }}>{tx.merchant || tx.categories?.name || 'Sin descripción'}</p>
+                    <p className="text-[11px]" style={{ color: '#8C968F' }}>
+                      {new Date(tx.occurred_on + 'T00:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}{tx.is_shared ? ' · compartido' : ''}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-black tabular-nums" style={{ color: '#FF6F61' }}>{format(spendArs(tx))}</p>
+                    {mineActive && tx.is_shared && (
+                      <p className="text-[10px]" style={{ color: '#8C968F' }}>de {format(toArs(tx.amount, tx.currency))}</p>
+                    )}
+                  </div>
                 </button>
               ))}
             </div>
@@ -1004,10 +1067,12 @@ function CategorySummary({
   transactions,
   categories,
   format,
+  onSelect,
 }: {
   transactions: Tx[];
   categories: { id: string; name: string; icon: string; kind: string }[];
   format: (n: number) => string;
+  onSelect?: (categoryId: string) => void;
 }) {
   const byCategory = useMemo(() => {
     const map = new Map<string, number>();
@@ -1033,9 +1098,10 @@ function CategorySummary({
       <p className="text-sm font-black mb-3" style={{ color: '#18211D' }}>Por categoría (este mes)</p>
       <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
         {byCategory.map((row, i) => (
-          <div
+          <button
             key={row.id}
-            className="flex items-center gap-3 px-4 py-3"
+            onClick={() => onSelect?.(row.id)}
+            className="w-full text-left flex items-center gap-3 px-4 py-3 transition-colors hover:bg-[#F4F8F6] active:bg-[#EEF3F1]"
             style={{ borderTop: i > 0 ? '1px solid #E5EBE8' : 'none' }}
           >
             <span className="text-xl">{row.cat?.icon ?? '🏷️'}</span>
@@ -1054,7 +1120,7 @@ function CategorySummary({
               </div>
             </div>
             <span className="text-xs font-bold w-8 text-right" style={{ color: '#5B6660' }}>{row.pct}%</span>
-          </div>
+          </button>
         ))}
       </div>
     </div>
