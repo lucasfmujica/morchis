@@ -61,6 +61,8 @@ type Tx = {
   installment_number: number | null;
   installment_total: number | null;
   categories: { name: string; icon: string } | null;
+  // Couple split (ARS): what the ower owes the payer. Drives the "Mi parte" view.
+  splits: { payer_profile_id: string; ower_profile_id: string; amount: number }[] | null;
 };
 
 export default function MovimientosClient({ profile, partnerProfileId }: MovimientosClientProps) {
@@ -73,6 +75,22 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     (amount: number, currency: string) =>
       currency === 'USD' && arsPerUsd > 0 ? Math.round(amount * arsPerUsd) : amount,
     [arsPerUsd],
+  );
+  // How much of an EXPENSE counts as the viewer's own spend, in ARS — mirrors
+  // /analisis & the budgets math: a solo expense in full, a shared one only the
+  // viewer's split (splits store, in ARS, what the ower owes the payer).
+  const myShareArs = useCallback(
+    (tx: Tx): number => {
+      const total = toArs(tx.amount, tx.currency);
+      if (!tx.is_shared) return tx.profile_id === profile.id ? total : 0;
+      const sp = tx.splits ?? [];
+      const iOwe = sp.filter((s) => s.ower_profile_id === profile.id).reduce((a, s) => a + s.amount, 0);
+      if (iOwe > 0) return iOwe;
+      const owedToMe = sp.filter((s) => s.payer_profile_id === profile.id).reduce((a, s) => a + s.amount, 0);
+      if (owedToMe > 0) return Math.max(0, total - owedToMe);
+      return tx.profile_id === profile.id ? total : 0;
+    },
+    [toArs, profile.id],
   );
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fabType, setFabType] = useState<'expense' | 'income' | 'transfer'>('expense');
@@ -99,6 +117,9 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   // List order: by day (default) or by amount, biggest first — so you can see
   // which movements make up a month's total (e.g. "¿cómo llego a esos 3.8M?").
   const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
+  // Spend view: full charge (ledger) or "Mi parte" — the viewer's real share of
+  // shared expenses (their split), so the month total reflects what THEY spent.
+  const [shareView, setShareView] = useState<'total' | 'mine'>('total');
   // Advanced filters + bulk-select mode.
   // Account filter: defaults from ?account= (e.g. /cuentas links here to open one
   // account's register, with its running balance + reconcile).
@@ -161,7 +182,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('id, amount, type, currency, category_id, account_id, transfer_account_id, scope, is_shared, is_fixed, exclude_from_stats, cleared, flag, merchant, occurred_on, profile_id, source, installment_number, installment_total, categories:category_id(name, icon)')
+        .select('id, amount, type, currency, category_id, account_id, transfer_account_id, scope, is_shared, is_fixed, exclude_from_stats, cleared, flag, merchant, occurred_on, profile_id, source, installment_number, installment_total, splits(payer_profile_id, ower_profile_id, amount), categories:category_id(name, icon)')
         .eq('household_id', profile.household_id)
         .order('occurred_on', { ascending: false })
         .order('created_at', { ascending: false })
@@ -235,6 +256,15 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
         return true;
       }),
     [searched, filterCategory, filterAccount, filterFixed, filterFlag, filterMinAmount, toArs],
+  );
+
+  // "Mi parte" only applies to the spend views. When a single account is open
+  // (register/reconcile mode) we always show full charges so balances add up.
+  const mineActive = shareView === 'mine' && filterAccount === 'all';
+  // ARS to count for an expense given the active view (own share vs full charge).
+  const spendArs = useCallback(
+    (tx: Tx) => (mineActive && tx.type === 'expense' ? myShareArs(tx) : toArs(tx.amount, tx.currency)),
+    [mineActive, myShareArs, toArs],
   );
 
   // Running balance per tx for a single selected account (statement-style).
@@ -320,8 +350,8 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     // what makes it up. FX/transfer rows are excluded (they aren't spend).
     if (sortBy === 'amount') {
       const sorted = filtered
-        .filter((tx) => tx.type === 'expense' && !tx.exclude_from_stats)
-        .sort((a, b) => toArs(b.amount, b.currency) - toArs(a.amount, a.currency));
+        .filter((tx) => tx.type === 'expense' && !tx.exclude_from_stats && spendArs(tx) > 0)
+        .sort((a, b) => spendArs(b) - spendArs(a));
       return (sorted.length ? [['__amount__', sorted]] : []) as [string, Tx[]][];
     }
     const map = new Map<string, Tx[]>();
@@ -331,7 +361,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       map.set(tx.occurred_on, arr);
     }
     return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
-  }, [filtered, sortBy, toArs]);
+  }, [filtered, sortBy, toArs, spendArs]);
 
   function fmtDate(d: string) {
     return new Date(d + 'T00:00:00').toLocaleDateString('es-AR', {
@@ -351,10 +381,10 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
         ? scopeFiltered
         : scopeFiltered.filter((tx) => tx.category_id === filterCategory);
     const current = base.filter((tx) => tx.occurred_on.startsWith(month));
-    const expenses = current.filter((tx) => tx.type === 'expense' && !tx.exclude_from_stats).reduce((s, tx) => s + toArs(tx.amount, tx.currency), 0);
+    const expenses = current.filter((tx) => tx.type === 'expense' && !tx.exclude_from_stats).reduce((s, tx) => s + spendArs(tx), 0);
     const income = current.filter((tx) => tx.type === 'income' && !tx.exclude_from_stats).reduce((s, tx) => s + toArs(tx.amount, tx.currency), 0);
     return { expenses, income };
-  }, [scopeFiltered, filterCategory, toArs]);
+  }, [scopeFiltered, filterCategory, toArs, spendArs]);
 
   // Chart data: top 5 categories current vs previous month
   const chartData = useMemo(() => {
@@ -473,7 +503,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="w-7 h-7 rounded-full flex items-center justify-center text-sm shrink-0" style={{ background: '#FFE5E0' }}>💸</span>
-              <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: '#8C968F' }}>Gastos · mes</p>
+              <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: '#8C968F' }}>Gastos · mes{mineActive ? ' · mi parte' : ''}</p>
             </div>
             <p className="text-xl font-black tabular-nums mt-2 truncate" style={{ color: '#FF6F61' }}>{format(monthSummary.expenses)}</p>
             <p className="text-[11px]" style={{ color: '#8C968F' }}>{secondary(monthSummary.expenses)}</p>
@@ -603,6 +633,29 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
           ))}
         </div>
 
+        {/* Spend view: full charge (ledger) vs my real share of shared expenses.
+            Hidden in single-account mode, where balances need full charges. */}
+        {filterAccount === 'all' && (
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold shrink-0" style={{ color: '#8C968F' }}>Gastos</span>
+            {([['total', 'Total'], ['mine', '💛 Mi parte']] as const).map(([k, label]) => (
+              <button
+                key={k}
+                onClick={() => setShareView(k)}
+                className="px-3 py-1.5 rounded-full text-xs font-bold border transition-all"
+                style={{
+                  background: shareView === k ? '#1F8A68' : '#FFFFFF',
+                  borderColor: shareView === k ? '#1F8A68' : '#E5EBE8',
+                  color: shareView === k ? '#FFFFFF' : '#5B6660',
+                  boxShadow: 'var(--shadow-soft)',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Category filter */}
         <div className="flex items-center gap-2">
           <select
@@ -618,7 +671,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
           </select>
           {filterCategory !== 'all' && (
             <span className="text-xs font-black whitespace-nowrap" style={{ color: '#FF6F61' }}>
-              {format(filtered.filter((t) => t.type === 'expense' && !t.exclude_from_stats).reduce((s, t) => s + toArs(t.amount, t.currency), 0))}
+              {format(filtered.filter((t) => t.type === 'expense' && !t.exclude_from_stats).reduce((s, t) => s + spendArs(t), 0))}
             </span>
           )}
         </div>
@@ -823,9 +876,13 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                       className="text-base font-black"
                       style={{ color: tx.type === 'expense' ? '#FF6F61' : tx.type === 'transfer' ? '#4E84E0' : '#2FA37C' }}
                     >
-                      {tx.type === 'expense' ? '-' : tx.type === 'transfer' ? '' : '+'}{format(toArs(tx.amount, tx.currency))}
+                      {tx.type === 'expense' ? '-' : tx.type === 'transfer' ? '' : '+'}{format(spendArs(tx))}
                     </p>
-                    <p className="text-xs" style={{ color: '#5B6660' }}>{secondary(toArs(tx.amount, tx.currency))}</p>
+                    {mineActive && tx.is_shared ? (
+                      <p className="text-xs" style={{ color: '#8C968F' }}>de {format(toArs(tx.amount, tx.currency))}</p>
+                    ) : (
+                      <p className="text-xs" style={{ color: '#5B6660' }}>{secondary(toArs(tx.amount, tx.currency))}</p>
+                    )}
                     {runningBalance && (
                       <p className="text-[10px] tabular-nums" style={{ color: '#8C968F' }}>saldo {formatARS(runningBalance.get(tx.id) ?? 0)}</p>
                     )}
@@ -846,7 +903,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
             const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
             return tx.occurred_on.startsWith(month) && tx.type === 'expense' && !tx.exclude_from_stats;
           })
-          .map((tx) => ({ ...tx, amount: toArs(tx.amount, tx.currency) }))}
+          .map((tx) => ({ ...tx, amount: spendArs(tx) }))}
         categories={categories}
         format={format}
       />
