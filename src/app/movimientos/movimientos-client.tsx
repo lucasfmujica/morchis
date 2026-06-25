@@ -96,6 +96,9 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     return r === 'week' || r === 'month' ? r : 'all';
   });
   const [showChart, setShowChart] = useState(false);
+  // List order: by day (default) or by amount, biggest first — so you can see
+  // which movements make up a month's total (e.g. "¿cómo llego a esos 3.8M?").
+  const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
   // Advanced filters + bulk-select mode.
   // Account filter: defaults from ?account= (e.g. /cuentas links here to open one
   // account's register, with its running balance + reconcile).
@@ -311,6 +314,14 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   }
 
   const grouped = useMemo(() => {
+    // Sort by amount: one flat group (the '__amount__' sentinel renders a
+    // "mayor a menor" header instead of a date), biggest ARS first.
+    if (sortBy === 'amount') {
+      const sorted = [...filtered].sort(
+        (a, b) => toArs(b.amount, b.currency) - toArs(a.amount, a.currency),
+      );
+      return (sorted.length ? [['__amount__', sorted]] : []) as [string, Tx[]][];
+    }
     const map = new Map<string, Tx[]>();
     for (const tx of filtered) {
       const arr = map.get(tx.occurred_on) ?? [];
@@ -318,7 +329,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       map.set(tx.occurred_on, arr);
     }
     return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
-  }, [filtered]);
+  }, [filtered, sortBy, toArs]);
 
   function fmtDate(d: string) {
     return new Date(d + 'T00:00:00').toLocaleDateString('es-AR', {
@@ -570,6 +581,26 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
           ))}
         </div>
 
+        {/* Sort order: by day, or by amount (biggest first) */}
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-bold shrink-0" style={{ color: '#8C968F' }}>Ordenar por</span>
+          {([['date', '📅 Fecha'], ['amount', '💰 Monto']] as const).map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => setSortBy(k)}
+              className="px-3 py-1.5 rounded-full text-xs font-bold border transition-all"
+              style={{
+                background: sortBy === k ? '#18211D' : '#FFFFFF',
+                borderColor: sortBy === k ? '#18211D' : '#E5EBE8',
+                color: sortBy === k ? '#FFFFFF' : '#5B6660',
+                boxShadow: 'var(--shadow-soft)',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* Category filter */}
         <div className="flex items-center gap-2">
           <select
@@ -694,7 +725,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
         {grouped.map(([date, txs]) => (
           <div key={date}>
             <p className="text-xs font-bold mb-2 capitalize" style={{ color: '#5B6660' }}>
-              {fmtDate(date)}
+              {date === '__amount__' ? '💰 De mayor a menor' : fmtDate(date)}
             </p>
             <div className="rounded-3xl overflow-hidden" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)' }}>
               {txs.map((tx, i) => (
@@ -708,7 +739,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
                   style={{
                     borderTop: i > 0 ? '1px solid #E5EBE8' : 'none',
                     borderLeft: flagHex(tx.flag) ? `4px solid ${flagHex(tx.flag)}` : undefined,
-                    animationDelay: `${i * 30}ms`,
+                    animationDelay: `${Math.min(i, 12) * 30}ms`,
                     background: selectMode && selected.has(tx.id) ? '#DDF0E8' : undefined,
                   }}
                   onClick={() => {
