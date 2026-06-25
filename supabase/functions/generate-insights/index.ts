@@ -99,9 +99,9 @@ async function fetchAll(admin:SupabaseClient,hid:string):Promise<Data>{
   const m0=iso(y,m,1),m1=iso(y,m+1,1),m3=iso(y,m-3,1);
   const expSel='id,category_id,categories(name),profile_id,scope,is_shared,amount,currency,usd_rate_snapshot,merchant,occurred_on,splits(payer_profile_id,ower_profile_id,amount)';
   const [cr,hr,ir,recR,tgtR,bmR,savR,prR,debtR,fxR]=await Promise.all([
-    admin.from('transactions').select(expSel).eq('household_id',hid).eq('type','expense').gte('occurred_on',m0).lt('occurred_on',m1),
-    admin.from('transactions').select(expSel).eq('household_id',hid).eq('type','expense').gte('occurred_on',m3).lt('occurred_on',m0),
-    admin.from('transactions').select('amount,currency,usd_rate_snapshot').eq('household_id',hid).eq('type','income').gte('occurred_on',m0).lt('occurred_on',m1),
+    admin.from('transactions').select(expSel).eq('household_id',hid).eq('type','expense').eq('exclude_from_stats',false).gte('occurred_on',m0).lt('occurred_on',m1),
+    admin.from('transactions').select(expSel).eq('household_id',hid).eq('type','expense').eq('exclude_from_stats',false).gte('occurred_on',m3).lt('occurred_on',m0),
+    admin.from('transactions').select('amount,currency,usd_rate_snapshot').eq('household_id',hid).eq('type','income').eq('exclude_from_stats',false).gte('occurred_on',m0).lt('occurred_on',m1),
     admin.from('recurring_rules').select('label,amount,currency,cadence,scope,profile_id,categories(name)').eq('household_id',hid).eq('active',true).eq('direction','expense'),
     admin.from('category_targets').select('category_id,target_amount,currency,target_date,profile_id,categories(name,is_goal)').eq('household_id',hid),
     admin.from('budget_months').select('category_id,assigned,currency').eq('household_id',hid),

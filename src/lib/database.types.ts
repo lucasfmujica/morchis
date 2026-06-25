@@ -1070,6 +1070,7 @@ export type Database = {
           created_at: string
           currency: string
           description: string | null
+          exclude_from_stats: boolean
           flag: string | null
           household_id: string
           id: string
@@ -1096,6 +1097,7 @@ export type Database = {
           created_at?: string
           currency?: string
           description?: string | null
+          exclude_from_stats?: boolean
           flag?: string | null
           household_id: string
           id?: string
@@ -1122,6 +1124,7 @@ export type Database = {
           created_at?: string
           currency?: string
           description?: string | null
+          exclude_from_stats?: boolean
           flag?: string | null
           household_id?: string
           id?: string

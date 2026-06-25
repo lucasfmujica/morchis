@@ -41,7 +41,7 @@ Deno.serve(async (req: Request) => {
   const me = `${year}-${String(month+1).padStart(2,'0')}-${String(new Date(Date.UTC(year,month+1,0)).getUTCDate()).padStart(2,'0')}`;
 
   const [txR, rulesR, catsR, targetsR, assignedR, fxR] = await Promise.all([
-    admin.from('transactions').select('type,amount,occurred_on,category_id,currency,usd_rate_snapshot').eq('household_id',hid).gte('occurred_on',ms).lte('occurred_on',me),
+    admin.from('transactions').select('type,amount,occurred_on,category_id,currency,usd_rate_snapshot').eq('household_id',hid).eq('exclude_from_stats',false).gte('occurred_on',ms).lte('occurred_on',me),
     admin.from('recurring_rules').select('direction,amount,next_run,active,cadence,currency').eq('household_id',hid).eq('active',true),
     admin.from('categories').select('id,name,icon,is_goal').eq('household_id',hid),
     admin.from('category_targets').select('category_id,target_amount,currency,cadence,target_date').eq('household_id',hid),

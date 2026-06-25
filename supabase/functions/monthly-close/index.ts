@@ -84,10 +84,10 @@ async function processHousehold(admin: SupabaseClient, hid: string, vPub: string
 
   const expSel = 'category_id,categories(name),profile_id,scope,is_shared,amount,currency,usd_rate_snapshot,splits(payer_profile_id,ower_profile_id,amount)';
   const [curR, prevR, incR, incPrevR, budR, profR, fxR, savR, inflR, splitR, settleR] = await Promise.all([
-    admin.from('transactions').select(expSel).eq('household_id', hid).eq('type', 'expense').gte('occurred_on', m0).lt('occurred_on', m1),
-    admin.from('transactions').select(expSel).eq('household_id', hid).eq('type', 'expense').gte('occurred_on', b0).lt('occurred_on', m0),
-    admin.from('transactions').select('amount,currency,usd_rate_snapshot').eq('household_id', hid).eq('type', 'income').gte('occurred_on', m0).lt('occurred_on', m1),
-    admin.from('transactions').select('amount,currency,usd_rate_snapshot').eq('household_id', hid).eq('type', 'income').gte('occurred_on', b0).lt('occurred_on', m0),
+    admin.from('transactions').select(expSel).eq('household_id', hid).eq('type', 'expense').eq('exclude_from_stats', false).gte('occurred_on', m0).lt('occurred_on', m1),
+    admin.from('transactions').select(expSel).eq('household_id', hid).eq('type', 'expense').eq('exclude_from_stats', false).gte('occurred_on', b0).lt('occurred_on', m0),
+    admin.from('transactions').select('amount,currency,usd_rate_snapshot').eq('household_id', hid).eq('type', 'income').eq('exclude_from_stats', false).gte('occurred_on', m0).lt('occurred_on', m1),
+    admin.from('transactions').select('amount,currency,usd_rate_snapshot').eq('household_id', hid).eq('type', 'income').eq('exclude_from_stats', false).gte('occurred_on', b0).lt('occurred_on', m0),
     admin.from('category_targets').select('category_id,target_amount,currency,cadence,profile_id,categories(name,is_goal)').eq('household_id', hid),
     admin.from('profiles').select('id,nickname,display_name,notification_prefs').eq('household_id', hid),
     admin.from('fx_rates').select('ars_per_usd').eq('source', 'blue').order('date', { ascending: false }).limit(1).maybeSingle(),

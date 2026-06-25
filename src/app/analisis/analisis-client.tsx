@@ -118,6 +118,10 @@ export default function AnalisisClient({
         .from('transactions')
         .select('id, amount, type, occurred_on, category_id, profile_id, currency, is_shared, is_fixed, source, scope, merchant, splits(payer_profile_id, ower_profile_id, amount)')
         .eq('household_id', profile.household_id)
+        // Transferencia/FX rows (USD conversions, card payments, money sent to
+        // family, loans, refunds) move balances but aren't spend/income — keep
+        // them out of every metric on this screen.
+        .eq('exclude_from_stats', false)
         .gte('occurred_on', trendRangeStart)
         // Don't pull future-dated installment rows — Análisis only looks back.
         .lte('occurred_on', todayStr);

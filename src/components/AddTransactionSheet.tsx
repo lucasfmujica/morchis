@@ -61,6 +61,7 @@ interface EditTx {
   scope: string;
   is_shared: boolean;
   is_fixed?: boolean;
+  exclude_from_stats?: boolean;
   flag?: string | null;
   merchant: string | null;
   occurred_on: string;
@@ -258,6 +259,10 @@ export function AddTransactionSheet({
   // Fixed expense (rent, psychologist, etc.): excluded from the weekly total
   // limit, but still counts in category budgets and monthly totals.
   const [isFixed, setIsFixed] = useState(false);
+  // Transferencia/FX: still moves real money (keeps its expense/income sign and
+  // hits account balances) but drops out of every spend/income/savings metric.
+  // For USD conversions, card payments, money sent to family, loans, refunds.
+  const [excludeStats, setExcludeStats] = useState(false);
   const [flag, setFlag] = useState<string | null>(null);
   // Who actually fronted the money. Only meaningful for a "Hogar" movement:
   // a "Mío"/partner movement is paid by that same person. Decoupling this from
@@ -312,6 +317,7 @@ export function AddTransactionSheet({
         setOwner(ownerOf(editTx));
         setIsShared(editTx.is_shared);
         setIsFixed(editTx.is_fixed ?? false);
+        setExcludeStats(editTx.exclude_from_stats ?? false);
         setFlag(editTx.flag ?? null);
         // profile_id is the payer, so a movement whose profile isn't mine was
         // paid by my partner.
@@ -330,6 +336,7 @@ export function AddTransactionSheet({
         setOwner('me');
         setIsShared(false);
         setIsFixed(false);
+        setExcludeStats(false);
         setFlag(null);
         setPaidBy('me');
         setMerchant('');
@@ -747,6 +754,9 @@ export function AddTransactionSheet({
         is_shared: sharedEffective,
         // Only expenses can be "fixed"; income/transfers never are.
         is_fixed: txType === 'expense' ? isFixed : false,
+        // Transferencia/FX: drop this row out of all spend/income analytics
+        // while it still moves the account balance.
+        exclude_from_stats: excludeStats,
         flag,
         source: 'manual' as const,
       };
@@ -1250,6 +1260,20 @@ export function AddTransactionSheet({
             </button>
             )}
 
+            {/* Transferencia/FX — keeps the balance effect but excludes the
+                movement from every spend/income/savings metric. */}
+            <button
+              onClick={() => setExcludeStats((v) => !v)}
+              className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold border"
+              style={{
+                background: excludeStats ? '#EFEBFD' : '#FFFFFF',
+                borderColor: excludeStats ? '#7C6FF0' : '#E5EBE8',
+                color: excludeStats ? '#7C6FF0' : '#5B6660',
+              }}
+            >
+              🔄 Transf./FX
+            </button>
+
             {/* Account */}
             {visibleAccounts.length > 0 && (
               <select
@@ -1294,6 +1318,13 @@ export function AddTransactionSheet({
           {!isTransfer && txType === 'expense' && isFixed && (
             <p className="px-4 mt-2 text-[11px]" style={{ color: '#5B6660' }}>
               📌 Gasto fijo (recurrente, tipo alquiler o servicios).
+            </p>
+          )}
+
+          {/* Transferencia/FX hint */}
+          {!isTransfer && excludeStats && (
+            <p className="px-4 mt-2 text-[11px]" style={{ color: '#7C6FF0' }}>
+              🔄 No cuenta como {txType === 'income' ? 'ingreso' : 'gasto'} en el análisis (cambio de moneda, pago de tarjeta, plata a familia, préstamo o reintegro). Igual afecta el saldo de la cuenta.
             </p>
           )}
 

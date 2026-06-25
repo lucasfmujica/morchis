@@ -27,6 +27,9 @@ export interface BudgetExpenseRow {
   profile_id: string;
   is_shared: boolean;
   is_fixed?: boolean | null;
+  // Transferencia/FX rows (USD conversions, card payments, money to family,
+  // loans, refunds) never count against a budget or envelope.
+  exclude_from_stats?: boolean | null;
   source?: string | null;
   occurred_on?: string;
   splits?: SplitRow[] | null;
@@ -97,6 +100,8 @@ export function budgetContribution(
   viewerProfileId: string,
   arsPerUsd: number,
 ): number {
+  // Transferencia/FX rows move balances but aren't spend — never budget-counted.
+  if (t.exclude_from_stats) return 0;
   // A total budget (no category) counts every expense; a category budget only its own.
   if (b.category_id != null && t.category_id !== b.category_id) return 0;
   // Total limits measure discretionary spend, so fixed expenses don't count
@@ -123,6 +128,7 @@ export function weekContribution(
   viewerProfileId: string,
   arsPerUsd: number,
 ): number {
+  if (t.exclude_from_stats) return 0;
   if (tab === 'household') {
     return t.scope === 'household' ? toArs(t.amount, t.currency, arsPerUsd) : 0;
   }
@@ -132,4 +138,4 @@ export function weekContribution(
 
 /** SQL column list for fetching expense rows compatible with the helpers above. */
 export const BUDGET_EXPENSE_SELECT =
-  'category_id, amount, currency, scope, profile_id, is_shared, is_fixed, source, occurred_on, splits(payer_profile_id, ower_profile_id, amount)';
+  'category_id, amount, currency, scope, profile_id, is_shared, is_fixed, exclude_from_stats, source, occurred_on, splits(payer_profile_id, ower_profile_id, amount)';

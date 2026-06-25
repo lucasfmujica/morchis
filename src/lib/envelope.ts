@@ -134,6 +134,8 @@ export function activityByCategoryMonth(
   };
 
   for (const t of rows) {
+    // Transferencia/FX rows never touch an envelope (not consumption).
+    if (t.exclude_from_stats) continue;
     const month = monthOf(t.occurred_on);
     if (t.type === 'expense') {
       const share = expenseShareArs(t, profileId, arsPerUsd, receivableByTx.get(t.id) ?? 0);

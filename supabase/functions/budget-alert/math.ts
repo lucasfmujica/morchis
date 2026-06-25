@@ -14,6 +14,7 @@ export interface Tx {
   occurred_on: string;
   account_id: string | null;
   transfer_account_id: string | null;
+  exclude_from_stats?: boolean | null;
   splits?: Split[] | null;
 }
 export interface Account {
@@ -86,6 +87,8 @@ export function activityByCategoryMonth(
     map.set(k, (map.get(k) ?? 0) + val);
   };
   for (const t of rows) {
+    // Transferencia/FX rows never touch an envelope (not consumption).
+    if (t.exclude_from_stats) continue;
     const month = t.occurred_on.slice(0, 7);
     if (t.type === "expense") {
       const share = expenseShareArs(t, profileId, rate, receivableMap.get(t.id) ?? 0);

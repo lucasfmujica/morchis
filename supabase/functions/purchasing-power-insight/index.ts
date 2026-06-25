@@ -64,8 +64,8 @@ Deno.serve(async (req: Request) => {
 
   const incomeSel = 'amount, currency, usd_rate_snapshot';
   const [{ data: lastIncome }, { data: baseIncome }] = await Promise.all([
-    supabase.from('transactions').select(incomeSel).eq('household_id', householdId).eq('type', 'income').gte('occurred_on', lastMonthStart).lte('occurred_on', lastMonthEnd),
-    supabase.from('transactions').select(incomeSel).eq('household_id', householdId).eq('type', 'income').gte('occurred_on', baseMonthStart).lte('occurred_on', baseMonthEnd),
+    supabase.from('transactions').select(incomeSel).eq('household_id', householdId).eq('type', 'income').eq('exclude_from_stats', false).gte('occurred_on', lastMonthStart).lte('occurred_on', lastMonthEnd),
+    supabase.from('transactions').select(incomeSel).eq('household_id', householdId).eq('type', 'income').eq('exclude_from_stats', false).gte('occurred_on', baseMonthStart).lte('occurred_on', baseMonthEnd),
   ]);
 
   type IncomeRow = { amount: number; currency: string | null; usd_rate_snapshot: number | null };

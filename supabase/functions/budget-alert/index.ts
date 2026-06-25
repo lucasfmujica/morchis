@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
       admin.from("budget_months").select("profile_id, category_id, month, assigned, currency")
         .eq("household_id", householdId).lte("month", period),
       admin.from("transactions")
-        .select("id, type, category_id, amount, currency, scope, profile_id, is_shared, occurred_on, account_id, transfer_account_id, splits(payer_profile_id, ower_profile_id, amount)")
+        .select("id, type, category_id, amount, currency, scope, profile_id, is_shared, occurred_on, account_id, transfer_account_id, exclude_from_stats, splits(payer_profile_id, ower_profile_id, amount)")
         .eq("household_id", householdId).lte("occurred_on", monthEnd),
       admin.from("accounts").select("id, type, currency, archived, initial_balance, owner_profile_id, on_budget, payment_category_id")
         .eq("household_id", householdId),

@@ -52,9 +52,9 @@ Deno.serve(async (req: Request) => {
   const day = now.getDate();
 
   const [histR, lastR, curRq, catR, budR, fxR] = await Promise.all([
-    admin.from('transactions').select('category_id,amount,currency,usd_rate_snapshot').eq('household_id', hid).eq('type', 'expense').eq('scope', scope).gte('occurred_on', m3).lt('occurred_on', m0),
-    admin.from('transactions').select('category_id,amount,currency,usd_rate_snapshot').eq('household_id', hid).eq('type', 'expense').eq('scope', scope).gte('occurred_on', pm0).lt('occurred_on', m0),
-    admin.from('transactions').select('category_id,amount,currency,usd_rate_snapshot').eq('household_id', hid).eq('type', 'expense').eq('scope', scope).gte('occurred_on', m0).lt('occurred_on', m1),
+    admin.from('transactions').select('category_id,amount,currency,usd_rate_snapshot').eq('household_id', hid).eq('type', 'expense').eq('exclude_from_stats', false).eq('scope', scope).gte('occurred_on', m3).lt('occurred_on', m0),
+    admin.from('transactions').select('category_id,amount,currency,usd_rate_snapshot').eq('household_id', hid).eq('type', 'expense').eq('exclude_from_stats', false).eq('scope', scope).gte('occurred_on', pm0).lt('occurred_on', m0),
+    admin.from('transactions').select('category_id,amount,currency,usd_rate_snapshot').eq('household_id', hid).eq('type', 'expense').eq('exclude_from_stats', false).eq('scope', scope).gte('occurred_on', m0).lt('occurred_on', m1),
     admin.from('categories').select('id,name,kind').eq('household_id', hid).eq('kind', 'expense'),
     admin.from('category_targets').select('category_id').eq('profile_id', uid ?? '00000000-0000-0000-0000-000000000000'),
     admin.from('fx_rates').select('ars_per_usd').eq('source', 'blue').order('date', { ascending: false }).limit(1).maybeSingle(),

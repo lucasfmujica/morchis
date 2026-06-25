@@ -51,6 +51,7 @@ type Tx = {
   scope: string;
   is_shared: boolean;
   is_fixed: boolean;
+  exclude_from_stats: boolean;
   cleared: boolean;
   flag: string | null;
   merchant: string | null;
@@ -157,7 +158,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     queryFn: async () => {
       const { data } = await supabase
         .from('transactions')
-        .select('id, amount, type, currency, category_id, account_id, transfer_account_id, scope, is_shared, is_fixed, cleared, flag, merchant, occurred_on, profile_id, source, installment_number, installment_total, categories:category_id(name, icon)')
+        .select('id, amount, type, currency, category_id, account_id, transfer_account_id, scope, is_shared, is_fixed, exclude_from_stats, cleared, flag, merchant, occurred_on, profile_id, source, installment_number, installment_total, categories:category_id(name, icon)')
         .eq('household_id', profile.household_id)
         .order('occurred_on', { ascending: false })
         .order('created_at', { ascending: false })
@@ -337,8 +338,8 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
         ? scopeFiltered
         : scopeFiltered.filter((tx) => tx.category_id === filterCategory);
     const current = base.filter((tx) => tx.occurred_on.startsWith(month));
-    const expenses = current.filter((tx) => tx.type === 'expense').reduce((s, tx) => s + toArs(tx.amount, tx.currency), 0);
-    const income = current.filter((tx) => tx.type === 'income').reduce((s, tx) => s + toArs(tx.amount, tx.currency), 0);
+    const expenses = current.filter((tx) => tx.type === 'expense' && !tx.exclude_from_stats).reduce((s, tx) => s + toArs(tx.amount, tx.currency), 0);
+    const income = current.filter((tx) => tx.type === 'income' && !tx.exclude_from_stats).reduce((s, tx) => s + toArs(tx.amount, tx.currency), 0);
     return { expenses, income };
   }, [scopeFiltered, filterCategory, toArs]);
 
@@ -353,7 +354,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     const prevMap = new Map<string, number>();
 
     for (const tx of scopeFiltered) {
-      if (tx.type !== 'expense') continue;
+      if (tx.type !== 'expense' || tx.exclude_from_stats) continue;
       const id = tx.category_id ?? '__none__';
       if (tx.occurred_on.startsWith(curMonth)) {
         curMap.set(id, (curMap.get(id) ?? 0) + toArs(tx.amount, tx.currency));
@@ -584,7 +585,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
           </select>
           {filterCategory !== 'all' && (
             <span className="text-xs font-black whitespace-nowrap" style={{ color: '#FF6F61' }}>
-              {format(filtered.filter((t) => t.type === 'expense').reduce((s, t) => s + toArs(t.amount, t.currency), 0))}
+              {format(filtered.filter((t) => t.type === 'expense' && !t.exclude_from_stats).reduce((s, t) => s + toArs(t.amount, t.currency), 0))}
             </span>
           )}
         </div>
@@ -810,7 +811,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
           .filter((tx) => {
             const now = new Date();
             const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-            return tx.occurred_on.startsWith(month) && tx.type === 'expense';
+            return tx.occurred_on.startsWith(month) && tx.type === 'expense' && !tx.exclude_from_stats;
           })
           .map((tx) => ({ ...tx, amount: toArs(tx.amount, tx.currency) }))}
         categories={categories}

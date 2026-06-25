@@ -29,7 +29,7 @@ async function aggregateTransactions(ctx: Ctx, input: AggInput) {
   const lensTarget = lensParam === 'mine' ? ctx.askerId : lensParam === 'partner' ? (ctx.partnerId ?? '__none__') : lensParam; // 'household' | 'everyone' | profileId
   let q = ctx.admin.from('transactions')
     .select('id,categories(name),profile_id,scope,is_shared,amount,currency,usd_rate_snapshot,merchant,occurred_on,splits(payer_profile_id,ower_profile_id,amount)')
-    .eq('household_id', ctx.hid).eq('type', type);
+    .eq('household_id', ctx.hid).eq('type', type).eq('exclude_from_stats', false);
   if (input.date_from) q = q.gte('occurred_on', input.date_from);
   if (input.date_to) q = q.lte('occurred_on', input.date_to);
   const { data } = await q;
@@ -103,7 +103,7 @@ async function getBudgets(ctx: Ctx) {
   // Envelope model: a category's "budget" is its monthly target (category_targets).
   const [{ data: buds }, { data: exp }] = await Promise.all([
     ctx.admin.from('category_targets').select('target_amount,currency,profile_id,categories(name)').eq('household_id', ctx.hid),
-    ctx.admin.from('transactions').select('id,categories(name),profile_id,scope,is_shared,amount,currency,usd_rate_snapshot,splits(payer_profile_id,ower_profile_id,amount)').eq('household_id', ctx.hid).eq('type', 'expense').gte('occurred_on', iso(y, m, 1)).lt('occurred_on', iso(y, m + 1, 1)),
+    ctx.admin.from('transactions').select('id,categories(name),profile_id,scope,is_shared,amount,currency,usd_rate_snapshot,splits(payer_profile_id,ower_profile_id,amount)').eq('household_id', ctx.hid).eq('type', 'expense').eq('exclude_from_stats', false).gte('occurred_on', iso(y, m, 1)).lt('occurred_on', iso(y, m + 1, 1)),
   ]);
   const rows = (exp ?? []) as (ExpRow & { categories: { name: string } | null })[];
   return {
@@ -162,7 +162,7 @@ async function aggregateItems(ctx: Ctx, input: ItemAggInput) {
   if (lensTarget === '__none__') return { note: 'No encontré a esa persona.', total_ars: 0, groups: [] };
   let q = ctx.admin.from('transaction_items')
     .select('item_group,name,line_total,transactions!inner(occurred_on,currency,usd_rate_snapshot,scope,is_shared,profile_id,amount,type,splits(payer_profile_id,ower_profile_id,amount))')
-    .eq('household_id', ctx.hid).eq('transactions.type', 'expense');
+    .eq('household_id', ctx.hid).eq('transactions.type', 'expense').eq('transactions.exclude_from_stats', false);
   if (input.date_from) q = q.gte('transactions.occurred_on', input.date_from);
   if (input.date_to) q = q.lte('transactions.occurred_on', input.date_to);
   const { data } = await q;
@@ -187,7 +187,7 @@ async function projectMonth(ctx: Ctx, input: ProjInput) {
   const dim = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
   const me = `${y}-${String(m + 1).padStart(2, '0')}-${String(dim).padStart(2, '0')}`;
   const [{ data: txRows }, { data: ruleRows }] = await Promise.all([
-    ctx.admin.from('transactions').select('type,amount,currency,usd_rate_snapshot,occurred_on').eq('household_id', ctx.hid).gte('occurred_on', ms).lte('occurred_on', me),
+    ctx.admin.from('transactions').select('type,amount,currency,usd_rate_snapshot,occurred_on').eq('household_id', ctx.hid).eq('exclude_from_stats', false).gte('occurred_on', ms).lte('occurred_on', me),
     ctx.admin.from('recurring_rules').select('direction,amount,currency,next_run,active,cadence').eq('household_id', ctx.hid).eq('active', true),
   ]);
   const txs = ((txRows ?? []) as { type: string; amount: number; currency: string; usd_rate_snapshot: number | null; occurred_on: string }[])
