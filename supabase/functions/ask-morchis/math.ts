@@ -53,13 +53,30 @@ export function lensFraction(p: ItemParent, lensTarget: string, blue: number): n
 }
 
 export function buildPrimer(ctx: PrimerCtx): string {
-  const now = new Date(); const y = now.getFullYear(), m = now.getMonth();
+  // ARG is UTC-3: compute the local calendar there so "hoy" y los rangos
+  // coinciden con lo que ve el usuario, incluso de noche (cuando UTC ya pasó al
+  // día siguiente). Todos los rangos van pre-calculados para que el modelo NO
+  // tenga que hacer aritmética de fechas (la causa más común de números mal).
+  const art = new Date(Date.now() - 3 * 60 * 60 * 1000);
+  const y = art.getUTCFullYear(), m = art.getUTCMonth(), d = art.getUTCDate();
   const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const fmt = (dt: Date) => `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+  const u = (yy: number, mm: number, dd: number) => new Date(Date.UTC(yy, mm, dd));
+  const day = 86400000;
+  const today = fmt(u(y, m, d));
   const asker = ctx.pm[ctx.askerId] ?? 'el usuario';
   const partner = ctx.partnerId ? (ctx.pm[ctx.partnerId] ?? 'su pareja') : 'su pareja';
   return [
-    `Hoy es ${iso(y, m, now.getDate())} (${months[m]} de ${y}).`,
+    `Hoy es ${today} (${months[m]} de ${y}).`,
     `Quien te escribe es ${asker}. Su pareja es ${partner}.`,
+    'Rangos de fecha YA CALCULADOS para usar tal cual en date_from / date_to (NO los calcules vos):',
+    `- este mes: ${fmt(u(y, m, 1))} a ${today}`,
+    `- mes pasado: ${fmt(u(y, m - 1, 1))} a ${fmt(u(y, m, 0))}`,
+    `- este año: ${fmt(u(y, 0, 1))} a ${today}`,
+    `- año pasado: ${fmt(u(y - 1, 0, 1))} a ${fmt(u(y - 1, 11, 31))}`,
+    `- últimos 7 días: ${fmt(new Date(u(y, m, d).getTime() - 6 * day))} a ${today}`,
+    `- últimos 30 días: ${fmt(new Date(u(y, m, d).getTime() - 29 * day))} a ${today}`,
+    'Si la pregunta NO menciona período, asumí "este mes" y aclaralo en la respuesta (ej. "este mes...").',
     `Categorías de gasto existentes (usá estos nombres exactos al filtrar): ${ctx.catNames || 'n/d'}.`,
     'Cada gasto puede ser personal (de una persona) o del hogar (compartido). Para "mis/mi" usá lens="mine"; para tu pareja lens="partner"; para lo compartido/del hogar/"juntos" lens="household"; para el total combinado lens="everyone".',
     'La moneda base es el peso argentino (ARS); los dólares ya vienen convertidos en las herramientas.',
