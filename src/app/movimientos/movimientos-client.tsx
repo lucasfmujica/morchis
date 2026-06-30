@@ -113,6 +113,9 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
     const r = new URLSearchParams(window.location.search).get('range');
     return r === 'week' || r === 'month' ? r : 'all';
   });
+  // Which week the "Semana" view shows: 0 = current, -1 = last week, etc. The
+  // ◀/▶ navigator below shifts this so you can browse past weeks of gastos.
+  const [weekOffset, setWeekOffset] = useState(0);
   const [showChart, setShowChart] = useState(false);
   // List order: by day (default) or by amount, biggest first — so you can see
   // which movements make up a month's total (e.g. "¿cómo llego a esos 3.8M?").
@@ -135,7 +138,12 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkCatOpen, setBulkCatOpen] = useState(false);
 
-  const week = weekRange(new Date());
+  // Week shown in the "Semana" view, shifted by weekOffset (0 = current week).
+  const week = useMemo(() => {
+    const base = new Date();
+    base.setDate(base.getDate() + weekOffset * 7);
+    return weekRange(base);
+  }, [weekOffset]);
   const monthPrefix = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
   function inRange(occurredOn: string): boolean {
     if (filterRange === 'week') return occurredOn >= week.start && occurredOn <= week.end;
@@ -230,7 +238,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleTransactions, filterScope, filterShared, filterRange]);
+  }, [visibleTransactions, filterScope, filterShared, filterRange, weekOffset]);
 
   // Text search over merchant/description and category name, accent-insensitive.
   // While searching, the date-range chip is ignored so the whole visible history
@@ -489,6 +497,19 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
   // Category (envelope) colour per transaction, to dot the icon and tint the name.
   const catColorById = new Map(categories.map((c) => [c.id, (c.color as string | null) ?? null]));
 
+  // Relative descriptor for the week navigator (0 = current week).
+  const weekLabel =
+    weekOffset === 0 ? 'Esta semana'
+    : weekOffset === -1 ? 'Semana pasada'
+    : weekOffset === 1 ? 'Próxima semana'
+    : weekOffset < 0 ? `Hace ${-weekOffset} semanas`
+    : `En ${weekOffset} semanas`;
+  // Total gastado en la semana mostrada (respeta la vista Total / Mi parte).
+  const weekExpenses = useMemo(
+    () => filtered.filter((t) => t.type === 'expense' && !t.exclude_from_stats).reduce((s, t) => s + spendArs(t), 0),
+    [filtered, spendArs],
+  );
+
   return (
     <div className="min-h-screen pb-24" style={{ background: '#F1F5F3' }}>
       {/* Header */}
@@ -496,7 +517,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
         <div>
           <h1 className="text-2xl font-black" style={{ color: '#18211D' }}>Movimientos</h1>
           <p className="text-xs mt-0.5" style={{ color: '#5B6660' }}>
-            {searchActive ? 'Buscando en todo el histórico' : filterRange === 'week' ? `Semana · Lun ${shortDM(week.start)} – Dom ${shortDM(week.end)}` : filterRange === 'month' ? 'Este mes' : 'Histórico'}
+            {searchActive ? 'Buscando en todo el histórico' : filterRange === 'week' ? `${weekLabel} · ${shortDM(week.start)} – ${shortDM(week.end)}` : filterRange === 'month' ? 'Este mes' : 'Histórico'}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -620,7 +641,7 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
           {(['all', 'week', 'month'] as const).map((r) => (
             <button
               key={r}
-              onClick={() => setFilterRange(r)}
+              onClick={() => { setFilterRange(r); setWeekOffset(0); }}
               className="flex-shrink-0 px-3 py-2 rounded-full text-xs font-bold border transition-all"
               style={{
                 background: filterRange === r ? '#1F8A68' : '#FFFFFF',
@@ -633,6 +654,44 @@ export default function MovimientosClient({ profile, partnerProfileId }: Movimie
             </button>
           ))}
         </div>
+
+        {/* Week navigator — browse past weeks of gastos when in "Semana" view. */}
+        {filterRange === 'week' && !searchActive && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { haptic('tap'); setWeekOffset((o) => o - 1); }}
+              aria-label="Semana anterior"
+              className="shrink-0 w-9 h-9 rounded-full border flex items-center justify-center text-base font-black transition-all active:scale-95"
+              style={{ background: '#FFFFFF', borderColor: '#E5EBE8', color: '#18211D', boxShadow: 'var(--shadow-soft)' }}
+            >
+              ◀
+            </button>
+            <div className="flex-1 min-w-0 text-center">
+              <p className="text-xs font-bold truncate" style={{ color: '#18211D' }}>{weekLabel}</p>
+              <p className="text-[11px] tabular-nums" style={{ color: '#FF6F61' }}>
+                {format(weekExpenses)} <span style={{ color: '#8C968F' }}>en gastos</span>
+              </p>
+            </div>
+            <button
+              onClick={() => { haptic('tap'); setWeekOffset((o) => Math.min(0, o + 1)); }}
+              disabled={weekOffset >= 0}
+              aria-label="Semana siguiente"
+              className="shrink-0 w-9 h-9 rounded-full border flex items-center justify-center text-base font-black transition-all active:scale-95 disabled:opacity-30"
+              style={{ background: '#FFFFFF', borderColor: '#E5EBE8', color: '#18211D', boxShadow: 'var(--shadow-soft)' }}
+            >
+              ▶
+            </button>
+            {weekOffset !== 0 && (
+              <button
+                onClick={() => { haptic('tap'); setWeekOffset(0); }}
+                className="shrink-0 px-3 h-9 rounded-full text-xs font-bold border transition-all"
+                style={{ background: '#FFFFFF', borderColor: '#E5EBE8', color: '#5B6660', boxShadow: 'var(--shadow-soft)' }}
+              >
+                Hoy
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Sort order: by day, or by amount (biggest first) */}
         <div className="flex items-center gap-2">
