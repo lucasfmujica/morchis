@@ -55,14 +55,15 @@ function isNonProduct(name: string): boolean {
   return /propina|cubierto|^bolsa|servicio de mesa/.test(norm(name));
 }
 // A tip logged as its OWN café expense ("Propina Ada Cafe" / "Propón café
-// rosie"), separate from the consumption ticket. These get folded into their
-// café's visit so the visit/place total is the real amount paid.
+// rosie" / "Propi Cafe Urquiza"), separate from the consumption ticket. These
+// get folded into their café's visit so the visit/place total is the real
+// amount paid. Accepts the common abbreviation "Propi" too.
 function isTipTx(merchant: string | null): boolean {
-  return /^prop(ina|on)\b/.test(norm(merchant ?? ''));
+  return /^prop(ina|on|i)\b/.test(norm(merchant ?? ''));
 }
 // Significant name tokens of a place (drops tip/café filler + connectors), used
 // to match a tip back to its consumption ticket of the same day.
-const PLACE_STOP = new Set(['propina', 'propon', 'cafe', 'cafes', 'cafeteria', 'del', 'con']);
+const PLACE_STOP = new Set(['propina', 'propon', 'propi', 'cafe', 'cafes', 'cafeteria', 'del', 'con']);
 function placeTokens(merchant: string | null): Set<string> {
   return new Set(
     norm(merchant ?? '')
