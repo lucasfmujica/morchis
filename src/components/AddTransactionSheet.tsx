@@ -14,6 +14,7 @@ import { normalizeMerchant } from '@/lib/text';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { todayISO, toLocalISO } from '@/lib/date';
 import { triggerBudgetAlerts } from '@/lib/notifyBudgets';
+import { recordSettlement } from '@/hooks/useCouple';
 import { FLAG_COLORS } from '@/lib/flags';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -242,7 +243,10 @@ export function AddTransactionSheet({
 
   const [inputUSD, setInputUSD] = useState(false);
   const [raw, setRaw] = useState('');
-  const [txType, setTxType] = useState<'expense' | 'income' | 'transfer'>('expense');
+  // 'settle' is a couple settlement (paying the partner back). It isn't a real
+  // transaction row — it writes to `settlements` via recordSettlement and moves
+  // the "Deuda con la pareja" balance, optionally recording the money movement.
+  const [txType, setTxType] = useState<'expense' | 'income' | 'transfer' | 'settle'>('expense');
   const [categoryId, setCategoryId] = useState<string | null>(null);
   // Payee-memory autofill: `categoryTouched` means the user picked a category by
   // hand, so the merchant suggestion never overrides it; `suggestedCat` drives
@@ -269,6 +273,11 @@ export function AddTransactionSheet({
   // the owner is what lets a household expense be paid by either person (and
   // stay visible to both) instead of always assuming the creator paid.
   const [paidBy, setPaidBy] = useState<'me' | 'partner'>('me');
+  // Settlement (txType === 'settle'): who pays whom, and whether to also record
+  // the real money movement between the partners' accounts (off = cash / settled
+  // outside the app). Reuses `accountId`/`toAccountId` for the Desde/Hacia legs.
+  const [iPaySettle, setIPaySettle] = useState(true);
+  const [settleMoveMoney, setSettleMoveMoney] = useState(true);
   // Percentage of a shared expense that *I* cover. Partner owes the rest.
   const [myShare, setMyShare] = useState(50);
   // The split row saved in the DB for the movement being edited, loaded async.
@@ -347,6 +356,8 @@ export function AddTransactionSheet({
         setMyShare(suggestedShare ?? 50);
       }
       setInstallments(1);
+      setIPaySettle(true);
+      setSettleMoveMoney(true);
       setCreatingCat(false);
       setNewCatName('');
       setNewCatIcon('🏷️');
@@ -517,6 +528,35 @@ export function AddTransactionSheet({
   }
 
   const isTransfer = txType === 'transfer';
+  const isSettle = txType === 'settle';
+
+  // Settlement legs. The couple ledger is in ARS, so the keypad is locked to ARS
+  // and only ARS non-credit accounts are eligible (mirrors the /pareja sheet).
+  const settlePayerId = iPaySettle ? profileId : effectivePartnerId;
+  const settleReceiverId = iPaySettle ? effectivePartnerId : profileId;
+  const settlePayerName = iPaySettle ? 'Yo' : effectivePartnerName;
+  const settleReceiverName = iPaySettle ? effectivePartnerName : 'Yo';
+  const settleEligible = (ownerId: string | null) =>
+    !ownerId
+      ? []
+      : acctMeta.filter(
+          (a) =>
+            a.type !== 'credit' &&
+            a.currency === 'ARS' &&
+            (a.owner_profile_id == null || a.owner_profile_id === ownerId),
+        );
+  const settleFromAccounts = settleEligible(settlePayerId);
+  const settleToAccounts = settleEligible(settleReceiverId);
+  const settleCanMove = settleFromAccounts.length > 0 && settleToAccounts.length > 0;
+  const settleFromId =
+    accountId && settleFromAccounts.some((a) => a.id === accountId)
+      ? accountId
+      : (settleFromAccounts[0]?.id ?? null);
+  const settleToId =
+    toAccountId && settleToAccounts.some((a) => a.id === toAccountId)
+      ? toAccountId
+      : (settleToAccounts[0]?.id ?? null);
+  const settleWillMove = isSettle && settleMoveMoney && settleCanMove && !!settleFromId && !!settleToId;
 
   // Transfers move money between the user's own non-credit accounts. Origin
   // reuses `accountId`; destination is `toAccountId`. We keep both legs in the
@@ -545,7 +585,7 @@ export function AddTransactionSheet({
   // expression we evaluate; otherwise it's a plain typed amount.
   const isExpr = hasMoneyOperator(raw);
   const nativeAmount = isExpr ? evalMoneyExpr(raw) : parseMoney(raw);
-  const txCurrency: 'ARS' | 'USD' = isTransfer ? transferCurrency : inputUSD ? 'USD' : 'ARS';
+  const txCurrency: 'ARS' | 'USD' = isTransfer ? transferCurrency : isSettle ? 'ARS' : inputUSD ? 'USD' : 'ARS';
   // ARS equivalent, used only for the couple-split math and the ≈ preview.
   const arsAmount = txCurrency === 'USD' ? usdToArs(nativeAmount, arsPerUsd) : nativeAmount;
 
@@ -565,7 +605,7 @@ export function AddTransactionSheet({
       : `≈ ${formatUSD(arsToUsd(arsAmount, arsPerUsd))}`;
 
   // Neutral blue accent for transfers; red for expense, green for income.
-  const accentColor = isTransfer ? '#4E84E0' : txType === 'expense' ? '#FF6F61' : '#2FA37C';
+  const accentColor = isTransfer ? '#4E84E0' : isSettle ? '#1F8A68' : txType === 'expense' ? '#FF6F61' : '#2FA37C';
   const transferInvalid =
     isTransfer && (!effectiveFromId || !effectiveToId || effectiveFromId === effectiveToId);
 
@@ -702,6 +742,30 @@ export function AddTransactionSheet({
     setSaving(true);
     onClose();
     try {
+      if (isSettle) {
+        // Paying the partner back: write a settlement to the couple ledger (which
+        // moves the "Deuda con la pareja" balance) and, when asked, also record
+        // the real money movement between their accounts. No transaction/category.
+        if (!settlePayerId || !settleReceiverId) {
+          toast.error('Invitá a tu pareja al hogar primero.');
+          return;
+        }
+        await recordSettlement({
+          householdId,
+          fromProfileId: settlePayerId,
+          toProfileId: settleReceiverId,
+          amount: Math.round(nativeAmount),
+          note: merchant || undefined,
+          occurredOn: date,
+          fromAccountId: settleWillMove ? settleFromId : null,
+          toAccountId: settleWillMove ? settleToId : null,
+        });
+        await invalidateMoneyQueries();
+        toast.success('Pago a la pareja registrado ✓');
+        onClose();
+        return;
+      }
+
       if (isTransfer) {
         // A transfer is ONE row: money leaves account_id (origin) and arrives at
         // transfer_account_id (destination). It carries no category/split and is
@@ -954,10 +1018,10 @@ export function AddTransactionSheet({
           {/* Amount display */}
           <div className="text-center px-6 pb-2">
             <div className="flex items-center justify-center gap-3 mb-1">
-              {isTransfer ? (
+              {isTransfer || isSettle ? (
                 <span
                   className="text-xs font-bold px-3 py-1 rounded-full border"
-                  style={{ borderColor: '#4E84E0', color: '#4E84E0' }}
+                  style={{ borderColor: accentColor, color: accentColor }}
                 >
                   {txCurrency}
                 </span>
@@ -1005,12 +1069,16 @@ export function AddTransactionSheet({
             </p>
           </div>
 
-          {/* Gasto / Ingreso / Transferencia toggle */}
+          {/* Gasto / Ingreso / Transferencia / Pareja toggle. "Pareja" only when
+              there's a partner to settle with, and never while editing a row. */}
           <div className="flex mx-6 mb-3 rounded-2xl overflow-hidden" style={{ background: '#E5EBE8' }}>
             {([
               { t: 'expense' as const, label: 'Gasto', color: '#FF6F61' },
               { t: 'income' as const, label: 'Ingreso', color: '#2FA37C' },
               { t: 'transfer' as const, label: 'Transferencia', color: '#4E84E0' },
+              ...(!editTx && effectivePartnerId
+                ? [{ t: 'settle' as const, label: '🤝 Pareja', color: '#1F8A68' }]
+                : []),
             ]).map(({ t, label, color }) => (
               <button
                 key={t}
@@ -1019,6 +1087,7 @@ export function AddTransactionSheet({
                   setCategoryId(null);
                   setCategoryTouched(false);
                   setSuggestedCat(null);
+                  if (t === 'settle') setInputUSD(false);
                 }}
                 className="flex-1 py-2.5 text-[13px] font-bold transition-all"
                 style={{
@@ -1034,7 +1103,7 @@ export function AddTransactionSheet({
           </div>
 
           {/* Category chips */}
-          {!isTransfer && (
+          {!isTransfer && !isSettle && (
           <div className="px-4 mb-3">
             <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
               {visibleCategories.map((c) => (
@@ -1164,9 +1233,105 @@ export function AddTransactionSheet({
             </div>
           )}
 
+          {/* Pago a la pareja — records a settlement against the couple balance
+              ("Deuda con la pareja" in /presupuestos), optionally moving real
+              money between the partners' accounts. */}
+          {isSettle && (
+            <div className="px-4 mt-3">
+              <p className="text-xs font-bold mb-1.5" style={{ color: '#5B6660' }}>¿Quién le paga a quién?</p>
+              <div className="flex rounded-2xl overflow-hidden p-1 gap-1 mb-3" style={{ background: '#E5EBE8' }}>
+                {([
+                  { key: true, label: `👤 Yo → ${effectivePartnerName}` },
+                  { key: false, label: `👥 ${effectivePartnerName} → Yo` },
+                ] as const).map((o) => {
+                  const active = iPaySettle === o.key;
+                  return (
+                    <button
+                      key={String(o.key)}
+                      onClick={() => setIPaySettle(o.key)}
+                      className="flex-1 py-2 text-xs font-black rounded-xl transition-all"
+                      style={{ background: active ? '#FFFFFF' : 'transparent', color: active ? '#18211D' : '#5B6660', boxShadow: active ? 'var(--shadow-soft)' : 'none' }}
+                    >
+                      {o.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <p className="text-[11px] mb-3 leading-snug" style={{ color: '#5B6660' }}>
+                🤝 Salda la <b>deuda con la pareja</b>. No cuenta como gasto: ajusta el balance del hogar.
+              </p>
+
+              {/* Real money movement — record the transfer between accounts, not
+                  just the couple balance. Off = efectivo o saldado por fuera. */}
+              <div className="rounded-2xl p-3 mb-3 border" style={{ background: '#FFFFFF', boxShadow: 'var(--shadow-card)', borderColor: '#E5EBE8' }}>
+                <button
+                  type="button"
+                  onClick={() => setSettleMoveMoney((v) => !v)}
+                  disabled={!settleCanMove}
+                  className="w-full flex items-center justify-between disabled:opacity-50"
+                >
+                  <span className="text-xs font-bold" style={{ color: '#18211D' }}>💸 Mover plata entre cuentas</span>
+                  <span
+                    className="text-[11px] font-bold px-2 py-1 rounded-full"
+                    style={{ background: settleWillMove ? '#DDF0E8' : '#E5EBE8', color: settleWillMove ? '#1F8A68' : '#5B6660' }}
+                  >
+                    {settleWillMove ? 'Sí' : 'No'}
+                  </span>
+                </button>
+                {!settleCanMove ? (
+                  <p className="text-[11px] mt-2" style={{ color: '#5B6660' }}>
+                    Hace falta una cuenta en pesos (no tarjeta) de cada uno para registrar el movimiento.
+                  </p>
+                ) : (
+                  settleWillMove && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <div className="flex-1">
+                        <p className="text-[11px] font-bold mb-1" style={{ color: '#5B6660' }}>Desde · {settlePayerName}</p>
+                        <select
+                          value={settleFromId ?? ''}
+                          onChange={(e) => setAccountId(e.target.value || null)}
+                          className="w-full px-3 py-2 rounded-xl text-xs font-bold border bg-white"
+                          style={{ borderColor: '#E5EBE8', color: '#18211D' }}
+                        >
+                          {settleFromAccounts.map((a) => (
+                            <option key={a.id} value={a.id}>{a.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <span className="text-lg mt-4" style={{ color: '#1F8A68' }}>→</span>
+                      <div className="flex-1">
+                        <p className="text-[11px] font-bold mb-1" style={{ color: '#5B6660' }}>Hacia · {settleReceiverName}</p>
+                        <select
+                          value={settleToId ?? ''}
+                          onChange={(e) => setToAccountId(e.target.value || null)}
+                          className="w-full px-3 py-2 rounded-xl text-xs font-bold border bg-white"
+                          style={{ borderColor: '#E5EBE8', color: '#18211D' }}
+                        >
+                          {settleToAccounts.map((a) => (
+                            <option key={a.id} value={a.id}>{a.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+
+              {/* Date */}
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="px-3 py-2 rounded-xl text-xs font-bold border bg-white"
+                style={{ borderColor: '#E5EBE8', color: '#18211D' }}
+              />
+            </div>
+          )}
+
           {/* Scope — explicit segmented control so it's clear whether the
               movement is personal (solo mío) or del hogar (compartido). */}
-          {!isTransfer && (
+          {!isTransfer && !isSettle && (
           <div className="px-4 mt-3">
             <p className="text-xs font-bold mb-1.5" style={{ color: '#5B6660' }}>¿De quién es este movimiento?</p>
             <div className="flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#E5EBE8' }}>
@@ -1199,7 +1364,7 @@ export function AddTransactionSheet({
 
           {/* Who paid — only for a "Hogar" movement, where either person could
               have fronted the money. For "Mío"/partner it's implied. */}
-          {owner === 'household' && effectivePartnerId && (
+          {owner === 'household' && effectivePartnerId && !isSettle && (
             <div className="px-4 mt-3">
               <p className="text-xs font-bold mb-1.5" style={{ color: '#5B6660' }}>¿Quién pagó?</p>
               <div className="flex rounded-2xl overflow-hidden p-1 gap-1" style={{ background: '#E5EBE8' }}>
@@ -1228,7 +1393,7 @@ export function AddTransactionSheet({
           )}
 
           {/* Options row */}
-          {!isTransfer && (
+          {!isTransfer && !isSettle && (
           <div className="flex gap-2 px-4 mt-3 flex-wrap">
             {/* Shared — expenses only; splitting an income makes no sense. */}
             {txType === 'expense' && (
@@ -1322,7 +1487,7 @@ export function AddTransactionSheet({
           )}
 
           {/* Transferencia/FX hint */}
-          {!isTransfer && excludeStats && (
+          {!isTransfer && !isSettle && excludeStats && (
             <p className="px-4 mt-2 text-[11px]" style={{ color: '#7C6FF0' }}>
               🔄 No cuenta como {txType === 'income' ? 'ingreso' : 'gasto'} en el análisis (cambio de moneda, pago de tarjeta, plata a familia, préstamo o reintegro). Igual afecta el saldo de la cuenta.
             </p>
@@ -1419,7 +1584,7 @@ export function AddTransactionSheet({
           <div className="px-4 mt-3">
             <input
               type="text"
-              placeholder="Descripción (opcional)"
+              placeholder={isSettle ? 'Nota (opcional)' : 'Descripción (opcional)'}
               value={merchant}
               onChange={(e) => {
                 const v = e.target.value;
